@@ -1,0 +1,339 @@
+import 'dart:math';
+
+/// Petits utilitaires géographiques 100% locaux (aucune dépendance réseau
+/// ni cloud), utilisés pour enrichir un `Segment` au moment de sa
+/// création : distance/dénivelé cumulés, bounding box et géohash grossier
+/// pour l'indexation locale (voir `Segment.geohashPrefix` et
+/// `IsarService.segmentsInViewport`).
+class GeoUtils {
+  GeoUtils._();
+
+  static const _earthRadiusMeters = 6371000.0;
+  static const _base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
+
+  /// Distance orthodromique (formule de Haversine) entre deux points, en
+  /// mètres. Suffisamment précise à l'échelle d'un segment de randonnée
+  /// (quelques mètres à quelques kilomètres) sans nécessiter de
+  /// bibliothèque géodésique lourde.
+  static double haversineMeters(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    final dLat = _degToRad(lat2 - lat1);
+    final dLon = _degToRad(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_degToRad(lat1)) *
+            cos(_degToRad(lat2)) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return _earthRadiusMeters * c;
+  }
+
+  static double _degToRad(double deg) => deg * pi / 180;
+
+  /// Encodage géohash (précision configurable ; 5 caractères par défaut,
+  /// soit des cellules d'environ 5 km de côté — largement suffisant pour
+  /// un pré-filtrage grossier avant comparaison exacte de bounding box).
+  ///
+  /// Ne remplace évidemment pas un vrai index spatial : côté serveur,
+  /// c'est PostGIS (colonne `geometry` + index GIST) qui fait le travail
+  /// géométrique précis, y compris la fusion par buffer.
+  static String geohash(
+    double latitude,
+    double longitude, {
+    int precision = 5,
+  }) {
+    var latMin = -90.0, latMax = 90.0;
+    var lonMin = -180.0, lonMax = 180.0;
+    final buffer = StringBuffer();
+    var isEvenBit = true;
+    var bit = 0;
+    var charBits = 0;
+
+    while (buffer.length < precision) {
+      if (isEvenBit) {
+        final mid = (lonMin + lonMax) / 2;
+        if (longitude >= mid) {
+          charBits = (charBits << 1) | 1;
+          lonMin = mid;
+        } else {
+          charBits = charBits << 1;
+          lonMax = mid;
+        }
+      } else {
+        final mid = (latMin + latMax) / 2;
+        if (latitude >= mid) {
+          charBits = (charBits << 1) | 1;
+          latMin = mid;
+        } else {
+          charBits = charBits << 1;
+          latMax = mid;
+        }
+      }
+      isEvenBit = !isEvenBit;
+
+      if (bit < 4) {
+        bit++;
+      } else {
+        buffer.write(_base32[charBits]);
+        bit = 0;
+        charBits = 0;
+      }
+    }
+    return buffer.toString();
+  }
+
+  /// Calcule la bounding box (min/max lat/lon) d'une liste de points.
+  /// Renvoie `null` si la liste est vide.
+  static ({double minLat, double maxLat, double minLon, double maxLon})?
+      boundingBox(Iterable<({double lat, double lon})> points) {
+    if (points.isEmpty) return null;
+    var minLat = double.infinity, maxLat = -double.infinity;
+    var minLon = double.infinity, maxLon = -double.infinity;
+    for (final p in points) {
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      if (p.lon < minLon) minLon = p.lon;
+      if (p.lon > maxLon) maxLon = p.lon;
+    }
+    return (minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon);
+  }
+
+  /// Distance minimale (mètres) entre un point et un polyligne (liste de
+  /// points ordonnés), par projection sur un plan tangent local plutôt
+  /// que par un calcul géodésique exact.
+  ///
+  /// Approximation volontaire : à l'échelle d'un segment de randonnée
+  /// (de quelques dizaines de mètres à quelques kilomètres), l'erreur
+  /// introduite par la projection plane est négligeable devant le buffer
+  /// de tolérance utilisé (5-10 m), et le coût de calcul reste minime —
+  /// important puisque cette fonction est appelée pour chaque point de
+  /// chaque tranche testée lors du découpage GPX.
+  static double distancePointToPolylineMeters(
+    double lat,
+    double lon,
+    List<({double lat, double lon})> polyline,
+  ) {
+    if (polyline.isEmpty) return double.infinity;
+    if (polyline.length == 1) {
+      return haversineMeters(lat, lon, polyline.first.lat, polyline.first.lon);
+    }
+
+    final originLat = polyline.first.lat;
+    final originLon = polyline.first.lon;
+    const mPerDegLat = 111320.0;
+    final mPerDegLon = 111320.0 * cos(_degToRad(originLat));
+
+    ({double x, double y}) toPlane(double la, double lo) => (
+          x: (lo - originLon) * mPerDegLon,
+          y: (la - originLat) * mPerDegLat,
+        );
+
+    final p = toPlane(lat, lon);
+    var best = double.infinity;
+    for (var i = 0; i < polyline.length - 1; i++) {
+      final a = toPlane(polyline[i].lat, polyline[i].lon);
+      final b = toPlane(polyline[i + 1].lat, polyline[i + 1].lon);
+      final d = _distancePointToSegmentPlane(p, a, b);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  static double _distancePointToSegmentPlane(
+    ({double x, double y}) p,
+    ({double x, double y}) a,
+    ({double x, double y}) b,
+  ) {
+    final abx = b.x - a.x;
+    final aby = b.y - a.y;
+    final lengthSq = abx * abx + aby * aby;
+    var t = lengthSq == 0
+        ? 0.0
+        : ((p.x - a.x) * abx + (p.y - a.y) * aby) / lengthSq;
+    t = t.clamp(0.0, 1.0);
+    final projX = a.x + t * abx;
+    final projY = a.y + t * aby;
+    final dx = p.x - projX;
+    final dy = p.y - projY;
+    return sqrt(dx * dx + dy * dy);
+  }
+
+  /// Dénivelé positif/négatif cumulé à partir d'une liste d'altitudes,
+  /// en ignorant les variations plus petites que [noiseThresholdMeters]
+  /// (le bruit d'altitude GPS gonfle sinon artificiellement le dénivelé,
+  /// parfois de plusieurs centaines de mètres sur une longue trace).
+  /// Les altitudes `null` (capteur indisponible) sont simplement
+  /// ignorées, sans casser la continuité du calcul.
+  static ({double gain, double loss}) elevationGainLoss(
+    List<double?> elevations, {
+    double noiseThresholdMeters = 2.0,
+  }) {
+    double gain = 0, loss = 0;
+    double? lastStable;
+    for (final e in elevations) {
+      if (e == null) continue;
+      if (lastStable == null) {
+        lastStable = e;
+        continue;
+      }
+      final delta = e - lastStable;
+      if (delta.abs() >= noiseThresholdMeters) {
+        if (delta > 0) {
+          gain += delta;
+        } else {
+          loss += -delta;
+        }
+        lastStable = e;
+      }
+    }
+    return (gain: gain, loss: loss);
+  }
+
+  /// Projette (lat, lon) sur le point le plus proche d'un polyligne, si à
+  /// moins de [maxDistanceMeters]. Renvoie, en plus des coordonnées
+  /// projetées, l'index du segment de polyligne concerné et le paramètre
+  /// d'interpolation `t` (0 à l'extrémité `i`, 1 à l'extrémité `i+1`) —
+  /// ces deux informations permettent ensuite d'extraire une sous-portion
+  /// du polyligne entre deux points projetés (voir [subPolylineBetween]),
+  /// utilisée par le mode planification pour faire "suivre" un tracé
+  /// existant à l'itinéraire en cours de dessin (aimant activé).
+  static ({double lat, double lon, int segmentIndex, double t})?
+      snapToPolyline(
+    double lat,
+    double lon,
+    List<({double lat, double lon})> polyline,
+    double maxDistanceMeters,
+  ) {
+    if (polyline.length < 2) return null;
+
+    final originLat = polyline.first.lat;
+    final originLon = polyline.first.lon;
+    const mPerDegLat = 111320.0;
+    final mPerDegLon = 111320.0 * cos(_degToRad(originLat));
+
+    ({double x, double y}) toPlane(double la, double lo) => (
+          x: (lo - originLon) * mPerDegLon,
+          y: (la - originLat) * mPerDegLat,
+        );
+    ({double lat, double lon}) fromPlane(double x, double y) => (
+          lat: originLat + y / mPerDegLat,
+          lon: originLon + x / mPerDegLon,
+        );
+
+    final p = toPlane(lat, lon);
+    var bestDist = double.infinity;
+    var bestIndex = -1;
+    var bestT = 0.0;
+    ({double x, double y}) bestPoint = (x: 0, y: 0);
+
+    for (var i = 0; i < polyline.length - 1; i++) {
+      final a = toPlane(polyline[i].lat, polyline[i].lon);
+      final b = toPlane(polyline[i + 1].lat, polyline[i + 1].lon);
+      final abx = b.x - a.x;
+      final aby = b.y - a.y;
+      final lengthSq = abx * abx + aby * aby;
+      var t = lengthSq == 0
+          ? 0.0
+          : ((p.x - a.x) * abx + (p.y - a.y) * aby) / lengthSq;
+      t = t.clamp(0.0, 1.0);
+      final projX = a.x + t * abx;
+      final projY = a.y + t * aby;
+      final dx = p.x - projX;
+      final dy = p.y - projY;
+      final d = sqrt(dx * dx + dy * dy);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIndex = i;
+        bestT = t;
+        bestPoint = (x: projX, y: projY);
+      }
+    }
+
+    if (bestIndex < 0 || bestDist > maxDistanceMeters) return null;
+    final snapped = fromPlane(bestPoint.x, bestPoint.y);
+    return (lat: snapped.lat, lon: snapped.lon, segmentIndex: bestIndex, t: bestT);
+  }
+
+  /// Extrait les sommets d'un polyligne strictement compris entre deux
+  /// points préalablement projetés par [snapToPolyline] SUR LE MÊME
+  /// polyligne (ne vérifie pas que c'est bien le cas — à l'appelant de
+  /// s'en assurer). Gère les deux sens de parcours. Le résultat inclut
+  /// les deux extrémités projetées mais aucun sommet du polyligne
+  /// au-delà d'elles.
+  ///
+  /// Sert à faire "suivre" à un itinéraire en cours de dessin (mode
+  /// planification, aimant activé) la forme réelle d'un segment déjà
+  /// connu, plutôt qu'une ligne droite entre les deux points tapés.
+  static List<({double lat, double lon})> subPolylineBetween(
+    List<({double lat, double lon})> polyline,
+    ({double lat, double lon, int segmentIndex, double t}) from,
+    ({double lat, double lon, int segmentIndex, double t}) to,
+  ) {
+    final result = <({double lat, double lon})>[(lat: from.lat, lon: from.lon)];
+
+    if (from.segmentIndex <= to.segmentIndex) {
+      for (var i = from.segmentIndex + 1; i <= to.segmentIndex; i++) {
+        result.add((lat: polyline[i].lat, lon: polyline[i].lon));
+      }
+    } else {
+      for (var i = from.segmentIndex; i > to.segmentIndex; i--) {
+        result.add((lat: polyline[i].lat, lon: polyline[i].lon));
+      }
+    }
+
+    result.add((lat: to.lat, lon: to.lon));
+    return result;
+  }
+
+  /// Calcule la distance totale d'un polyligne en mètres.
+  static double polylineLengthMeters(List<({double lat, double lon})> polyline) {
+    double total = 0;
+    for (int i = 0; i < polyline.length - 1; i++) {
+      total += haversineMeters(
+        polyline[i].lat, polyline[i].lon,
+        polyline[i+1].lat, polyline[i+1].lon,
+      );
+    }
+    return total;
+  }
+
+  /// Calcule la distance cumulée jusqu'à un point projeté par [snapToPolyline].
+  static double distanceToSnapMeters(
+    List<({double lat, double lon})> polyline,
+    ({double lat, double lon, int segmentIndex, double t}) snap,
+  ) {
+    double dist = 0;
+    for (int i = 0; i < snap.segmentIndex; i++) {
+      dist += haversineMeters(
+        polyline[i].lat, polyline[i].lon,
+        polyline[i+1].lat, polyline[i+1].lon,
+      );
+    }
+    
+    // Ajout de la portion fractionnaire du dernier segment
+    dist += haversineMeters(
+      polyline[snap.segmentIndex].lat, polyline[snap.segmentIndex].lon,
+      snap.lat, snap.lon,
+    );
+    
+    return dist;
+  }
+
+  /// Calcule l'azimut (relèvement) entre deux points en degrés (0-360).
+  /// 0 = Nord, 90 = Est, 180 = Sud, 270 = Ouest.
+  static double bearingDegrees(double lat1, double lon1, double lat2, double lon2) {
+    final dLon = _degToRad(lon2 - lon1);
+    final y = sin(dLon) * cos(_degToRad(lat2));
+    final x = cos(_degToRad(lat1)) * sin(_degToRad(lat2)) -
+        sin(_degToRad(lat1)) * cos(_degToRad(lat2)) * cos(dLon);
+    
+    final radians = atan2(y, x);
+    return (_radToDeg(radians) + 360) % 360;
+  }
+
+  static double _radToDeg(double rad) => rad * 180 / pi;
+}
