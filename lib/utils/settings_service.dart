@@ -29,6 +29,7 @@ class SettingsService extends ChangeNotifier {
   bool _reversePanels = false;
   bool _showAllWaypoints = true;
   double _waypointIconSize = 30.0;
+  double _edgeSwipeWidth = 40.0;
   List<String> _favoriteMapIds = ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
 
   // État de navigation
@@ -46,6 +47,7 @@ class SettingsService extends ChangeNotifier {
   bool get reversePanels => _reversePanels;
   bool get showAllWaypoints => _showAllWaypoints;
   double get waypointIconSize => _waypointIconSize;
+  double get edgeSwipeWidth => _edgeSwipeWidth;
   List<String> get favoriteMapIds => _favoriteMapIds;
   String? get activeGpxName => _activeGpxName;
   String? get navigationWaypointUuid => _navigationWaypointUuid;
@@ -66,6 +68,7 @@ class SettingsService extends ChangeNotifier {
     _reversePanels = _prefs.getBool('reverse_panels') ?? false;
     _showAllWaypoints = _prefs.getBool('show_all_waypoints') ?? true;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
+    _edgeSwipeWidth = _prefs.getDouble('edge_swipe_width') ?? 40.0;
     _favoriteMapIds = _prefs.getStringList('favorite_maps') ?? ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
     
     _activeGpxName = _prefs.getString('active_gpx');
@@ -126,6 +129,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setWaypointIconSize(double value) async {
     _waypointIconSize = value;
     await _prefs.setDouble('waypoint_icon_size', value);
+    notifyListeners();
+  }
+
+  Future<void> setEdgeSwipeWidth(double value) async {
+    _edgeSwipeWidth = value;
+    await _prefs.setDouble('edge_swipe_width', value);
     notifyListeners();
   }
 

@@ -7,7 +7,7 @@ import 'recording/recording_service.dart';
 import 'search/local_search_engine.dart';
 import 'ui/main_navigation_screen.dart';
 import 'utils/settings_service.dart';
-dartimport 'utils/pedometer_service.dart';
+import 'utils/pedometer_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

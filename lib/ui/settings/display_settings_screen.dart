@@ -42,6 +42,19 @@ class DisplaySettingsScreen extends StatelessWidget {
               ),
               const Divider(),
               ListTile(
+                title: const Text('Largeur des zones de swipe (bords)'),
+                subtitle: Text('${settings.edgeSwipeWidth.round()} px'),
+              ),
+              Slider(
+                value: settings.edgeSwipeWidth,
+                min: 20,
+                max: 80,
+                divisions: 12,
+                label: '${settings.edgeSwipeWidth.round()} px',
+                onChanged: (value) => settings.setEdgeSwipeWidth(value),
+              ),
+              const Divider(),
+              ListTile(
                 title: const Text('Taille des icônes de Waypoints'),
                 subtitle: Text('${settings.waypointIconSize.round()} px'),
               ),
