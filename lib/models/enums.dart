@@ -7,6 +7,21 @@ enum SegmentMode {
   offPath,
 }
 
+/// État de traitement d'une trace (Segmentation / Mesh)
+enum TraceProcessingStatus {
+  /// En attente de traitement lourd
+  pending,
+
+  /// En cours de segmentation (Valhalla, etc.)
+  processing,
+
+  /// Prête (segments créés et liés)
+  ready,
+
+  /// Erreur lors du traitement
+  error,
+}
+
 /// État de synchronisation d'une entité par rapport à Supabase.
 ///
 /// Sert de file d'attente pour le futur moteur de synchronisation : on ne

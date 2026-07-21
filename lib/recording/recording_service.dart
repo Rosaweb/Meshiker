@@ -4,8 +4,11 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart' as geo;
+import 'package:gnss_diagnostics/gnss_diagnostics.dart';
+import 'package:gnss_diagnostics/src/models.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:isar_community/isar.dart';
+import 'package:solar_calculator/solar_calculator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -20,107 +23,77 @@ import '../models/trace.dart';
 import '../models/waypoint.dart';
 import '../search/local_search_engine.dart';
 import '../utils/geo_utils.dart';
+import '../utils/pedometer_service.dart';
+import '../utils/settings_service.dart';
 import 'recording_config.dart';
 
 const _uuid = Uuid();
 
-/// Enregistre une randonnee en direct, en tache de fond, puis la
-/// transforme en Trace + Segment definitifs via SegmentationEngine (le
-/// meme moteur que pour un import GPX, etape 2 -- voir plus bas).
-///
-/// ## Foreground service : le choix de geolocator seul
-///
-/// Plutot que d'ajouter un package dedie (type flutter_foreground_task)
-/// en plus de geolocator, ce service s'appuie sur la capacite native de
-/// geolocator a faire tourner ses mises a jour de position dans un VRAI
-/// foreground service Android -- AndroidSettings.foregroundNotificationConfig
-/// affiche la notification persistante requise et empeche l'OS de couper
-/// les mises a jour quand l'app est reduite ou l'ecran verrouille. Cela
-/// evite une dependance supplementaire qui ferait, in fine, le meme
-/// travail que geolocator fait deja nativement pour ce cas precis.
-///
-/// Sur iOS, la situation est fondamentalement differente et il faut le
-/// dire clairement : il n'existe pas de "foreground service" facon
-/// Android. La continuite en arriere-plan vient de CoreLocation lui-meme
-/// : autorisation "Toujours" (NSLocationAlwaysAndWhenInUseUsageDescription
-/// dans Info.plist) + UIBackgroundModes: [location] + allowBackgroundLocationUpdates: true
-/// cote AppleSettings. Un package generique de "tache de fond" ne
-/// changerait rien a cette contrainte systeme -- ses propres mainteneurs
-/// documentent d'ailleurs des limitations severes sur iOS (tache detruite
-/// si l'app est fermee manuellement, pas de redemarrage au boot, fenetre
-/// de quelques secondes hors CoreLocation). Le plus robuste sur iOS reste
-/// donc de laisser CoreLocation piloter la continuite, pas d'empiler un
-/// second mecanisme par-dessus.
-///
-/// ## Robustesse face a un arret brutal du processus
-///
-/// Un foreground service reduit fortement le risque d'etre tue par l'OS,
-/// mais ne l'elimine pas totalement (gestionnaires de batterie agressifs
-/// de certains constructeurs, redemarrage inopine...). Les points sont
-/// donc persistes au fil de l'eau par petits lots (RecordingPointBatch,
-/// voir models/recording_draft.dart) plutot que gardes uniquement en
-/// memoire jusqu'a stop() : en cas de coupure, rien n'est perdu au-dela
-/// du dernier lot non flushe (quelques dizaines de points au plus).
-///
-/// ## Contrainte batterie (section 4 du brief)
-///
-/// Aucun appel reseau ici, uniquement des ecritures Isar locales. Le
-/// decoupage en segments (calculs geometriques repetes) n'a lieu qu'UNE
-/// SEULE FOIS, a l'arret (stop()) -- jamais a chaque position recue.
 class RecordingService {
   RecordingService({
     required this.isarService,
+    this.pedometerService,
+    this.settingsService,
     this.config = const RecordingConfig(),
   });
 
   final IsarService isarService;
+  final PedometerService? pedometerService;
+  final SettingsService? settingsService;
   final RecordingConfig config;
 
   StreamSubscription<geo.Position>? _positionSub;
+  StreamSubscription<GnssStatusSnapshot>? _gnssSub;
+  Timer? _signalLostTimer;
+  
   String? _sessionUuid;
   ActivityType _activityType = ActivityType.hiking;
   final List<PointGPS> _pendingBatch = [];
   int _batchIndex = 0;
   bool _nextPointStartsNewSegment = false;
+  
+  int _lastCalibrationSteps = 0;
+  geo.Position? _lastCalibrationPosition;
 
-  /// Etat courant, observable par l'UI (bouton demarrer/pause/arreter).
   final ValueNotifier<RecordingStatus> status =
       ValueNotifier(RecordingStatus.idle);
 
-  /// true = aimant active (segments routes par defaut), false = mode
-  /// hors-piste force. C'est CE notifier que le bouton bascule de l'UI de
-  /// planification/enregistrement (section 3 du brief) doit refleter.
   final ValueNotifier<bool> magnetEnabled = ValueNotifier(true);
 
-  /// Nombre de points captures depuis le debut de la session -- utile
-  /// pour un petit indicateur "1 248 points enregistres" a l'ecran.
   final ValueNotifier<int> pointCount = ValueNotifier(0);
+  final ValueNotifier<List<PointGPS>> livePoints = ValueNotifier([]);
 
-  /// Données temps réel pour le volet contextuel
   final ValueNotifier<double> currentSpeedMps = ValueNotifier(0.0);
   final ValueNotifier<double> averageSpeedDailyMps = ValueNotifier(0.0);
   final ValueNotifier<double> averageSpeedGlobalMps = ValueNotifier(0.0);
   final ValueNotifier<double> dailyDistanceMeters = ValueNotifier(0.0);
   final ValueNotifier<double> gpsAccuracyMeters = ValueNotifier(0.0);
   final ValueNotifier<geo.Position?> currentPosition = ValueNotifier(null);
+  final ValueNotifier<String> gpsStatus = ValueNotifier('-');
 
-  /// Données de progression sur la piste active
+  // Stockage détaillé des satellites
+  final Map<String, int> _constellationCounts = {};
+  int _totalSatellites = 0;
+
+  Map<String, int> get constellationBreakdown => Map.unmodifiable(_constellationCounts);
+  int get totalSatellites => _totalSatellites;
+
+  // Données solaires
+  final ValueNotifier<String> solarTimes = ValueNotifier('--:--');
+
   final ValueNotifier<double> trackDistanceDoneMeters = ValueNotifier(0.0);
   final ValueNotifier<double> trackDistanceRemainingMeters = ValueNotifier(0.0);
 
-  /// Navigation vers waypoint
   final ValueNotifier<Waypoint?> nextWaypoint = ValueNotifier(null);
   final ValueNotifier<double> distanceToNextWaypointMeters = ValueNotifier(0.0);
   final ValueNotifier<Waypoint?> destinationWaypoint = ValueNotifier(null);
   final ValueNotifier<double> distanceToDestinationMeters = ValueNotifier(0.0);
 
   bool _isDailyDistanceInitialized = false;
-  geo.Position? _lastSavedPosition;
   Trace? _activeTrace;
   List<({double lat, double lon})> _activePolyline = [];
   List<Waypoint> _traceWaypoints = [];
 
-  // Variables pour le calcul des moyennes
   int _dailyPointsCount = 0;
   double _dailySpeedSum = 0.0;
   int _globalPointsCount = 0;
@@ -128,59 +101,72 @@ class RecordingService {
 
   bool get isActive => status.value == RecordingStatus.recording;
 
-  // -----------------------------------------------------------------
-  // Permissions
-  // -----------------------------------------------------------------
-
-  /// Demande les permissions necessaires. Ne demande PAS d'emblee la
-  /// permission "toujours" (mauvaise pratique UX et taux de refus plus
-  /// eleve) : commence par "pendant l'utilisation", a l'app d'inviter
-  /// ensuite l'utilisateur a passer sur "toujours" juste avant de lancer
-  /// un enregistrement, avec une explication contextuelle.
   Future<bool> ensurePermissions() async {
-    if (!await geo.Geolocator.isLocationServiceEnabled()) return false;
+    try {
+      bool serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('RecordingService: Location services disabled');
+        // Optionnel : demander à l'utilisateur d'activer le GPS
+        // await geo.Geolocator.openLocationSettings();
+        return false;
+      }
 
-    var permission = await geo.Geolocator.checkPermission();
-    if (permission == geo.LocationPermission.denied) {
-      permission = await geo.Geolocator.requestPermission();
-    }
-    if (permission == geo.LocationPermission.denied ||
-        permission == geo.LocationPermission.deniedForever) {
+      var permission = await geo.Geolocator.checkPermission();
+      debugPrint('RecordingService: Initial permission state: $permission');
+      
+      if (permission == geo.LocationPermission.denied) {
+        debugPrint('RecordingService: Requesting location permission...');
+        permission = await geo.Geolocator.requestPermission();
+        debugPrint('RecordingService: Permission request result: $permission');
+      }
+      
+      if (permission == geo.LocationPermission.deniedForever) {
+        debugPrint('RecordingService: Permissions permanently denied');
+        // Sur Xiaomi, on peut rediriger vers les paramètres si bloqué
+        // await geo.Geolocator.openAppSettings();
+        return false;
+      }
+
+      final granted = permission == geo.LocationPermission.whileInUse || 
+                      permission == geo.LocationPermission.always;
+
+      if (granted) {
+        if (Platform.isAndroid) {
+          // Demander l'accès en arrière-plan séparément (requis pour Xiaomi/MIUI)
+          if (permission != geo.LocationPermission.always) {
+            debugPrint('RecordingService: Requesting background location for better stability...');
+            await geo.Geolocator.requestPermission();
+          }
+
+          // Demande notification (nécessaire pour le foreground service sur Android 13+)
+          try {
+            final notifStatus = await ph.Permission.notification.request();
+            debugPrint('RecordingService: Notification permission: $notifStatus');
+          } catch (e) {
+            debugPrint('RecordingService: Notification request failed: $e');
+          }
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('RecordingService: Permission error: $e');
       return false;
     }
-
-    // Permission de notification (Android 13+, requise pour afficher la
-    // notification persistante du foreground service). Sans lien avec la
-    // localisation : geolocator ne la gere pas, d'ou permission_handler
-    // pour ce seul cas precis.
-    if (Platform.isAndroid) {
-      final notifStatus = await ph.Permission.notification.status;
-      if (!notifStatus.isGranted) {
-        await ph.Permission.notification.request();
-      }
-    }
-    return true;
   }
 
-  /// A appeler separement, juste avant start(), avec une explication a
-  /// l'ecran ("necessaire pour continuer a enregistrer votre trace quand
-  /// l'app est en arriere-plan"). Sur iOS, l'autorisation "Toujours" ne
-  /// peut etre obtenue qu'apres un premier octroi de "pendant l'utilisation".
   Future<bool> ensureBackgroundPermission() async {
     final permission = await geo.Geolocator.requestPermission();
     return permission == geo.LocationPermission.always;
   }
 
   void _updateSpeedAverages(double currentSpeed) {
-    // On ne compte que les vitesses > 0.5 m/s pour ne pas fausser la moyenne à l'arrêt
     if (currentSpeed < 0.5) return;
 
-    // Moyenne du jour
     _dailyPointsCount++;
     _dailySpeedSum += currentSpeed;
     averageSpeedDailyMps.value = _dailySpeedSum / _dailyPointsCount;
 
-    // Moyenne globale
     _globalPointsCount++;
     _globalSpeedSum += currentSpeed;
     averageSpeedGlobalMps.value = _globalSpeedSum / _globalPointsCount;
@@ -192,7 +178,6 @@ class RecordingService {
     _isDailyDistanceInitialized = true;
     final prefs = await SharedPreferences.getInstance();
     
-    // Moyennes de vitesse
     _globalPointsCount = prefs.getInt('global_speed_count') ?? 0;
     _globalSpeedSum = prefs.getDouble('global_speed_sum') ?? 0.0;
     if (_globalPointsCount > 0) {
@@ -218,12 +203,143 @@ class RecordingService {
       final now = DateTime.now();
       if (lastDate.year == now.year && lastDate.month == now.month && lastDate.day == now.day) {
         dailyDistanceMeters.value = prefs.getDouble('daily_distance_meters') ?? 0.0;
-        return;
       }
+    } else {
+      final initialDist = await isarService.getDailyDistanceMeters();
+      dailyDistanceMeters.value = initialDist;
+    }
+  }
+
+  void _resetSignalTimer() {
+    _signalLostTimer?.cancel();
+    if (settingsService != null && !settingsService!.locationEnabled) return;
+    
+    _signalLostTimer = Timer(const Duration(seconds: 15), () {
+      if (_totalSatellites > 0) {
+        // Signal instable ou faible
+      } else {
+        gpsStatus.value = 'en attente\nde signal';
+      }
+    });
+  }
+
+  StreamSubscription<geo.ServiceStatus>? _serviceStatusSub;
+
+  Future<void> init() async {
+    // Écoute des changements d'état du service GPS au niveau système
+    _serviceStatusSub = geo.Geolocator.getServiceStatusStream().listen((status) {
+      debugPrint('RecordingService: System location service status changed: $status');
+      if (status == geo.ServiceStatus.enabled) {
+        startPositionMonitoring();
+      } else {
+        gpsStatus.value = 'GPS désactivé';
+        currentPosition.value = null;
+      }
+    });
+
+    if (settingsService != null) {
+      settingsService!.addListener(() {
+        final enabled = settingsService!.locationEnabled;
+        debugPrint('RecordingService: In-app location toggle changed: $enabled');
+        if (enabled) {
+          startPositionMonitoring();
+        }
+      });
     }
 
-    final initialDist = await isarService.getDailyDistanceMeters();
-    dailyDistanceMeters.value = initialDist;
+    await _initDailyDistance();
+  }
+
+  void startPositionMonitoring() {
+    // On ne démarre le flux que si le bouton de l'app est activé
+    if (settingsService != null && !settingsService!.locationEnabled) {
+      debugPrint('RecordingService: Location disabled in app settings');
+      gpsStatus.value = '-';
+      return;
+    }
+
+    _positionSub?.cancel();
+    _gnssSub?.cancel();
+    
+    debugPrint('RecordingService: Starting position stream...');
+    gpsStatus.value = 'recherche GPS';
+    
+    ensurePermissions().then((granted) {
+      if (!granted) {
+        debugPrint('RecordingService: Permissions not granted');
+        gpsStatus.value = 'permission refusée';
+        return;
+      }
+
+      try {
+        _positionSub = geo.Geolocator.getPositionStream(
+          locationSettings: _buildLocationSettings(),
+        ).listen(
+          (pos) {
+            debugPrint('RecordingService: NEW POINT: ${pos.latitude}, ${pos.longitude}');
+            _onPosition(pos);
+          },
+          onError: (e) {
+            debugPrint('RecordingService: Stream error: $e');
+            gpsStatus.value = 'erreur GPS';
+          },
+          cancelOnError: false,
+        );
+
+        // Intégration gnss_diagnostics pour le nombre de satellites (Android uniquement)
+        if (Platform.isAndroid) {
+          _gnssSub = GnssDiagnostics.statusStream.listen((snapshot) {
+            _updateSatelliteInfo(snapshot);
+          });
+        }
+        
+        // On récupère une position immédiate
+        geo.Geolocator.getCurrentPosition(
+          locationSettings: _buildLocationSettings()
+        ).then((pos) {
+          debugPrint('RecordingService: Initial fix point: ${pos.latitude}, ${pos.longitude}');
+          _onPosition(pos);
+        }).catchError((e) => debugPrint('Initial fix error: $e'));
+        
+        _resetSignalTimer();
+      } catch (e) {
+        debugPrint('RecordingService: Error starting stream: $e');
+        gpsStatus.value = 'erreur technique';
+      }
+    });
+  }
+
+  void _updateSatelliteInfo(GnssStatusSnapshot snapshot) {
+    _totalSatellites = snapshot.totalInView;
+    _constellationCounts.clear();
+
+    snapshot.constellations.forEach((name, stats) {
+      if (stats.inView > 0) {
+        // Normalisation des noms pour l'affichage
+        final displayName = _normalizeConstellationName(name);
+        _constellationCounts[displayName] = stats.inView;
+      }
+    });
+
+    // Mise à jour du libellé affiché sur la carte
+    if (_totalSatellites > 0) {
+      gpsStatus.value = '$_totalSatellites Sats';
+    } else {
+      gpsStatus.value = 'Recherche...';
+    }
+  }
+
+  String _normalizeConstellationName(String rawName) {
+    switch (rawName.toLowerCase()) {
+      case 'gps': return 'GPS';
+      case 'glonass': return 'Glonass';
+      case 'galileo': return 'Galileo';
+      case 'beidou': return 'Beidou';
+      case 'qzss': return 'QZSS';
+      case 'irnss': return 'IRNSS';
+      case 'sbas': return 'SBAS';
+      default: return rawName[0].toUpperCase() + rawName.substring(1);
+    }
   }
 
   Future<void> _persistSpeedAverages() async {
@@ -235,10 +351,6 @@ class RecordingService {
     await prefs.setDouble('daily_speed_sum', _dailySpeedSum);
     await prefs.setString('daily_speed_date', DateTime.now().toIso8601String());
   }
-
-  // -----------------------------------------------------------------
-  // Cycle de vie de l'enregistrement
-  // -----------------------------------------------------------------
 
   Future<void> start({
     required String ownerUuid,
@@ -252,6 +364,7 @@ class RecordingService {
     _pendingBatch.clear();
     _nextPointStartsNewSegment = false;
     pointCount.value = 0;
+    livePoints.value = [];
     magnetEnabled.value = true;
 
     await isarService.isar.writeTxn(
@@ -274,11 +387,10 @@ class RecordingService {
   geo.LocationSettings _buildLocationSettings() {
     if (Platform.isAndroid) {
       return geo.AndroidSettings(
-        accuracy: config.accuracy,
-        distanceFilter: config.distanceFilterMeters,
-        // C'est ce parametre qui transforme les mises a jour de position
-        // en un veritable foreground service Android avec notification
-        // persistante (voir la doc de classe ci-dessus).
+        accuracy: geo.LocationAccuracy.best, // Passage en 'best' pour forcer Xiaomi à utiliser le GPS
+        distanceFilter: 0,
+        intervalDuration: const Duration(seconds: 2),
+        // Important : spécifier explicitement le mode de notification
         foregroundNotificationConfig: geo.ForegroundNotificationConfig(
           notificationTitle: config.notificationTitle,
           notificationText: config.notificationText,
@@ -288,36 +400,42 @@ class RecordingService {
     }
     if (Platform.isIOS || Platform.isMacOS) {
       return geo.AppleSettings(
-        accuracy: config.accuracy,
+        accuracy: geo.LocationAccuracy.high,
         activityType: geo.ActivityType.fitness,
-        distanceFilter: config.distanceFilterMeters,
+        distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
         allowBackgroundLocationUpdates: true,
         showBackgroundLocationIndicator: true,
       );
     }
     return geo.LocationSettings(
-      accuracy: config.accuracy,
-      distanceFilter: config.distanceFilterMeters,
+      accuracy: geo.LocationAccuracy.high,
+      distanceFilter: 0,
     );
   }
 
   void _onPosition(geo.Position position) {
-    // 1. Mise à jour systématique de la position et de la précision
+    debugPrint('RecordingService: DISPATCHING POS: ${position.latitude}, ${position.longitude}');
+    _resetSignalTimer();
+
     final lastPos = currentPosition.value;
+
+    // Mise à jour de la valeur - déclenche la notification aux listeners (MapScreen)
     currentPosition.value = position;
+    
+    // On force la notification même si la position est très proche pour garantir 
+    // l'affichage dynamique sur la carte.
+    currentPosition.notifyListeners();
+    
     currentSpeedMps.value = position.speed;
     gpsAccuracyMeters.value = position.accuracy;
     
-    // 2. Mise à jour des moyennes de vitesse
     _updateSpeedAverages(position.speed);
 
-    // 3. Initialisation opportuniste de la distance du jour si ce n'est pas déjà fait
     if (!_isDailyDistanceInitialized) {
       _initDailyDistance();
     }
 
-    // 3. Accumulation de la distance du jour (Toutes les positions connues aujourd'hui)
     if (lastPos != null) {
       final now = DateTime.now();
       if (lastPos.timestamp.year == now.year &&
@@ -332,17 +450,39 @@ class RecordingService {
         dailyDistanceMeters.value += dist;
         _persistDailyDistance(dailyDistanceMeters.value);
       } else {
-        // Nouveau jour détecté lors de la réception du point
         dailyDistanceMeters.value = 0;
         _persistDailyDistance(0);
       }
     }
 
-    // 4. Mise à jour de la progression sur la piste active
     _updateNavigationStats(position);
+    _updateSolarInfo(position);
 
-    // 5. Si un enregistrement est actif, on traite le point pour la trace Isar
     if (status.value == RecordingStatus.recording) {
+      // Calibrage podomètre si actif
+      if (pedometerService != null && _lastCalibrationPosition != null) {
+        final dist = geo.Geolocator.distanceBetween(
+          _lastCalibrationPosition!.latitude, 
+          _lastCalibrationPosition!.longitude, 
+          position.latitude, 
+          position.longitude
+        );
+        
+        // On calibre tous les ~50m pour avoir une pente significative
+        if (dist >= 50) {
+          final stepsDelta = pedometerService!.steps - _lastCalibrationSteps;
+          final elevationDelta = position.altitude - _lastCalibrationPosition!.altitude;
+          
+          pedometerService!.calibrateWithSlope(dist, elevationDelta, stepsDelta);
+          
+          _lastCalibrationPosition = position;
+          _lastCalibrationSteps = pedometerService!.steps;
+        }
+      } else if (pedometerService != null) {
+        _lastCalibrationPosition = position;
+        _lastCalibrationSteps = pedometerService!.steps;
+      }
+
       _pendingBatch.add(PointGPS.create(
         latitude: position.latitude,
         longitude: position.longitude,
@@ -354,18 +494,65 @@ class RecordingService {
       ));
       pointCount.value++;
 
+      // Mise à jour des points "live" pour l'affichage dynamique sur la carte
+      livePoints.value = List.of(_pendingBatch);
+
       if (_pendingBatch.length >= config.pointsPerBatch) {
         unawaited(_flushBatch());
       }
     }
   }
 
+  void _updateSolarInfo(geo.Position position) {
+    final now = DateTime.now();
+    final solar = SolarCalculator(
+      Instant(
+        year: now.year,
+        month: now.month,
+        day: now.day,
+        hour: now.hour,
+        minute: now.minute,
+        second: now.second,
+      ),
+      position.latitude,
+      position.longitude,
+      now.timeZoneOffset.inHours.toDouble(),
+    );
+
+    // Utilisation des propriétés Instant du package
+    final sunrise = solar.sunriseTime.toUtcDateTime().toLocal();
+    final sunset = solar.sunsetTime.toUtcDateTime().toLocal();
+    final twilight = solar.eveningCivilTwilight.ending.toUtcDateTime().toLocal();
+
+    solarTimes.value = 'L: ${_formatTime(sunrise)}\nC: ${_formatTime(sunset)}\nCr: ${_formatTime(twilight)}';
+  }
+
+  String _formatTime(DateTime dt) {
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> setDestination(String? uuid) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (uuid == null) {
+      await prefs.remove('nav_wp_uuid');
+    } else {
+      await prefs.setString('nav_wp_uuid', uuid);
+    }
+    
+    final pos = currentPosition.value;
+    if (pos != null) {
+      await _updateNavigationStats(pos);
+    }
+  }
+
   Future<void> _updateNavigationStats(geo.Position position) async {
     final prefs = await SharedPreferences.getInstance();
-    final activeGpx = prefs.getString('active_gpx');
+    final activeGpxList = prefs.getStringList('active_gpx_list') ?? [];
+    // Pour l'instant on garde la logique de navigation sur une seule trace,
+    // on prend la première de la liste si elle existe.
+    final activeGpx = activeGpxList.isNotEmpty ? activeGpxList.first : null;
     final destUuid = prefs.getString('nav_wp_uuid');
 
-    // Chargement de la trace si nécessaire
     if (_activeTrace?.name != activeGpx) {
       if (activeGpx == null) {
         _activeTrace = null;
@@ -380,6 +567,36 @@ class RecordingService {
       }
     }
 
+    if (destUuid != null) {
+      final dest = await isarService.isar.waypoints.filter().localUuidEqualTo(destUuid).findFirst();
+      destinationWaypoint.value = dest;
+      if (dest != null) {
+        if (_activePolyline.isNotEmpty) {
+          final snap = GeoUtils.snapToPolyline(position.latitude, position.longitude, _activePolyline, 50.0);
+          final destSnap = GeoUtils.snapToPolyline(dest.latitude, dest.longitude, _activePolyline, 100);
+          
+          if (snap != null && destSnap != null) {
+            final doneDist = GeoUtils.distanceToSnapMeters(_activePolyline, snap);
+            final destDist = GeoUtils.distanceToSnapMeters(_activePolyline, destSnap);
+            distanceToDestinationMeters.value = (destDist - doneDist).abs();
+          } else {
+            // Fallback direct si snap impossible
+            distanceToDestinationMeters.value = geo.Geolocator.distanceBetween(
+              position.latitude, position.longitude, dest.latitude, dest.longitude
+            );
+          }
+        } else {
+          // Pas de trace active : distance directe
+          distanceToDestinationMeters.value = geo.Geolocator.distanceBetween(
+            position.latitude, position.longitude, dest.latitude, dest.longitude
+          );
+        }
+      }
+    } else {
+      destinationWaypoint.value = null;
+      distanceToDestinationMeters.value = 0;
+    }
+
     if (_activePolyline.isEmpty) {
       trackDistanceDoneMeters.value = 0;
       trackDistanceRemainingMeters.value = 0;
@@ -388,12 +605,11 @@ class RecordingService {
       return;
     }
 
-    // Projection sur la trace
     final snap = GeoUtils.snapToPolyline(
       position.latitude, 
       position.longitude, 
       _activePolyline, 
-      50.0 // Rayon de 50m pour être considéré sur la trace
+      50.0
     );
 
     if (snap == null) return;
@@ -404,7 +620,6 @@ class RecordingService {
     trackDistanceDoneMeters.value = doneDist;
     trackDistanceRemainingMeters.value = totalDist - doneDist;
 
-    // Calcul du prochain waypoint
     Waypoint? next;
     double minDistToNext = double.infinity;
 
@@ -423,27 +638,6 @@ class RecordingService {
     }
     nextWaypoint.value = next;
     distanceToNextWaypointMeters.value = next != null ? minDistToNext : 0;
-
-    // Destination spécifique
-    if (destUuid != null) {
-      final dest = await isarService.isar.waypoints.filter().localUuidEqualTo(destUuid).findFirst();
-      destinationWaypoint.value = dest;
-      if (dest != null) {
-        final destSnap = GeoUtils.snapToPolyline(dest.latitude, dest.longitude, _activePolyline, 100);
-        if (destSnap != null) {
-          final destDist = GeoUtils.distanceToSnapMeters(_activePolyline, destSnap);
-          distanceToDestinationMeters.value = (destDist - doneDist).abs();
-        } else {
-          // Si le point n'est pas sur la trace, distance à vol d'oiseau ?
-          distanceToDestinationMeters.value = geo.Geolocator.distanceBetween(
-            position.latitude, position.longitude, dest.latitude, dest.longitude
-          );
-        }
-      }
-    } else {
-      destinationWaypoint.value = null;
-      distanceToDestinationMeters.value = 0;
-    }
   }
 
   Future<void> _persistDailyDistance(double distance) async {
@@ -469,11 +663,6 @@ class RecordingService {
     );
   }
 
-  /// Met l'enregistrement en pause : arrete reellement la consommation
-  /// GPS (pas juste un filtre applicatif qui ignorerait les points) --
-  /// coherent avec la contrainte batterie du brief. A la reprise, le
-  /// premier point du lot suivant est marque startsNewSegment, exactement
-  /// comme une rupture de segment GPX importe.
   Future<void> pause() async {
     if (status.value != RecordingStatus.recording) return;
     await _flushBatch();
@@ -504,11 +693,6 @@ class RecordingService {
     status.value = RecordingStatus.recording;
   }
 
-  /// Bascule le mode route/hors-piste ("aimant"). Sans effet persistant
-  /// avant le premier start() (juste l'etat par defaut du prochain
-  /// enregistrement) ; pendant une session active, enregistre un
-  /// RecordingModeOverride horodate, consomme par SegmentationEngine a
-  /// l'arret pour forcer une coupure et le mode de la tranche suivante.
   Future<void> setMagnetEnabled(bool enabled) async {
     if (magnetEnabled.value == enabled) return;
     magnetEnabled.value = enabled;
@@ -526,10 +710,6 @@ class RecordingService {
 
   Future<void> toggleMagnet() => setMagnetEnabled(!magnetEnabled.value);
 
-  /// Arrete l'enregistrement, reconstitue la trace complete a partir des
-  /// lots persistes, la decoupe via SegmentationEngine (meme moteur que
-  /// l'import GPX de l'etape 2), persiste le resultat et nettoie les
-  /// donnees provisoires.
   Future<SegmentationResult> stop({
     required String ownerUuid,
     required LocalSearchEngine searchEngine,
@@ -556,24 +736,14 @@ class RecordingService {
 
     _sessionUuid = null;
     status.value = RecordingStatus.idle;
+    livePoints.value = [];
     return result;
   }
 
-  // -----------------------------------------------------------------
-  // Recuperation apres arret brutal
-  // -----------------------------------------------------------------
-
-  /// Session laissee en cours par un precedent lancement de l'app (voir
-  /// la doc de RecordingDraft). A appeler au demarrage de l'app pour
-  /// proposer "Reprendre l'enregistrement interrompu ?".
   Future<RecordingDraft?> findAbandonedDraft() {
     return isarService.currentRecordingDraft();
   }
 
-  /// Finalise directement une session retrouvee apres un arret brutal,
-  /// SANS tenter de relancer le flux GPS (le contexte -- position, cause
-  /// de l'arret... -- a ete perdu). Convertit simplement ce qui a ete
-  /// persiste jusqu'ici en Trace + Segments, comme le ferait stop().
   Future<SegmentationResult> finalizeAbandonedDraft({
     required RecordingDraft draft,
     required LocalSearchEngine searchEngine,
@@ -641,8 +811,6 @@ class RecordingService {
       traceName: traceName,
     );
 
-    // Meme logique de pre-chargement cible que GpxImportService (etape
-    // 2) : seuls les segments/POI de la zone parcourue sont charges.
     const margin = 0.01;
     final lats = trackPoints.map((p) => p.latitude);
     final lons = trackPoints.map((p) => p.longitude);
@@ -664,7 +832,7 @@ class RecordingService {
       maxLon: maxLon,
     );
 
-    final result = engine.segment(
+    final result = await engine.segment(
       gpx: parsed,
       nearbyExistingSegments: nearbySegments,
       nearbyExistingPois: nearbyPois,
@@ -679,11 +847,6 @@ class RecordingService {
       result: result,
       searchEngine: searchEngine,
       additionalWork: () async {
-        // La session est désormais entièrement transformée en données
-        // définitives : les données provisoires n'ont plus lieu d'être.
-        // Exécuté dans LA MÊME transaction que les upserts ci-dessus
-        // (voir SegmentationPersistence.persist) : soit tout réussit
-        // ensemble, soit rien n'est modifié.
         await isarService.isar.recordingPointBatchs
             .filter()
             .sessionUuidEqualTo(sessionUuid)
@@ -702,10 +865,29 @@ class RecordingService {
     return result;
   }
 
-  /// A appeler quand l'UI qui possede ce service est detruite, pour
-  /// liberer le flux GPS et les ValueNotifier.
+  Future<void> discard(String sessionUuid) async {
+    await isarService.isar.writeTxn(() async {
+      await isarService.isar.recordingPointBatchs
+          .filter()
+          .sessionUuidEqualTo(sessionUuid)
+          .deleteAll();
+      await isarService.isar.recordingModeOverrides
+          .filter()
+          .sessionUuidEqualTo(sessionUuid)
+          .deleteAll();
+      await isarService.isar.recordingDrafts
+          .filter()
+          .sessionUuidEqualTo(sessionUuid)
+          .deleteAll();
+    });
+    _sessionUuid = null;
+    status.value = RecordingStatus.idle;
+    livePoints.value = [];
+  }
+
   void dispose() {
     unawaited(_positionSub?.cancel());
+    unawaited(_gnssSub?.cancel());
     status.dispose();
     magnetEnabled.dispose();
     pointCount.dispose();

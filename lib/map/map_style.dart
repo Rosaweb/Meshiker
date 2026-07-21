@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../models/enums.dart';
-import '../models/point_of_interest.dart';
 import '../models/segment.dart';
 
 /// Critere utilise pour colorer un Segment a l'ecran. L'utilisateur peut

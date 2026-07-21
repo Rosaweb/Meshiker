@@ -1,12 +1,11 @@
-name: rando
-description: "appli rando"
+name: meshiker
+description: "Application de navigation pour la randonnée"
 publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
   sdk: ^3.1.0
-
 dependencies:
   flutter:
     sdk: flutter
@@ -15,30 +14,40 @@ dependencies:
   isar_community_flutter_libs: ^3.3.2
   path_provider: ^2.1.2
   supabase_flutter: ^2.5.0
-  flutter_map: ^7.0.2
-  latlong2: ^0.9.1
-  uuid: ^4.3.3
-  intl: ^0.19.0
-  xml: ^6.5.0
-  mbtiles: ^0.4.0
+  # --- BLOC LOCALISATION (DERNIÈRES VERSIONS) ---
+  geolocator: ^14.0.2
+  permission_handler: ^12.0.3
+  # --- BLOC CARTE (VERSIONS STABLES COMPATIBLES) ---
+  flutter_map: ^7.0.2             # Limite imposée par vector_map_tiles
+  latlong2: ^0.9.1               # Limite imposée par vector_map_tiles
+  # -----------------------------------------------
+  uuid: ^4.6.0
+  intl: ^0.20.3
+  xml: ^7.0.1
+  mbtiles: ^0.4.2
   vector_map_tiles: ^8.0.0
-  vector_map_tiles_mbtiles: ^1.1.0
+  vector_map_tiles_mbtiles: ^1.2.0
   vector_tile_renderer: ^5.2.1
-  geolocator: ^12.0.0
-  permission_handler: ^11.3.1
   flutter_compass: ^0.8.1
   shared_preferences: ^2.2.3
   provider: ^6.1.1
   flutter_colorpicker: ^1.1.0
   image_picker: ^1.0.7
   http: ^1.6.0
-  file_picker: ^8.0.0
+  file_picker: ^8.0.1
   pedometer: ^4.0.0
+  gnss_diagnostics: ^0.1.0
+  solar_calculator: ^1.0.1
+  purchases_flutter: ^10.4.1
+  connectivity_plus: ^7.3.0
+  purchases_ui_flutter: ^10.4.1
 
+  path: any
+  collection: any
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
   isar_community_generator: ^3.3.2
   build_runner: ^2.4.8
 

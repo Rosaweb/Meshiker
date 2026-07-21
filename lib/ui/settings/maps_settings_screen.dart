@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:isar_community/isar.dart';
 import '../../utils/settings_service.dart';
+import '../../database/isar_service.dart';
+import '../../models/offline_map/offline_map.dart';
 
 class MapSourceInfo {
   final String id;
@@ -49,67 +53,220 @@ class MapsSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Mes cartes')),
-      body: Consumer<SettingsService>(
-        builder: (context, settings, child) {
-          return Column(
+    return DefaultTabController(
+      length: 2,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.85),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            title: const Text('Mes cartes'),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            foregroundColor: Colors.white,
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Fonds de carte'),
+                Tab(text: 'Hors ligne'),
+              ],
+              indicatorColor: Colors.greenAccent,
+              labelColor: Colors.greenAccent,
+              unselectedLabelColor: Colors.white70,
+            ),
+          ),
+          body: const TabBarView(
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'Sélectionnez jusqu\'à 3 cartes favorites. L\'ordre détermine la priorité du bouton MAP.',
-                  style: TextStyle(color: Colors.grey),
+              _OnlineSourcesTab(),
+              _OfflineMapsTab(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OnlineSourcesTab extends StatelessWidget {
+  const _OnlineSourcesTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<SettingsService>(
+      builder: (context, settings, child) {
+        return Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'Sélectionnez jusqu\'à 3 cartes favorites. L\'ordre détermine la priorité du bouton MAP.',
+                style: TextStyle(color: Colors.white38),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: availableSources.length,
+                itemBuilder: (context, index) {
+                  final source = availableSources[index];
+                  final favIndex = settings.favoriteMapIds.indexOf(source.id);
+                  final isSelected = favIndex != -1;
+
+                  return ListTile(
+                    title: Text(source.name, style: const TextStyle(color: Colors.white)),
+                    subtitle: Text(source.description, style: const TextStyle(color: Colors.white70)),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isSelected)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.greenAccent.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5)),
+                            ),
+                            child: Text(
+                              'Priorité ${favIndex + 1}',
+                              style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        Checkbox(
+                          value: isSelected,
+                          onChanged: (checked) {
+                            List<String> current = List.from(settings.favoriteMapIds);
+                            if (checked == true) {
+                              if (current.length < 3) current.add(source.id);
+                            } else {
+                              current.remove(source.id);
+                            }
+                            settings.setFavoriteMaps(current);
+                          },
+                          checkColor: Colors.black,
+                          activeColor: Colors.greenAccent,
+                          side: const BorderSide(color: Colors.white38),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _OfflineMapsTab extends StatelessWidget {
+  const _OfflineMapsTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final isar = context.watch<IsarService>();
+    final settings = context.watch<SettingsService>();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    settings.startMapCreation();
+                    Navigator.pop(context); // Close panels to show map
+                  },
+                  icon: const Icon(Icons.add_location_alt),
+                  label: const Text('Créer une carte'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.greenAccent,
+                    foregroundColor: Colors.black,
+                  ),
                 ),
               ),
+              const SizedBox(width: 12),
               Expanded(
-                child: ListView.builder(
-                  itemCount: availableSources.length,
-                  itemBuilder: (context, index) {
-                    final source = availableSources[index];
-                    final favIndex = settings.favoriteMapIds.indexOf(source.id);
-                    final isSelected = favIndex != -1;
-
-                    return ListTile(
-                      title: Text(source.name),
-                      subtitle: Text(source.description),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isSelected)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                'Priorité ${favIndex + 1}',
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          Checkbox(
-                            value: isSelected,
-                            onChanged: (checked) {
-                              List<String> current = List.from(settings.favoriteMapIds);
-                              if (checked == true) {
-                                if (current.length < 3) current.add(source.id);
-                              } else {
-                                current.remove(source.id);
-                              }
-                              settings.setFavoriteMaps(current);
-                            },
-                          ),
-                        ],
-                      ),
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    // Logic for importing local mbtiles
+                    await FilePicker.platform.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: ['mbtiles'],
                     );
                   },
+                  icon: const Icon(Icons.file_download),
+                  label: const Text('Importer'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white10,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ),
             ],
-          );
-        },
-      ),
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<List<OfflineMap>>(
+            stream: isar.isar.offlineMaps.where().watch(fireImmediately: true),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              final maps = snapshot.data!;
+
+              if (maps.isEmpty) {
+                return const Center(
+                  child: Text('Aucune carte hors ligne.', style: TextStyle(color: Colors.white38)),
+                );
+              }
+
+              return ListView.builder(
+                itemCount: maps.length,
+                itemBuilder: (context, index) {
+                  final map = maps[index];
+                  final sizeMb = (map.sizeBytes / (1024 * 1024)).toStringAsFixed(1);
+
+                  return ListTile(
+                    leading: const Icon(Icons.map, color: Colors.greenAccent),
+                    title: Text(map.name, style: const TextStyle(color: Colors.white)),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('$sizeMb MB', style: const TextStyle(color: Colors.white38)),
+                          if (map.isDownloading)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: LinearProgressIndicator(
+                                      value: map.downloadProgress,
+                                      backgroundColor: Colors.white10,
+                                      valueColor: const AlwaysStoppedAnimation(Colors.greenAccent),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '${(map.downloadProgress * 100).round()}%',
+                                    style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (map.isError)
+                            const Text('Erreur. Appuyez pour reprendre.', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                        ],
+                      ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.white38),
+                      onPressed: () => isar.deleteOfflineMap(map.id),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

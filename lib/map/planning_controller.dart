@@ -71,7 +71,7 @@ class PlanningConfig {
 /// les sommets intermédiaires du segment ([GeoUtils.subPolylineBetween])
 /// pour que le tracé SUIVE la forme réelle du sentier plutôt qu'une ligne
 /// droite entre deux taps espacés.
-class PlanningController {
+class PlanningController extends ChangeNotifier {
   PlanningController({this.config = const PlanningConfig()});
 
   final PlanningConfig config;
@@ -97,7 +97,19 @@ class PlanningController {
   /// Bascule l'aimant. Enregistre un [ModeOverride] horodaté, consommé
   /// par [SegmentationEngine] à la finalisation pour forcer une coupure
   /// et le mode de la portion suivante du plan.
-  void toggleMagnet() => setMagnetEnabled(!magnetEnabled.value);
+  void toggleMagnet() {
+    setMagnetEnabled(!magnetEnabled.value);
+    notifyListeners();
+  }
+
+  void undo() {
+    if (points.value.isEmpty) return;
+    final List<PlanPoint> newList = List.from(points.value);
+    newList.removeLast();
+    points.value = newList;
+    // On pourrait aussi nettoyer les overrides devenus obsolètes si on voulait être parfait
+    notifyListeners();
+  }
 
   void setMagnetEnabled(bool enabled) {
     if (magnetEnabled.value == enabled) return;
@@ -106,6 +118,7 @@ class PlanningController {
       at: _nextTime(),
       mode: enabled ? SegmentMode.routed : SegmentMode.offPath,
     ));
+    notifyListeners();
   }
 
   /// Ajoute un point tapé sur la carte au tracé en cours.
@@ -115,6 +128,7 @@ class PlanningController {
     if (!magnetEnabled.value) {
       _appendRawPoint(lat, lon, time, snapped: false);
       _lastSnap = null;
+      notifyListeners();
       return;
     }
 
@@ -122,6 +136,7 @@ class PlanningController {
     if (snapResult == null) {
       _appendRawPoint(lat, lon, time, snapped: false);
       _lastSnap = null;
+      notifyListeners();
       return;
     }
 
@@ -152,6 +167,7 @@ class PlanningController {
     }
 
     _lastSnap = (segmentUuid: segmentUuid, snap: snap);
+    notifyListeners();
   }
 
   (String, ({double lat, double lon, int segmentIndex, double t}))? _bestSnap(
@@ -251,7 +267,7 @@ class PlanningController {
     );
 
     final engine = SegmentationEngine(config: config.segmentationConfig);
-    final result = engine.segment(
+    final result = await engine.segment(
       gpx: parsed,
       nearbyExistingSegments: nearbySegments,
       nearbyExistingPois: nearbyPois,
@@ -271,6 +287,7 @@ class PlanningController {
     return result;
   }
 
+  @override
   void dispose() {
     points.dispose();
     magnetEnabled.dispose();

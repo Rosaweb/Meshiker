@@ -1,81 +1,204 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/settings_service.dart';
+import 'navigation_customization_screen.dart';
 
 class DisplaySettingsScreen extends StatelessWidget {
   const DisplaySettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Affichage'),
-      ),
-      body: Consumer<SettingsService>(
-        builder: (context, settings, child) {
-          return ListView(
-            children: [
-              ListTile(
-                title: const Text('Transparence du bandeau'),
-                subtitle: Text('${(settings.barOpacity * 100).round()}%'),
-              ),
-              Slider(
-                value: settings.barOpacity,
-                min: 0.1,
-                max: 1.0,
-                divisions: 18,
-                label: '${(settings.barOpacity * 100).round()}%',
-                onChanged: (value) => settings.setBarOpacity(value),
-              ),
-              const Divider(),
-              SwitchListTile(
-                title: const Text('Afficher l\'échelle de carte'),
-                subtitle: const Text('Affiche un segment de distance au-dessus des boutons'),
-                value: settings.showScale,
-                onChanged: (value) => settings.setShowScale(value),
-              ),
-              SwitchListTile(
-                title: const Text('Mode Gaucher'),
-                subtitle: const Text('Inverse les volets latéraux pour une utilisation à la main gauche'),
-                value: settings.reversePanels,
-                onChanged: (value) => settings.setReversePanels(value),
-              ),
-              const Divider(),
-              ListTile(
-                title: const Text('Largeur des zones de swipe (bords)'),
-                subtitle: Text('${settings.edgeSwipeWidth.round()} px'),
-              ),
-              Slider(
-                value: settings.edgeSwipeWidth,
-                min: 20,
-                max: 80,
-                divisions: 12,
-                label: '${settings.edgeSwipeWidth.round()} px',
-                onChanged: (value) => settings.setEdgeSwipeWidth(value),
-              ),
-              const Divider(),
-              ListTile(
-                title: const Text('Taille des icônes de Waypoints'),
-                subtitle: Text('${settings.waypointIconSize.round()} px'),
-              ),
-              Slider(
-                value: settings.waypointIconSize,
-                min: 20,
-                max: 60,
-                divisions: 8,
-                label: '${settings.waypointIconSize.round()} px',
-                onChanged: (value) => settings.setWaypointIconSize(value),
-              ),
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'Note : La couleur de l\'échelle s\'adapte automatiquement selon la transparence pour rester lisible.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+    return Container(
+      color: Colors.black.withValues(alpha: 0.85),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Affichage et Unités'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: Colors.white,
+        ),
+        body: Consumer<SettingsService>(
+          builder: (context, settings, child) {
+            const labelStyle = TextStyle(color: Colors.white, fontSize: 14);
+            const valueStyle = TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14);
+            const headerStyle = TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent, fontSize: 11);
+
+            return ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: [
+                const Text('UNITÉS DE MESURE', style: headerStyle),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Radio<UnitSystem>(
+                            value: UnitSystem.metric,
+                            groupValue: settings.unitSystem,
+                            onChanged: (v) => v != null ? settings.setUnitSystem(v) : null,
+                            activeColor: Colors.greenAccent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const Text('Métrique', style: labelStyle),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Radio<UnitSystem>(
+                            value: UnitSystem.imperial,
+                            groupValue: settings.unitSystem,
+                            onChanged: (v) => v != null ? settings.setUnitSystem(v) : null,
+                            activeColor: Colors.greenAccent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const Text('Impérial', style: labelStyle),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          );
-        },
+                Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Radio<bool>(
+                            value: true,
+                            groupValue: settings.useCelsius,
+                            onChanged: (v) => v != null ? settings.setTemperatureUnit(v) : null,
+                            activeColor: Colors.greenAccent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const Text('Celsius', style: labelStyle),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Radio<bool>(
+                            value: false,
+                            groupValue: settings.useCelsius,
+                            onChanged: (v) => v != null ? settings.setTemperatureUnit(v) : null,
+                            activeColor: Colors.greenAccent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const Text('Fahrenheit', style: labelStyle),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const Divider(color: Colors.white12, height: 24),
+                const Text('INTERFACE ET CARTE', style: headerStyle),
+                const SizedBox(height: 12),
+
+                // Transparence
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Transparence bandeau', style: labelStyle),
+                    Text('${((1.1 - settings.barOpacity) * 100).round()}%', style: valueStyle),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
+                  child: Slider(
+                    value: 1.1 - settings.barOpacity,
+                    min: 0.1, max: 1.0, divisions: 18,
+                    onChanged: (v) => settings.setBarOpacity(1.1 - v),
+                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
+                  ),
+                ),
+
+                // Échelle & Gaucher
+                Row(
+                  children: [
+                    const Text('Afficher l\'échelle', style: labelStyle),
+                    const Spacer(),
+                    Switch(
+                      value: settings.showScale,
+                      onChanged: (v) => settings.setShowScale(v),
+                      activeThumbColor: Colors.greenAccent,
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text('Mode Gaucher', style: labelStyle),
+                    const Spacer(),
+                    Switch(
+                      value: settings.reversePanels,
+                      onChanged: (v) => settings.setReversePanels(v),
+                      activeThumbColor: Colors.greenAccent,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+                // Zones de swipe
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Zones de swipe', style: labelStyle),
+                    Text('${settings.edgeSwipeWidth.round()} px', style: valueStyle),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
+                  child: Slider(
+                    value: settings.edgeSwipeWidth,
+                    min: 20, max: 80, divisions: 12,
+                    onChanged: (v) => settings.setEdgeSwipeWidth(v),
+                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
+                  ),
+                ),
+
+                // Taille icônes
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Taille icônes Waypoints', style: labelStyle),
+                    Text('${settings.waypointIconSize.round()} px', style: valueStyle),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
+                  child: Slider(
+                    value: settings.waypointIconSize,
+                    min: 20, max: 60, divisions: 8,
+                    onChanged: (v) => settings.setWaypointIconSize(v),
+                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
+                  ),
+                ),
+
+                const Divider(color: Colors.white12, height: 24),
+                ListTile(
+                  title: const Text('Personnaliser le volet de navigation', style: labelStyle),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.white24),
+                  onTap: () {
+                    final bool isReversed = settings.reversePanels;
+                    Navigator.push(context, PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => const NavigationCustomizationScreen(),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        final beginOffset = isReversed ? const Offset(1, 0) : const Offset(-1, 0);
+                        return SlideTransition(
+                          position: Tween<Offset>(begin: beginOffset, end: Offset.zero).animate(animation),
+                          child: child,
+                        );
+                      },
+                    ));
+                  },
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

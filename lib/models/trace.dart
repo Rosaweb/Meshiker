@@ -17,6 +17,7 @@ class Trace implements Syncable {
 
   Id id = Isar.autoIncrement;
 
+  @override
   @Index(unique: true, replace: true)
   late String localUuid;
 
@@ -29,6 +30,11 @@ class Trace implements Syncable {
 
   String name = '';
   String? description;
+  int? colorHex;
+
+  /// Chemin du fichier source (si importé via l'auto-scan ou manuellement).
+  @Index()
+  String? sourceFilePath;
 
   /// Séquence ordonnée de segments composant l'itinéraire. C'est ici, et
   /// uniquement ici, que vit la notion d'ordre et de sens de parcours —
@@ -38,6 +44,9 @@ class Trace implements Syncable {
   double totalDistanceMeters = 0;
   double totalElevationGainMeters = 0;
   double totalElevationLossMeters = 0;
+
+  @Enumerated(EnumType.ordinal)
+  TraceProcessingStatus processingStatus = TraceProcessingStatus.ready; // Par défaut prêt pour compatibilité
 
   @Enumerated(EnumType.ordinal)
   ActivityType activityType = ActivityType.hiking;

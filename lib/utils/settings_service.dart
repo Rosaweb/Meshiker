@@ -5,6 +5,10 @@ enum UnitSystem { metric, imperial }
 
 enum MeasurementMode { none, fromGps, betweenPoints }
 
+enum MapCreationStep { none, selectOrigin, stretchArea, adjustArea, finalize }
+
+enum DisplayMode { gpx, mesh }
+
 class AppSettings {
   final double barOpacity;
   final UnitSystem unitSystem;
@@ -28,13 +32,40 @@ class SettingsService extends ChangeNotifier {
   bool _showScale = true;
   bool _reversePanels = false;
   bool _showAllWaypoints = true;
+  bool _showAllGpx = true;
+  DisplayMode _displayMode = DisplayMode.gpx;
+  bool _showGpxWaypoints = true;
+  bool _locationEnabled = true;
   double _waypointIconSize = 30.0;
+
+  // Visibilité des éléments du volet de navigation
+  bool _navShowSpeed = true;
+  bool _navShowDailyDist = true;
+  bool _navShowTraceDist = true;
+  bool _navShowGpsAccuracy = true;
+  bool _navShowSatellites = true;
+  bool _navShowPedometer = true;
+  bool _navShowNextWaypoint = true;
+  bool _navShowDestination = true;
+  bool _navShowMeasureTools = true;
   double _edgeSwipeWidth = 40.0;
+  String? _gpxStoragePath;
+  String? _recordingSubPath; // Nouveau : dossier d'enregistrement par défaut
+  double _tileCacheLimitMb = 500.0;
+  bool _wifiOnlyDownload = true;
   List<String> _favoriteMapIds = ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
 
   // État de navigation
-  String? _activeGpxName; // Trace actuellement suivie
+  List<String> _activeGpxNames = []; // Traces actuellement suivies
   String? _navigationWaypointUuid; // Destination choisie
+  bool _waypointSelectionMode = false;
+
+  // État de création de carte hors ligne
+  MapCreationStep _mapCreationStep = MapCreationStep.none;
+  ({double lat, double lon})? _mapOrigin;
+  ({double lat, double lon})? _mapTarget; // Le point opposé (croix rouge)
+  int _minZoomDownload = 10;
+  int _maxZoomDownload = 15;
 
   MeasurementMode _measurementMode = MeasurementMode.none;
   ({double lat, double lon})? _measurePoint1;
@@ -46,11 +77,37 @@ class SettingsService extends ChangeNotifier {
   bool get showScale => _showScale;
   bool get reversePanels => _reversePanels;
   bool get showAllWaypoints => _showAllWaypoints;
+  DisplayMode get displayMode => _displayMode;
+  bool get showAllGpx => _showAllGpx;
+  bool get showMesh => _displayMode == DisplayMode.mesh;
+  bool get showGpxWaypoints => _showGpxWaypoints;
+  bool get locationEnabled => _locationEnabled;
   double get waypointIconSize => _waypointIconSize;
+
+  bool get navShowSpeed => _navShowSpeed;
+  bool get navShowDailyDist => _navShowDailyDist;
+  bool get navShowTraceDist => _navShowTraceDist;
+  bool get navShowGpsAccuracy => _navShowGpsAccuracy;
+  bool get navShowSatellites => _navShowSatellites;
+  bool get navShowPedometer => _navShowPedometer;
+  bool get navShowNextWaypoint => _navShowNextWaypoint;
+  bool get navShowDestination => _navShowDestination;
+  bool get navShowMeasureTools => _navShowMeasureTools;
   double get edgeSwipeWidth => _edgeSwipeWidth;
+  String? get gpxStoragePath => _gpxStoragePath;
+  String? get recordingSubPath => _recordingSubPath;
+  double get tileCacheLimitMb => _tileCacheLimitMb;
+  bool get wifiOnlyDownload => _wifiOnlyDownload;
   List<String> get favoriteMapIds => _favoriteMapIds;
-  String? get activeGpxName => _activeGpxName;
+  List<String> get activeGpxNames => _activeGpxNames;
   String? get navigationWaypointUuid => _navigationWaypointUuid;
+  bool get waypointSelectionMode => _waypointSelectionMode;
+  final MapCreationStep _mapCreationStepProp = MapCreationStep.none;
+  MapCreationStep get mapCreationStep => _mapCreationStep;
+  ({double lat, double lon})? get mapOrigin => _mapOrigin;
+  ({double lat, double lon})? get mapTarget => _mapTarget;
+  int get minZoomDownload => _minZoomDownload;
+  int get maxZoomDownload => _maxZoomDownload;
   MeasurementMode get measurementMode => _measurementMode;
   ({double lat, double lon})? get measurePoint1 => _measurePoint1;
   ({double lat, double lon})? get measurePoint2 => _measurePoint2;
@@ -67,11 +124,39 @@ class SettingsService extends ChangeNotifier {
     _showScale = _prefs.getBool('show_scale') ?? true;
     _reversePanels = _prefs.getBool('reverse_panels') ?? false;
     _showAllWaypoints = _prefs.getBool('show_all_waypoints') ?? true;
+    _showAllGpx = _prefs.getBool('show_all_gpx') ?? true;
+    // On force le mode GPX au démarrage (ne pas charger depuis les préférences)
+    _displayMode = DisplayMode.gpx;
+    _showGpxWaypoints = _prefs.getBool('show_gpx_waypoints') ?? true;
+    _locationEnabled = _prefs.getBool('location_enabled') ?? true;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
+    
+    _navShowSpeed = _prefs.getBool('nav_show_speed') ?? true;
+    _navShowDailyDist = _prefs.getBool('nav_show_daily_dist') ?? true;
+    _navShowTraceDist = _prefs.getBool('nav_show_trace_dist') ?? true;
+    _navShowGpsAccuracy = _prefs.getBool('nav_show_gps_accuracy') ?? true;
+    _navShowSatellites = _prefs.getBool('nav_show_satellites') ?? true;
+    _navShowPedometer = _prefs.getBool('nav_show_pedometer') ?? true;
+    _navShowNextWaypoint = _prefs.getBool('nav_show_next_waypoint') ?? true;
+    _navShowDestination = _prefs.getBool('nav_show_destination') ?? true;
+    _navShowMeasureTools = _prefs.getBool('nav_show_measure_tools') ?? true;
+
     _edgeSwipeWidth = _prefs.getDouble('edge_swipe_width') ?? 40.0;
+    _gpxStoragePath = _prefs.getString('gpx_storage_path');
+    _recordingSubPath = _prefs.getString('recording_sub_path');
+    _tileCacheLimitMb = _prefs.getDouble('tile_cache_limit_mb') ?? 500.0;
+    _wifiOnlyDownload = _prefs.getBool('wifi_only_download') ?? true;
     _favoriteMapIds = _prefs.getStringList('favorite_maps') ?? ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
     
-    _activeGpxName = _prefs.getString('active_gpx');
+    _activeGpxNames = _prefs.getStringList('active_gpx_list') ?? [];
+    // Migration depuis l'ancien format unique
+    final oldActive = _prefs.getString('active_gpx');
+    if (oldActive != null && _activeGpxNames.isEmpty) {
+      _activeGpxNames = [oldActive];
+      await _prefs.setStringList('active_gpx_list', _activeGpxNames);
+      await _prefs.remove('active_gpx');
+    }
+
     _navigationWaypointUuid = _prefs.getString('nav_wp_uuid');
     notifyListeners();
   }
@@ -100,18 +185,52 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setActiveGpx(String? name) async {
-    _activeGpxName = name;
-    if (name == null) {
-      await _prefs.remove('active_gpx');
+  Future<void> setGpxStoragePath(String? path) async {
+    _gpxStoragePath = path;
+    if (path == null) {
+      await _prefs.remove('gpx_storage_path');
+      await setRecordingSubPath(null); // Reset sub-path if root changes
     } else {
-      await _prefs.setString('active_gpx', name);
+      await _prefs.setString('gpx_storage_path', path);
     }
+    notifyListeners();
+  }
+
+  Future<void> setRecordingSubPath(String? path) async {
+    _recordingSubPath = path;
+    if (path == null) {
+      await _prefs.remove('recording_sub_path');
+    } else {
+      await _prefs.setString('recording_sub_path', path);
+    }
+    notifyListeners();
+  }
+
+  Future<void> toggleActiveGpx(String name) async {
+    if (_activeGpxNames.contains(name)) {
+      _activeGpxNames.remove(name);
+    } else {
+      _activeGpxNames.add(name);
+    }
+    await _prefs.setStringList('active_gpx_list', _activeGpxNames);
+    notifyListeners();
+  }
+
+  Future<void> setActiveGpxList(List<String> names) async {
+    _activeGpxNames = List.from(names);
+    await _prefs.setStringList('active_gpx_list', _activeGpxNames);
+    notifyListeners();
+  }
+
+  Future<void> clearActiveGpx() async {
+    _activeGpxNames.clear();
+    await _prefs.remove('active_gpx_list');
     notifyListeners();
   }
 
   Future<void> setNavigationWaypoint(String? uuid) async {
     _navigationWaypointUuid = uuid;
+    _waypointSelectionMode = false; // Désactive le mode sélection une fois choisi
     if (uuid == null) {
       await _prefs.remove('nav_wp_uuid');
     } else {
@@ -120,9 +239,54 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setWaypointSelectionMode(bool value) {
+    _waypointSelectionMode = value;
+    notifyListeners();
+  }
+
   Future<void> setShowAllWaypoints(bool value) async {
     _showAllWaypoints = value;
     await _prefs.setBool('show_all_waypoints', value);
+    notifyListeners();
+  }
+
+  Future<void> setDisplayMode(DisplayMode mode) async {
+    _displayMode = mode;
+    await _prefs.setInt('display_mode', mode.index);
+    notifyListeners();
+  }
+
+  Future<void> setShowAllGpx(bool value) async {
+    _showAllGpx = value;
+    await _prefs.setBool('show_all_gpx', value);
+    notifyListeners();
+  }
+
+  Future<void> setShowGpxWaypoints(bool value) async {
+    _showGpxWaypoints = value;
+    await _prefs.setBool('show_gpx_waypoints', value);
+    notifyListeners();
+  }
+
+  Future<void> setLocationEnabled(bool value) async {
+    _locationEnabled = value;
+    await _prefs.setBool('location_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setNavVisibility(String key, bool value) async {
+    switch (key) {
+      case 'speed': _navShowSpeed = value; break;
+      case 'dailyDist': _navShowDailyDist = value; break;
+      case 'traceDist': _navShowTraceDist = value; break;
+      case 'gpsAccuracy': _navShowGpsAccuracy = value; break;
+      case 'satellites': _navShowSatellites = value; break;
+      case 'pedometer': _navShowPedometer = value; break;
+      case 'nextWaypoint': _navShowNextWaypoint = value; break;
+      case 'destination': _navShowDestination = value; break;
+      case 'measureTools': _navShowMeasureTools = value; break;
+    }
+    await _prefs.setBool('nav_show_$key', value);
     notifyListeners();
   }
 
@@ -141,7 +305,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setFavoriteMaps(List<String> ids) async {
     _favoriteMapIds = ids;
     await _prefs.setStringList('favorite_maps', ids);
-    _currentMapIndex = 0; // Reset si la liste change
+    // On s'assure que l'index reste valide si la liste a rétréci
+    if (_favoriteMapIds.isNotEmpty) {
+      _currentMapIndex = _currentMapIndex % _favoriteMapIds.length;
+    } else {
+      _currentMapIndex = 0;
+    }
     notifyListeners();
   }
 
@@ -178,6 +347,71 @@ class SettingsService extends ChangeNotifier {
   Future<void> setTemperatureUnit(bool celsius) async {
     _useCelsius = celsius;
     await _prefs.setBool('use_celsius', celsius);
+    notifyListeners();
+  }
+
+  Future<void> setTileCacheLimitMb(double value) async {
+    _tileCacheLimitMb = value;
+    await _prefs.setDouble('tile_cache_limit_mb', value);
+    notifyListeners();
+  }
+
+  Future<void> setWifiOnlyDownload(bool value) async {
+    _wifiOnlyDownload = value;
+    await _prefs.setBool('wifi_only_download', value);
+    notifyListeners();
+  }
+
+  void startMapCreation() {
+    _mapCreationStep = MapCreationStep.selectOrigin;
+    _mapOrigin = null;
+    _mapTarget = null;
+    _minZoomDownload = 10;
+    _maxZoomDownload = 15;
+    notifyListeners();
+  }
+
+  void cancelMapCreation() {
+    _mapCreationStep = MapCreationStep.none;
+    _mapOrigin = null;
+    _mapTarget = null;
+    notifyListeners();
+  }
+
+  void validateOrigin(double lat, double lon) {
+    _mapOrigin = (lat: lat, lon: lon);
+    _mapCreationStep = MapCreationStep.stretchArea;
+    notifyListeners();
+  }
+
+  void validateArea(double lat, double lon) {
+    _mapTarget = (lat: lat, lon: lon);
+    _mapCreationStep = MapCreationStep.adjustArea;
+    notifyListeners();
+  }
+
+  void updateMapTarget(double lat, double lon) {
+    _mapTarget = (lat: lat, lon: lon);
+    notifyListeners();
+  }
+
+  void finalizeArea() {
+    _mapCreationStep = MapCreationStep.finalize;
+    notifyListeners();
+  }
+
+  void adjustArea(double dLat, double dLon, {bool fromOrigin = false}) {
+    if (fromOrigin && _mapOrigin != null) {
+      _mapOrigin = (lat: _mapOrigin!.lat + dLat, lon: _mapOrigin!.lon + dLon);
+    } else if (!fromOrigin && _mapTarget != null) {
+      _mapTarget = (lat: _mapTarget!.lat + dLat, lon: _mapTarget!.lon + dLon);
+    }
+    notifyListeners();
+  }
+
+  void setZoomRange(int min, int max) {
+    _minZoomDownload = min;
+    _maxZoomDownload = max;
     notifyListeners();
   }
 }

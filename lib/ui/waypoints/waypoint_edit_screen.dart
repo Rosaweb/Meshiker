@@ -99,7 +99,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
 
     wp.name = _nameController.text;
     wp.description = _descController.text;
-    wp.colorHex = _currentColor.value;
+    wp.colorHex = _currentColor.toARGB32();
     wp.photoPaths = _photoPaths;
     wp.headerPhotoIndex = _headerPhotoIndex;
     wp.associatedGpxName = _associatedGpx;
@@ -111,7 +111,6 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // We wrap the content in a Material and Container to look like a centered card
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
@@ -125,10 +124,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // HEADER IMAGE / COLOR
             _buildHeader(),
-            
-            // FORM
             Flexible(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
@@ -137,29 +133,25 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      TextFormField(
-                        controller: _nameController,
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                        decoration: const InputDecoration(
-                          hintText: 'Nom du point',
-                          hintStyle: TextStyle(color: Colors.white24),
-                          border: InputBorder.none,
-                        ),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Requis' : null,
-                      ),
-                      const Divider(color: Colors.white10),
-                      DropdownButton<WaypointCategory>(
+                      DropdownButtonFormField<WaypointCategory>(
                         isExpanded: true,
                         dropdownColor: Colors.grey[850],
-                        value: _selectedCategory,
-                        hint: const Text('Sélectionner un type', style: TextStyle(color: Colors.white38)),
+                        initialValue: _selectedCategory,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Sélectionner un type',
+                          hintStyle: const TextStyle(color: Colors.white38),
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.05),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                        ),
                         items: _categories.map((c) => DropdownMenuItem(
                           value: c, 
                           child: Row(
                             children: [
                               Icon(_getIcon(c.iconName), color: Colors.greenAccent, size: 18),
                               const SizedBox(width: 12),
-                              Text(c.name, style: const TextStyle(color: Colors.white)),
+                              Text(c.name),
                             ],
                           )
                         )).toList(),
@@ -174,12 +166,39 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                           hintText: 'Description (facultatif)',
                           hintStyle: const TextStyle(color: Colors.white24),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.05),
+                          fillColor: Colors.white.withValues(alpha: 0.05),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                         ),
                       ),
                       const SizedBox(height: 24),
-                      const Text('PHOTOS', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                      const Text('COULEUR DU POINT', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: _pickColor,
+                        child: Container(
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _currentColor,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: const Center(
+                            child: Icon(Icons.palette, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          const Text('PHOTOS', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          IconButton(
+                            onPressed: _pickImage,
+                            icon: const Icon(Icons.add_a_photo, color: Colors.greenAccent, size: 20),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       _buildPhotoGrid(),
                     ],
@@ -187,8 +206,6 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                 ),
               ),
             ),
-            
-            // ACTIONS
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
@@ -219,47 +236,45 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
 
   Widget _buildHeader() {
     return Container(
-      height: 140,
       width: double.infinity,
-      color: _currentColor.withOpacity(0.2),
-      child: Stack(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.greenAccent.withValues(alpha: 0.8), Colors.green.withValues(alpha: 0.8)],
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
         children: [
-          if (_photoPaths.isNotEmpty)
-            Image.file(File(_photoPaths[_headerPhotoIndex]), width: double.infinity, height: 140, fit: BoxFit.cover),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: Colors.white.withValues(alpha: 0.2),
+            child: Icon(Icons.location_on, color: _currentColor, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: TextFormField(
+              controller: _nameController,
+              style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(
+                hintText: 'Nom du point',
+                hintStyle: TextStyle(color: Colors.black26),
+                border: InputBorder.none,
+                isDense: true,
               ),
+              validator: (v) => (v == null || v.isEmpty) ? 'Requis' : null,
             ),
           ),
-          Positioned(
-            right: 12,
-            bottom: 12,
-            child: Row(
-              children: [
-                _RoundAction(icon: Icons.palette, onTap: _pickColor),
-                const SizedBox(width: 8),
-                _RoundAction(icon: Icons.add_a_photo, onTap: _pickImage),
-              ],
-            ),
-          ),
-          Positioned(
-            left: 16,
-            top: 16,
-            child: CircleAvatar(
-              backgroundColor: _currentColor,
-              child: const Icon(Icons.location_on, color: Colors.white),
-            ),
-          )
         ],
       ),
     );
   }
 
   Widget _buildPhotoGrid() {
+    if (_photoPaths.isEmpty) {
+      return const Text('Aucune photo', style: TextStyle(color: Colors.white12, fontSize: 12));
+    }
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -289,23 +304,5 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
       case 'terrain': return Icons.terrain;
       default: return Icons.location_on;
     }
-  }
-}
-
-class _RoundAction extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _RoundAction({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.5), border: Border.all(color: Colors.white24)),
-        child: Icon(icon, color: Colors.white, size: 20),
-      ),
-    );
   }
 }

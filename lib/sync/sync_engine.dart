@@ -5,7 +5,6 @@ import '../database/isar_service.dart';
 import '../models/enums.dart';
 import '../models/point_of_interest.dart';
 import '../models/segment.dart';
-import '../models/trace.dart';
 import '../models/utilisateur.dart';
 import 'supabase_mapper.dart';
 import 'sync_config.dart';

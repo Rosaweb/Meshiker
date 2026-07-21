@@ -6,6 +6,7 @@ import '../database/isar_service.dart';
 import '../models/point_of_interest.dart';
 import '../models/segment.dart';
 import '../models/waypoint.dart';
+import '../models/trace.dart';
 import '../sync/sync_engine.dart';
 import '../utils/overpass_service.dart';
 
@@ -28,6 +29,7 @@ class MapViewModel {
   final ValueNotifier<List<Segment>> segments = ValueNotifier(const []);
   final ValueNotifier<List<PointOfInterest>> pois = ValueNotifier(const []);
   final ValueNotifier<List<Waypoint>> waypoints = ValueNotifier(const []);
+  final ValueNotifier<List<Trace>> activeTraces = ValueNotifier(const []);
   final ValueNotifier<List<OsmPoi>> osmPois = ValueNotifier(const []);
   final ValueNotifier<bool> isRefreshingCommunityData = ValueNotifier(false);
 
@@ -43,6 +45,7 @@ class MapViewModel {
     required double maxLat,
     required double minLon,
     required double maxLon,
+    List<String> activeGpxNames = const [],
     Duration debounce = const Duration(milliseconds: 300),
   }) {
     _debounce?.cancel();
@@ -52,6 +55,7 @@ class MapViewModel {
         maxLat: maxLat,
         minLon: minLon,
         maxLon: maxLon,
+        activeGpxNames: activeGpxNames,
       ));
     });
   }
@@ -61,6 +65,7 @@ class MapViewModel {
     required double maxLat,
     required double minLon,
     required double maxLon,
+    List<String> activeGpxNames = const [],
   }) async {
     // 1. Local d'abord, toujours : c'est ce qui garantit l'usage en zone
     // blanche.
@@ -84,6 +89,9 @@ class MapViewModel {
       minLon: minLon,
       maxLon: maxLon,
     );
+
+    // Traces actives
+    activeTraces.value = await isarService.tracesByNames(activeGpxNames);
 
     // Points OSM (opportuniste)
     _reloadOsmPois(minLat, minLon, maxLat, maxLon);

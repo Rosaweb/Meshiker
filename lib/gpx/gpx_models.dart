@@ -2,7 +2,7 @@
 /// utilisé pour l'obtenir. Sert de pont entre [GpxParser] et
 /// [SegmentationEngine] : ce dernier ne connaît que ces classes, jamais
 /// le XML brut ni une bibliothèque tierce de parsing.
-library gpx_models;
+library;
 
 class GpxTrackPoint {
   const GpxTrackPoint({

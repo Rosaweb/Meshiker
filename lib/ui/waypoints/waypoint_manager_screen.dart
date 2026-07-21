@@ -3,16 +3,20 @@ import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
 import '../../models/waypoint.dart';
 import '../../utils/settings_service.dart';
+import '../../recording/recording_service.dart';
 import 'waypoint_edit_screen.dart';
+import 'waypoint_settings_screen.dart';
 
 class WaypointManagerScreen extends StatefulWidget {
   final bool isSelectionMode; 
   final String? filterGpxName;
+  final bool isTransparent;
 
   const WaypointManagerScreen({
     super.key,
     this.isSelectionMode = false,
     this.filterGpxName,
+    this.isTransparent = false,
   });
 
   @override
@@ -57,10 +61,10 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
     final settings = context.watch<SettingsService>();
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: widget.isTransparent ? Colors.transparent : Colors.black,
       appBar: AppBar(
         title: const Text('Waypoint Manager'),
-        backgroundColor: Colors.black,
+        backgroundColor: widget.isTransparent ? Colors.transparent : Colors.black,
         foregroundColor: Colors.white,
         leading: _isMultiSelectMode 
           ? IconButton(
@@ -69,20 +73,25 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
             )
           : null,
         actions: [
-          if (!_isMultiSelectMode)
+          if (!_isMultiSelectMode) ...[
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WaypointSettingsScreen())),
+              tooltip: 'Gérer les types',
+            ),
             IconButton(
               icon: const Icon(Icons.create_new_folder_outlined),
               onPressed: () => _showCreateFolderDialog(isar),
               tooltip: 'Créer un dossier',
             ),
+          ],
         ],
       ),
       body: Column(
         children: [
           Container(
-            height: 110, 
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha: 0.05),
             child: _isMultiSelectMode 
               ? _buildSelectionActions(isar) 
               : _buildFilters(),
@@ -97,7 +106,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
                   future: Future.wait([
                     isar.searchWaypoints(
                       query: _searchQuery,
-                      category_id: _typeFilter?.id,
+                      categoryId: _typeFilter?.id,
                       filterGpxName: widget.filterGpxName,
                     ),
                     isar.allFolders(),
@@ -215,7 +224,9 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
       if (w.folder.value != null) {
         customGroups.putIfAbsent(w.folder.value!.id, () => []).add(w);
       } else if (w.associatedGpxName != null) {
-        gpxGroups.putIfAbsent(w.associatedGpxName!, () => []).add(w);
+        if (settings.showGpxWaypoints) {
+           gpxGroups.putIfAbsent(w.associatedGpxName!, () => []).add(w);
+        }
       } else {
         noFolder.add(w);
       }
@@ -228,7 +239,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
         // 1. DOSSIERS PERSONNELS (Même si vides)
         for (var folder in folders)
           ExpansionTile(
-            initiallyExpanded: true,
+            initiallyExpanded: false,
             leading: const Icon(Icons.folder, color: Colors.blueAccent, size: 20),
             title: Text(folder.name, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
             children: (customGroups[folder.id] ?? []).isEmpty 
@@ -244,7 +255,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
         // 2. TRACES GPX
         for (var name in sortedGpxNames)
           ExpansionTile(
-            initiallyExpanded: true,
+            initiallyExpanded: false,
             leading: const Icon(Icons.route, color: Colors.greenAccent, size: 20),
             title: Text(name, style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
             children: gpxGroups[name]!.map((w) => _WaypointTile(
@@ -286,11 +297,12 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
       _toggleSelection(wp.id);
     } else if (widget.isSelectionMode) {
       settings.setNavigationWaypoint(wp.localUuid);
+      context.read<RecordingService>().setDestination(wp.localUuid);
       Navigator.pop(context);
     } else {
       showDialog(
         context: context,
-        barrierColor: Colors.black.withOpacity(0.7),
+        barrierColor: Colors.black.withValues(alpha: 0.7),
         builder: (context) => WaypointEditScreen(
           waypoint: wp,
           isarService: context.read<IsarService>(),
@@ -473,7 +485,7 @@ class _WaypointTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: isSelected ? Colors.blueAccent.withOpacity(0.15) : Colors.transparent,
+      color: isSelected ? Colors.blueAccent.withValues(alpha: 0.15) : Colors.transparent,
       child: ListTile(
         leading: Stack(
           alignment: Alignment.center,
@@ -481,12 +493,12 @@ class _WaypointTile extends StatelessWidget {
             CircleAvatar(
               radius: 18,
               backgroundColor: waypoint.colorHex != null ? Color(waypoint.colorHex!) : Colors.grey,
-              child: Icon(Icons.location_on, color: Colors.white, size: 20),
+              child: const Icon(Icons.location_on, color: Colors.white, size: 20),
             ),
             if (isSelected)
               Positioned.fill(
                 child: Container(
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.blueAccent.withOpacity(0.8)),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.blueAccent.withValues(alpha: 0.8)),
                   child: const Icon(Icons.check, color: Colors.white, size: 20),
                 ),
               ),

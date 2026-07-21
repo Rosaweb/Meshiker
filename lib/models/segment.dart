@@ -30,6 +30,7 @@ class Segment implements Syncable {
   /// la clé de fusion côté Supabase (colonne `local_uuid`, voir
   /// `schema.sql`). `unique: true, replace: true` permet un simple
   /// `put()` idempotent au lieu d'un upsert manuel.
+  @override
   @Index(unique: true, replace: true)
   late String localUuid;
 
@@ -68,6 +69,23 @@ class Segment implements Syncable {
   /// cache ici après synchronisation. `null` tant que le segment n'a
   /// jamais été confronté aux données des autres utilisateurs.
   double? reliabilityIndex;
+
+  /// Identifiant unique de la voie OSM si apparié (Map Matching).
+  @Index()
+  int? osmWayId;
+
+  /// Identifiants des nœuds (OSM ou virtuels) bornant le segment.
+  @Index()
+  String? startNodeId;
+  @Index()
+  String? endNodeId;
+
+  /// Indique si le segment est hors du réseau cartographié (fallback).
+  @Index()
+  bool isOffRoad = false;
+
+  /// Altitude moyenne (m) pour vérification topologique lors de la fusion.
+  double avgAltitude = 0;
 
   /// Nombre cumulé de passages connus (tous utilisateurs confondus après
   /// sync). Vaut au moins 1 hors-ligne (le passage de l'utilisateur

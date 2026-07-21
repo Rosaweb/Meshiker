@@ -1,11 +1,11 @@
 {
-    "name": "rando",
-    "short_name": "rando",
+    "name": "Meshiker",
+    "short_name": "Meshiker",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "appli rando",
+    "description": "Application de navigation pour la randonnée",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

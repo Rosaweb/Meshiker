@@ -1,4 +1,3 @@
-import 'package:isar_community/isar.dart';
 import '../database/isar_service.dart';
 import '../models/point_of_interest.dart';
 import '../models/segment.dart';

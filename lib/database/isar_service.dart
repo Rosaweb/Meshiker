@@ -8,10 +8,11 @@ import '../models/point_of_interest.dart';
 import '../models/recording_draft.dart';
 import '../models/segment.dart';
 import '../models/trace.dart';
-import '../models/trace_segment_entry.dart';
 import '../models/utilisateur.dart';
 import '../models/waypoint.dart';
+import '../models/offline_map/offline_map.dart';
 import '../utils/geo_utils.dart';
+import '../gpx/gpx_models.dart';
 
 /// Point d'entrée unique vers la base locale.
 ///
@@ -66,6 +67,7 @@ class IsarService {
         WaypointSchema,
         WaypointCategorySchema,
         WaypointFolderSchema,
+        OfflineMapSchema,
       ],
       directory: dir.path,
       // Un seul isolate d'écriture suffit ici : le service d'enregistrement
@@ -112,6 +114,10 @@ class IsarService {
   Future<void> saveSegment(Segment segment) async {
     segment.updatedAt = DateTime.now();
     await isar.writeTxn(() => isar.segments.put(segment));
+  }
+
+  Future<void> deleteSegment(int id) async {
+    await isar.writeTxn(() => isar.segments.delete(id));
   }
 
   Future<Segment?> segmentByUuid(String localUuid) {
@@ -169,6 +175,11 @@ class IsarService {
         .filter()
         .syncStatusEqualTo(SyncStatus.pending)
         .findAll();
+  }
+
+  Future<List<Trace>> tracesByNames(List<String> names) {
+    if (names.isEmpty) return Future.value([]);
+    return isar.traces.filter().anyOf(names, (q, name) => q.nameEqualTo(name)).findAll();
   }
 
   // -----------------------------------------------------------------
@@ -361,7 +372,7 @@ class IsarService {
   }
 
   Future<List<WaypointCategory>> allCategories() {
-    return isar.waypointCategorys.where().findAll();
+    return isar.waypointCategorys.where().sortByUpdatedAt().findAll();
   }
 
   Future<List<WaypointFolder>> allFolders() {
@@ -373,12 +384,29 @@ class IsarService {
     await isar.writeTxn(() => isar.waypointFolders.put(folder));
   }
 
+  // -----------------------------------------------------------------
+  // Cartes hors ligne
+  // -----------------------------------------------------------------
+
+  Future<void> saveOfflineMap(OfflineMap map) async {
+    map.updatedAt = DateTime.now();
+    await isar.writeTxn(() => isar.offlineMaps.put(map));
+  }
+
+  Future<List<OfflineMap>> allOfflineMaps() {
+    return isar.offlineMaps.where().sortByCreatedAtDesc().findAll();
+  }
+
+  Future<void> deleteOfflineMap(int id) async {
+    await isar.writeTxn(() => isar.offlineMaps.delete(id));
+  }
+
   /// Recherche filtrée de waypoints.
   /// Si [categoryId] est fourni, filtre par catégorie.
   /// Si [query] est fourni, filtre par nom (insensible à la casse).
   Future<List<Waypoint>> searchWaypoints({
     String? query,
-    int? category_id,
+    int? categoryId,
     double? minLat,
     double? maxLat,
     double? minLon,
@@ -395,8 +423,8 @@ class IsarService {
         matches &= w.name.toLowerCase().contains(query.toLowerCase());
       }
       
-      if (category_id != null) {
-        matches &= w.category.value?.id == category_id;
+      if (categoryId != null) {
+        matches &= w.category.value?.id == categoryId;
       }
       
       if (filterGpxName != null) {
@@ -496,5 +524,30 @@ class IsarService {
     }
 
     return fullPolyline;
+  }
+
+  /// Récupère la liste complète des points typés (avec temps/alt) pour une trace.
+  Future<List<GpxTrackPoint>> getTraceTrackPoints(Trace trace) async {
+    final List<GpxTrackPoint> trackPoints = [];
+    final entries = List.from(trace.segments);
+    entries.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+
+    for (final entry in entries) {
+      final segment = await segmentByUuid(entry.segmentUuid);
+      if (segment == null) continue;
+
+      final points = entry.traveledForward 
+          ? segment.points 
+          : segment.points.reversed.toList();
+      
+      trackPoints.addAll(points.map((p) => GpxTrackPoint(
+        latitude: p.latitude,
+        longitude: p.longitude,
+        elevation: p.altitude,
+        time: p.timestamp,
+        startsNewSegment: false, // On pourrait affiner ici si besoin
+      )));
+    }
+    return trackPoints;
   }
 }

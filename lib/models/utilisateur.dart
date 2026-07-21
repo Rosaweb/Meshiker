@@ -17,6 +17,7 @@ class Utilisateur implements Syncable {
 
   Id id = Isar.autoIncrement;
 
+  @override
   @Index(unique: true, replace: true)
   late String localUuid;
 

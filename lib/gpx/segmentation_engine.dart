@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:uuid/uuid.dart';
+import 'package:collection/collection.dart';
 
 import '../models/enums.dart';
 import '../models/gps_point.dart';
@@ -11,61 +12,40 @@ import '../models/trace_segment_entry.dart';
 import '../search/text_normalizer.dart';
 import '../utils/geo_utils.dart';
 import 'gpx_models.dart';
+import '../utils/valhalla_service.dart';
 
 const _uuid = Uuid();
 
-/// Réglages du découpage.
-///
-/// Les valeurs par défaut suivent les ordres de grandeur du brief (buffer
-/// de fusion "5 à 10 mètres") : [intersectionBufferMeters] vaut 8 m par
-/// défaut, cohérent avec le buffer spatial qu'utilisera plus tard la
-/// fusion PostGIS côté serveur — la logique locale d'aujourd'hui préfigure
-/// volontairement la logique serveur de demain.
+/// Réglages du découpage hybride.
 class SegmentationConfig {
   const SegmentationConfig({
     this.minPointSpacingMeters = 3.0,
-    this.intersectionBufferMeters = 8.0,
+    this.offRoadSnapBufferMeters = 15.0,
     this.poiDedupBufferMeters = 25.0,
-    this.poiCutBufferMeters = 25.0,
     this.enablePauseDetection = true,
     this.stopGapDuration = const Duration(minutes: 3),
     this.minSegmentPoints = 3,
     this.matchCoverageThreshold = 0.75,
     this.partialRoutedThreshold = 0.3,
     this.matchLengthToleranceRatio = 0.3,
+    this.altitudeFusionThresholdMeters = 15.0,
     this.elevationNoiseThresholdMeters = 2.0,
   });
 
-  /// Distance minimale (m) entre deux points gardes lors du nettoyage
-  /// anti-bruit GPS. Les points marquant une rupture de segment GPX sont
-  /// toujours conserves, quelle que soit leur distance au point precedent.
   final double minPointSpacingMeters;
 
-  /// Rayon (m) en-deca duquel un point de la nouvelle trace est considere
-  /// comme "touchant" un segment deja connu localement.
-  final double intersectionBufferMeters;
+  /// Rayon (m) pour la fusion géométrique quand hors du réseau OSM.
+  final double offRoadSnapBufferMeters;
 
   /// Rayon (m) pour dedoublonner un waypoint GPX avec un POI deja
   /// enregistre localement (ou avec un autre waypoint du meme fichier).
   final double poiDedupBufferMeters;
 
-  /// Rayon (m) pour decider qu'un point de la trace passe par un POI,
-  /// donc qu'il constitue un point de coupure, qu'il soit nouveau ou deja
-  /// connu localement.
-  final double poiCutBufferMeters;
-
-  /// Active la detection d'arrets prolonges comme points de coupure
-  /// implicites (ex : pause dejeuner a un col non balise par un
-  /// waypoint). Heuristique qui va au-dela du brief initial
-  /// ("intersection ou point d'interet majeur") mais qui ameliore
-  /// nettement la qualite du decoupage sur des GPX reels, souvent
-  /// depourvus de waypoints explicites.
+  /// Active la detection d'arrets prolonges comme points de coupure.
   final bool enablePauseDetection;
   final Duration stopGapDuration;
 
-  /// Nombre minimal de points entre deux coupures : en-dessous, les
-  /// coupures trop rapprochees sont fusionnees pour eviter des
-  /// micro-segments degeneres (quelques metres de long).
+  /// Nombre minimal de points entre deux coupures.
   final int minSegmentPoints;
 
   /// Fraction minimale des points d'une tranche devant etre proches d'un
@@ -82,6 +62,9 @@ class SegmentationConfig {
   /// segment existant (evite de confondre un aller-retour partiel avec
   /// le segment complet, par exemple).
   final double matchLengthToleranceRatio;
+
+  /// Différence d'altitude maximale pour autoriser une fusion (protection falaises/ponts).
+  final double altitudeFusionThresholdMeters;
 
   final double elevationNoiseThresholdMeters;
 }
@@ -156,7 +139,7 @@ class SegmentationEngine {
 
   final SegmentationConfig config;
 
-  SegmentationResult segment({
+  Future<SegmentationResult> segment({
     required GpxParseResult gpx,
     required List<Segment> nearbyExistingSegments,
     required List<PointOfInterest> nearbyExistingPois,
@@ -164,13 +147,23 @@ class SegmentationEngine {
     String? traceNameOverride,
     ActivityType activityType = ActivityType.hiking,
     List<ModeOverride> modeOverrides = const [],
-  }) {
+  }) async {
     final cleaned = _cleanPoints(gpx.trackPoints);
     if (cleaned.length < 2) {
       throw ArgumentError(
         'GPX trop court ou entierement filtre : au moins 2 points valides sont requis.',
       );
     }
+
+    // 1. Appel au Map Matching Valhalla
+    final matchedPoints = await ValhallaService.matchTrace(
+      cleaned.map((p) => PointGPS.create(
+        latitude: p.latitude,
+        longitude: p.longitude,
+        altitude: p.elevation,
+        timestamp: p.time ?? DateTime.now(),
+      )).toList()
+    );
 
     final sortedOverrides = List<ModeOverride>.of(modeOverrides)
       ..sort((a, b) => a.at.compareTo(b.at));
@@ -182,7 +175,14 @@ class SegmentationEngine {
       );
     }
 
-    final cutIndices = _findForcedCutIndices(cleaned, poiResolutions, sortedOverrides);
+    // 2. Détermination des points de coupure (Hybride)
+    final cutIndices = _findForcedCutIndicesHybrid(
+      cleaned, 
+      matchedPoints,
+      poiResolutions, 
+      sortedOverrides, 
+      nearbyExistingSegments
+    );
     final sortedCuts = cutIndices.toList()..sort();
 
     final segmentsToUpsert = <Segment>[];
@@ -197,8 +197,11 @@ class SegmentationEngine {
       if (end <= start) continue;
 
       final slice = cleaned.sublist(start, end + 1);
-      final built = _buildSegmentForSlice(
+      final matchedSlice = matchedPoints.sublist(start, end + 1);
+      
+      final built = _buildSegmentForSliceHybrid(
         slice,
+        matchedSlice,
         nearbyExistingSegments,
         ownerUuid,
         sortedOverrides,
@@ -287,27 +290,63 @@ class SegmentationEngine {
   // Points de coupure
   // -----------------------------------------------------------------
 
-  Set<int> _findForcedCutIndices(
+  // -----------------------------------------------------------------
+  // Points de coupure (Hybride)
+  // -----------------------------------------------------------------
+
+  Set<int> _findForcedCutIndicesHybrid(
     List<GpxTrackPoint> points,
+    List<MatchedPoint> matchedPoints,
     List<_PoiResolution> poiResolutions,
     List<ModeOverride> sortedOverrides,
+    List<Segment> nearbyExistingSegments,
   ) {
     final cuts = <int>{0, points.length - 1};
 
+    // 1. Ruptures GPX (perte de signal)
     for (var i = 1; i < points.length; i++) {
       if (points[i].startsNewSegment) cuts.add(i);
     }
 
-    for (final poi in poiResolutions) {
-      final idx = _nearestPointIndex(
-        points,
-        poi.poi.latitude,
-        poi.poi.longitude,
-        config.poiCutBufferMeters,
-      );
-      if (idx != null) cuts.add(idx);
+    // 2. Détection via Topologie OSM
+    for (var i = 0; i < matchedPoints.length; i++) {
+      final m = matchedPoints[i];
+      if (m.isConfident) {
+        // A. Nœud d'intersection OSM
+        if (m.osmNodeId != null) cuts.add(i);
+        
+        // B. Changement de Way OSM (virage serré ou changement de rue)
+        if (i > 0 && matchedPoints[i - 1].isConfident && 
+            matchedPoints[i - 1].osmWayId != m.osmWayId) {
+          cuts.add(i);
+          cuts.add(i - 1);
+        }
+      }
+
+      // C. Transition OSM <-> Hors-piste (Ghost Node)
+      if (i > 0 && matchedPoints[i - 1].isConfident != m.isConfident) {
+        cuts.add(i);
+        cuts.add(i - 1);
+      }
     }
 
+    // 3. Fallback Géométrique (pour les zones hors-OSM)
+    for (final segment in nearbyExistingSegments) {
+      if (segment.osmWayId != null) continue; // On gère l'OSM via Meili au-dessus
+
+      final polyline = segment.points.map((p) => (lat: p.latitude, lon: p.longitude)).toList();
+      for (var i = 0; i < points.length; i++) {
+        final p = points[i];
+        final dToStart = GeoUtils.haversineMeters(p.latitude, p.longitude, polyline.first.lat, polyline.first.lon);
+        final dToEnd = GeoUtils.haversineMeters(p.latitude, p.longitude, polyline.last.lat, polyline.last.lon);
+        
+        if (dToStart <= config.offRoadSnapBufferMeters || dToEnd <= config.offRoadSnapBufferMeters) {
+          cuts.add(i);
+        }
+      }
+    }
+
+    // 4. Détection des pauses prolongées
     if (config.enablePauseDetection) {
       for (var i = 1; i < points.length; i++) {
         final prevTime = points[i - 1].time;
@@ -320,21 +359,127 @@ class SegmentationEngine {
       }
     }
 
-    // Un changement de bascule aimant (routé <-> hors-piste) en cours
-    // d'enregistrement (étape 3, RecordingService) force une coupure : un
-    // même Segment ne peut pas être moitié routé, moitié hors-piste.
-    if (sortedOverrides.isNotEmpty) {
-      for (var i = 1; i < points.length; i++) {
-        final prevTime = points[i - 1].time;
-        final time = points[i].time;
-        if (prevTime == null || time == null) continue;
-        final prevMode = _activeOverrideMode(prevTime, sortedOverrides);
-        final mode = _activeOverrideMode(time, sortedOverrides);
-        if (prevMode != mode) cuts.add(i);
+    return _mergeCloseCuts(cuts, points.length);
+  }
+
+  // -----------------------------------------------------------------
+  // Construction d'un segment pour une tranche de points (Hybride)
+  // -----------------------------------------------------------------
+
+  _BuiltSegment _buildSegmentForSliceHybrid(
+    List<GpxTrackPoint> slice,
+    List<MatchedPoint> matchedSlice,
+    List<Segment> nearbyExistingSegments,
+    String ownerUuid,
+    List<ModeOverride> sortedOverrides,
+  ) {
+    final points = slice
+        .map((p) => PointGPS.create(
+              latitude: p.latitude,
+              longitude: p.longitude,
+              altitude: p.elevation,
+              timestamp: p.time ?? DateTime.now(),
+            ))
+        .toList();
+
+    double distance = 0;
+    for (var i = 1; i < points.length; i++) {
+      distance += GeoUtils.haversineMeters(
+        points[i - 1].latitude,
+        points[i - 1].longitude,
+        points[i].latitude,
+        points[i].longitude,
+      );
+    }
+
+    final elevResult = GeoUtils.elevationGainLoss(
+      points.map((p) => p.altitude).toList(),
+      noiseThresholdMeters: config.elevationNoiseThresholdMeters,
+    );
+    final avgAlt = points.map((p) => p.altitude).average();
+
+    final bbox = GeoUtils.boundingBox(
+      points.map((p) => (lat: p.latitude, lon: p.longitude)),
+    )!;
+
+    // Tentative de réutilisation (priorité topologie)
+    Segment? bestMatch;
+    
+    // A. Match via OSM Way ID
+    final confidentOsmId = matchedSlice.first.isConfident ? matchedSlice.first.osmWayId : null;
+    if (confidentOsmId != null) {
+      bestMatch = nearbyExistingSegments.firstWhereOrNull((s) => s.osmWayId == confidentOsmId);
+    }
+
+    // B. Fallback réutilisation géométrique (hors-piste)
+    if (bestMatch == null) {
+      for (final existing in nearbyExistingSegments) {
+        if (existing.osmWayId != null) continue; // On ne mélange pas OSM et géométrie brute
+
+        final coverage = _coverageRatio(points, existing);
+        if (coverage > 0.75) {
+          // Vérification altimétrique
+          if ((existing.avgAltitude - avgAlt).abs() <= config.altitudeFusionThresholdMeters) {
+            bestMatch = existing;
+            break;
+          }
+        }
       }
     }
 
-    return _mergeCloseCuts(cuts, points.length);
+    if (bestMatch != null) {
+      bestMatch.passageCount += 1;
+      bestMatch.updatedAt = DateTime.now();
+
+      return _BuiltSegment(
+        segment: bestMatch,
+        reusedExisting: true,
+        traveledForward: _isTraveledForward(points, bestMatch.points),
+        sliceDistanceMeters: distance,
+        sliceElevationGainMeters: elevResult.gain,
+        sliceElevationLossMeters: elevResult.loss,
+      );
+    }
+
+    // Création d'un nouveau segment
+    final isOffRoad = !matchedSlice.first.isConfident;
+    final startNode = matchedSlice.first.osmNodeId ?? _uuid.v4();
+    final endNode = matchedSlice.last.osmNodeId ?? _uuid.v4();
+
+    final newSegment = Segment()
+      ..localUuid = _uuid.v4()
+      ..authorUuid = ownerUuid
+      ..points = points
+      ..mode = isOffRoad ? SegmentMode.offPath : SegmentMode.routed
+      ..isOffRoad = isOffRoad
+      ..osmWayId = isOffRoad ? null : matchedSlice.first.osmWayId
+      ..startNodeId = startNode
+      ..endNodeId = endNode
+      ..avgAltitude = avgAlt
+      ..distanceMeters = distance
+      ..elevationGainMeters = elevResult.gain
+      ..elevationLossMeters = elevResult.loss
+      ..difficulty = _estimateDifficulty(distance, elevResult.gain)
+      ..passageCount = 1
+      ..lastPassageAt = slice.last.time
+      ..minLat = bbox.minLat
+      ..maxLat = bbox.maxLat
+      ..minLon = bbox.minLon
+      ..maxLon = bbox.maxLon
+      ..geohashPrefix =
+          GeoUtils.geohash(points.first.latitude, points.first.longitude)
+      ..syncStatus = SyncStatus.pending
+      ..createdAt = DateTime.now()
+      ..updatedAt = DateTime.now();
+
+    return _BuiltSegment(
+      segment: newSegment,
+      reusedExisting: false,
+      traveledForward: true,
+      sliceDistanceMeters: distance,
+      sliceElevationGainMeters: elevResult.gain,
+      sliceElevationLossMeters: elevResult.loss,
+    );
   }
 
   /// Mode actif selon les bascules aimant à l'instant [time] (le dernier
@@ -505,7 +650,7 @@ class SegmentationEngine {
   }
 
   /// Fraction des points de [points] situes a moins de
-  /// SegmentationConfig.intersectionBufferMeters du polyligne du segment
+  /// SegmentationConfig.intersectionBufferMeters (ou parallelBufferMeters) du polyligne du segment
   /// [existing].
   double _coverageRatio(List<PointGPS> points, Segment existing) {
     if (points.isEmpty || existing.points.isEmpty) return 0;
@@ -518,7 +663,9 @@ class SegmentationEngine {
         p.longitude,
         polyline,
       );
-      if (d <= config.intersectionBufferMeters) close++;
+      
+      // On utilise le buffer offRoad pour la fusion géométrique.
+      if (d <= config.offRoadSnapBufferMeters) close++;
     }
     return close / points.length;
   }
@@ -694,4 +841,12 @@ class _BuiltSegment {
   final double sliceDistanceMeters;
   final double sliceElevationGainMeters;
   final double sliceElevationLossMeters;
+}
+
+extension _AverageList on Iterable<double?> {
+  double average() {
+    final list = whereType<double>().toList();
+    if (list.isEmpty) return 0;
+    return list.reduce((a, b) => a + b) / list.length;
+  }
 }

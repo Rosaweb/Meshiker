@@ -1,0 +1,224 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../utils/subscription_service.dart';
+import '../../database/isar_service.dart';
+import '../../models/utilisateur.dart';
+
+import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
+
+class AccountSettingsScreen extends StatelessWidget {
+  const AccountSettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.85),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Mon compte'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: Colors.white,
+        ),
+        body: Consumer2<SubscriptionService, IsarService>(
+          builder: (context, subService, isar, child) {
+            return FutureBuilder<Utilisateur?>(
+              future: isar.currentDeviceUser(),
+              builder: (context, snapshot) {
+                final user = snapshot.data;
+                
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _buildUserHeader(user),
+                    const SizedBox(height: 32),
+                    _buildSubscriptionSection(context, subService),
+                    const SizedBox(height: 16),
+                    _buildIgnSubscriptionPlaceholder(),
+                    const SizedBox(height: 32),
+                    _buildSyncSection(user),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserHeader(Utilisateur? user) {
+    return Column(
+      children: [
+        CircleAvatar(
+          radius: 40,
+          backgroundColor: Colors.greenAccent.withValues(alpha: 0.2),
+          child: const Icon(Icons.person, size: 40, color: Colors.greenAccent),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          user?.pseudo ?? 'Utilisateur local',
+          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        if (user?.email != null)
+          Text(
+            user!.email!,
+            style: const TextStyle(color: Colors.white70),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSubscriptionSection(BuildContext context, SubscriptionService subService) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'ABONNEMENT',
+          style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    subService.isPremium ? Icons.verified : Icons.stars,
+                    color: subService.isPremium ? Colors.greenAccent : Colors.orangeAccent,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          subService.isPremium ? 'Membre Premium' : 'Formule Gratuite',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          subService.isPremium 
+                            ? 'Accès illimité à toutes les fonctionnalités'
+                            : 'Passez au Premium pour soutenir le projet',
+                          style: const TextStyle(color: Colors.white38, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (!subService.sdkAvailable)
+                const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Text(
+                    'Le service d\'abonnement est indisponible pour le moment.',
+                    style: TextStyle(color: Colors.orangeAccent, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else if (!subService.isPremium)
+                ElevatedButton(
+                  onPressed: () async {
+                    // Présente le Paywall RevenueCat (Best practice moderne)
+                    await RevenueCatUI.presentPaywall();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.greenAccent,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 45),
+                  ),
+                  child: const Text('Voir les offres Premium'),
+                )
+              else
+                ElevatedButton(
+                  onPressed: () async {
+                    // Ouvre le centre de gestion des abonnements
+                    await subService.presentCustomerCenter();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white10,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 45),
+                  ),
+                  child: const Text('Gérer mon abonnement'),
+                ),
+              TextButton(
+                onPressed: () => subService.restorePurchases(),
+                child: const Text('Restaurer mes achats', style: TextStyle(color: Colors.white70)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIgnSubscriptionPlaceholder() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blueAccent.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+      ),
+      child: const Column(
+        children: [
+          Row(
+            children: [
+              Icon(Icons.map, color: Colors.blueAccent),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cartes IGN (France)',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      'Bientôt disponible : abonnement annuel pour les fonds de carte IGN SCAN25 et Plan IGN.',
+                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSyncSection(Utilisateur? user) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'SYNCHRONISATION',
+          style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.cloud_queue, color: Colors.white70),
+          title: const Text('Statut de synchronisation', style: TextStyle(color: Colors.white)),
+          subtitle: Text(
+            user?.remoteId != null ? 'Connecté à Supabase' : 'Mode local uniquement',
+            style: const TextStyle(color: Colors.white38),
+          ),
+          trailing: user?.remoteId != null 
+            ? const Icon(Icons.check_circle, color: Colors.greenAccent)
+            : const Icon(Icons.warning_amber, color: Colors.orangeAccent),
+        ),
+      ],
+    );
+  }
+}
