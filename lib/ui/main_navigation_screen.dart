@@ -50,25 +50,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   bool _showOnboarding = false;
 
-  late final AnimationController _leftPanelController;
-  late final AnimationController _rightPanelController;
-  late final AnimationController _centerPanelController;
-
-  late final Animation<Offset> _leftPanelOffset;
-  late final Animation<Offset> _rightPanelOffset;
-  late final Animation<Offset> _centerPanelOffset;
+  late final AnimationController _scrollController;
+  late double _targetScroll;
 
   @override
   void initState() {
     super.initState();
     
-    _leftPanelController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _rightPanelController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _centerPanelController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-
-    _leftPanelOffset = Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero).animate(CurvedAnimation(parent: _leftPanelController, curve: Curves.easeOut));
-    _rightPanelOffset = Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(CurvedAnimation(parent: _rightPanelController, curve: Curves.easeOut));
-    _centerPanelOffset = Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(CurvedAnimation(parent: _centerPanelController, curve: Curves.easeOut));
+    final isReversed = widget.settingsService.reversePanels;
+    _targetScroll = isReversed ? 2.0 : 1.0;
+    
+    _scrollController = AnimationController(
+      vsync: this, 
+      duration: const Duration(milliseconds: 300),
+      value: _targetScroll,
+    );
 
     widget.settingsService.addListener(_onSettingsChanged);
     WidgetsBinding.instance.addObserver(this);
@@ -82,9 +78,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   @override
   void dispose() {
     widget.settingsService.removeListener(_onSettingsChanged);
-    _leftPanelController.dispose();
-    _rightPanelController.dispose();
-    _centerPanelController.dispose();
+    _scrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -127,50 +121,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   }
 
   void _handleDrag(DragUpdateDetails details, double width) {
+    // Delta positif = doigt vers la droite -> scroll diminue
     final delta = details.delta.dx / width;
-    
-    // Si on est sur la carte (tous les panels fermés)
-    if (_leftPanelController.value == 0 && _rightPanelController.value == 0 && _centerPanelController.value == 0) {
-      if (delta > 0) {
-        // Drag vers la droite -> on ouvre le panel gauche
-        _leftPanelController.value = (_leftPanelController.value + delta).clamp(0, 1);
-      } else {
-        // Drag vers la gauche -> on ouvre le panel central (Navigation)
-        _centerPanelController.value = (_centerPanelController.value - delta).clamp(0, 1);
-      }
-    } 
-    // Si panel gauche ouvert
-    else if (_leftPanelController.value > 0) {
-      _leftPanelController.value = (_leftPanelController.value + delta).clamp(0, 1);
-    }
-    // Si panel central ouvert
-    else if (_centerPanelController.value > 0 && _rightPanelController.value == 0) {
-      if (delta < 0) {
-        // Drag vers la gauche -> on ouvre le panel droit (Waypoints)
-        _rightPanelController.value = (_rightPanelController.value - delta).clamp(0, 1);
-      } else {
-        // Drag vers la droite -> on ferme le panel central
-        _centerPanelController.value = (_centerPanelController.value - delta).clamp(0, 1);
-      }
-    }
-    // Si panel droit ouvert
-    else if (_rightPanelController.value > 0) {
-      _rightPanelController.value = (_rightPanelController.value + delta).clamp(0, 1);
-    }
+    _scrollController.value = (_scrollController.value - delta).clamp(0.0, 3.0);
   }
 
   void _handleDragEnd() {
-    _snapController(_leftPanelController);
-    _snapController(_centerPanelController);
-    _snapController(_rightPanelController);
-  }
-
-  void _snapController(AnimationController controller) {
-    if (controller.value > 0.5) {
-      controller.forward();
-    } else {
-      controller.reverse();
-    }
+    _targetScroll = _scrollController.value.round().toDouble();
+    _scrollController.animateTo(
+      _targetScroll, 
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut
+    );
   }
 
   @override
@@ -179,12 +141,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       builder: (context, settings, connectivity, _) {
         final isOffline = connectivity.contains(ConnectivityResult.none) || connectivity.isEmpty;
         final screenWidth = MediaQuery.of(context).size.width;
+        final isReversed = settings.reversePanels;
+
+        final List<Widget> pages = isReversed
+            ? [
+                const WaypointManagerScreen(isTransparent: true),
+                _buildContextualPage(settings),
+                const SizedBox.shrink(), // Trou pour la carte à l'index 2
+                _buildSettingsPage(settings),
+              ]
+            : [
+                _buildSettingsPage(settings),
+                const SizedBox.shrink(), // Trou pour la carte à l'index 1
+                _buildContextualPage(settings),
+                const WaypointManagerScreen(isTransparent: true),
+              ];
+
+        final mapIndex = isReversed ? 2 : 1;
 
         return Scaffold(
           backgroundColor: Colors.black,
           body: Stack(
             children: [
-              // 1. LA CARTE (Toujours en fond, reçoit les gestes si pas de panel dessus)
+              // 1. LA CARTE (Toujours en fond)
               MapScreen(
                 viewModel: widget.mapViewModel,
                 isarService: widget.isarService,
@@ -211,52 +190,63 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                   ),
                 ),
 
-              // 2. LES VOLETS COULISSANTS (CSS-like)
-              // Panel Gauche (Paramètres)
-              SlideTransition(
-                position: _leftPanelOffset,
-                child: SizedBox(
-                  width: screenWidth,
-                  child: _buildSettingsPage(settings),
-                ),
+              // 2. LES VOLETS COULISSANTS (Bande horizontale exclusive)
+              AnimatedBuilder(
+                animation: _scrollController,
+                builder: (context, _) {
+                  final scroll = _scrollController.value;
+                  return Stack(
+                    children: List.generate(pages.length, (index) {
+                      if (index == mapIndex) return const SizedBox.shrink();
+                      
+                      final offset = index - scroll;
+                      if (offset <= -1.0 || offset >= 1.0) return const SizedBox.shrink();
+
+                      return Positioned.fill(
+                        left: offset * screenWidth,
+                        right: -offset * screenWidth,
+                        child: Container(
+                          color: Colors.black.withValues(alpha: settings.barOpacity),
+                          child: pages[index],
+                        ),
+                      );
+                    }),
+                  );
+                },
               ),
 
-              // Panel Central (Navigation)
-              SlideTransition(
-                position: _centerPanelOffset,
-                child: SizedBox(
-                  width: screenWidth,
-                  child: _buildContextualPage(settings),
-                ),
-              ),
-
-              // Panel Droit (Waypoints)
-              SlideTransition(
-                position: _rightPanelOffset,
-                child: SizedBox(
-                  width: screenWidth,
-                  child: const WaypointManagerScreen(isTransparent: true),
-                ),
-              ),
-
-              // 3. CAPTURE DU SWIPE SUR LES BORDS (Zones étroites qui ne bloquent pas le centre)
-              // Bande Gauche
-              Positioned(
-                left: 0, top: 0, bottom: 0, width: settings.edgeSwipeWidth,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onHorizontalDragUpdate: (details) => _handleDrag(details, screenWidth),
-                  onHorizontalDragEnd: (_) => _handleDragEnd(),
-                ),
-              ),
-              // Bande Droite
-              Positioned(
-                right: 0, top: 0, bottom: 0, width: settings.edgeSwipeWidth,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onHorizontalDragUpdate: (details) => _handleDrag(details, screenWidth),
-                  onHorizontalDragEnd: (_) => _handleDragEnd(),
-                ),
+              // 3. CAPTURE DU SWIPE (ZONES TACTILES)
+              AnimatedBuilder(
+                animation: _scrollController,
+                builder: (context, _) {
+                  final currentScroll = _scrollController.value;
+                  final isAtMap = currentScroll == mapIndex;
+                  
+                  return Stack(
+                    children: [
+                      // Zone Gauche
+                      Positioned(
+                        left: 0, top: 0, bottom: 0, 
+                        width: isAtMap ? settings.edgeSwipeWidth : screenWidth * 0.5,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragUpdate: (details) => _handleDrag(details, screenWidth),
+                          onHorizontalDragEnd: (_) => _handleDragEnd(),
+                        ),
+                      ),
+                      // Zone Droite
+                      Positioned(
+                        right: 0, top: 0, bottom: 0, 
+                        width: isAtMap ? settings.edgeSwipeWidth : screenWidth * 0.5,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragUpdate: (details) => _handleDrag(details, screenWidth),
+                          onHorizontalDragEnd: (_) => _handleDragEnd(),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
 
               if (_showOnboarding) _buildOnboarding(settings.reversePanels),
@@ -268,122 +258,128 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   }
 
   Widget _buildSettingsPage(SettingsService settings) {
-    return Container(
-      color: Colors.black.withValues(alpha: settings.barOpacity),
-      child: Scaffold(
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Row(children: [
+          Icon(Icons.terrain, color: Colors.greenAccent, size: 28),
+          SizedBox(width: 12),
+          Text('Meshiker', style: TextStyle(fontWeight: FontWeight.bold)),
+        ]),
         backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: const Row(children: [
-            Icon(Icons.terrain, color: Colors.greenAccent, size: 28),
-            SizedBox(width: 12),
-            Text('Meshiker', style: TextStyle(fontWeight: FontWeight.bold)),
-          ]),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          foregroundColor: Colors.white,
-          leading: IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => _leftPanelController.reverse(),
-          ),
+        elevation: 0,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () {
+            _targetScroll = settings.reversePanels ? 2.0 : 1.0;
+            _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+          },
         ),
-        body: ListView(
-          children: [
-            _buildSettingsTile(icon: Icons.account_circle_outlined, title: 'Mon compte', subtitle: 'Gérer mon abonnement',
-                onTap: () => _pushSettings(const AccountSettingsScreen())),
-            const Divider(color: Colors.white12),
-            _buildSettingsTile(icon: Icons.display_settings, title: 'Affichage et Unités', subtitle: 'Transparence, échelle, métrique/impérial',
-                onTap: () => _pushSettings(const DisplaySettingsScreen())),
-            _buildSettingsTile(icon: Icons.map_outlined, title: 'Mes cartes', subtitle: 'Sélectionner vos favoris',
-                onTap: () => _pushSettings(const MapsSettingsScreen())),
-            _buildSettingsTile(icon: Icons.settings_suggest_outlined, title: 'Paramètres système', subtitle: 'Stockage GPX, Cache des cartes',
-                onTap: () => _pushSettings(const SystemSettingsScreen())),
-            _buildSettingsTile(icon: Icons.route_outlined, title: 'Track Manager', subtitle: 'Gérer vos pistes GPX',
-                onTap: () => _pushSettings(const TrackManagerScreen())),
-            _buildSettingsTile(icon: Icons.timeline_outlined, title: 'Mesh manager', subtitle: 'Gérer les segments',
-                onTap: () => _pushSettings(const SegmentManagerScreen())),
-            _buildSettingsTile(icon: Icons.location_on_outlined, title: 'Waypoint Manager', subtitle: 'Gérer vos waypoints',
-                onTap: () => _pushSettings(const WaypointManagerScreen())),
-            const Divider(color: Colors.white12),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('MODE D\'AFFICHAGE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  _buildDisplayModeSelector(settings),
-                ],
-              ),
+      ),
+      body: ListView(
+        children: [
+          _buildSettingsTile(icon: Icons.account_circle_outlined, title: 'Mon compte', subtitle: 'Gérer mon abonnement',
+              onTap: () => _pushSettings(const AccountSettingsScreen())),
+          const Divider(color: Colors.white12),
+          _buildSettingsTile(icon: Icons.display_settings, title: 'Affichage et Unités', subtitle: 'Transparence, échelle, métrique/impérial',
+              onTap: () => _pushSettings(const DisplaySettingsScreen())),
+          _buildSettingsTile(icon: Icons.map_outlined, title: 'Mes cartes', subtitle: 'Sélectionner vos favoris',
+              onTap: () => _pushSettings(const MapsSettingsScreen())),
+          _buildSettingsTile(icon: Icons.settings_suggest_outlined, title: 'Paramètres système', subtitle: 'Stockage GPX, Cache des cartes',
+              onTap: () => _pushSettings(const SystemSettingsScreen())),
+          _buildSettingsTile(icon: Icons.route_outlined, title: 'Track Manager', subtitle: 'Gérer vos pistes GPX',
+              onTap: () => _pushSettings(const TrackManagerScreen())),
+          _buildSettingsTile(icon: Icons.timeline_outlined, title: 'Mesh manager', subtitle: 'Gérer les segments',
+              onTap: () => _pushSettings(const SegmentManagerScreen())),
+          _buildSettingsTile(icon: Icons.location_on_outlined, title: 'Waypoint Manager', subtitle: 'Gérer vos waypoints',
+              onTap: () => _pushSettings(const WaypointManagerScreen())),
+          const Divider(color: Colors.white12),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('MODE D\'AFFICHAGE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                _buildDisplayModeSelector(settings),
+              ],
             ),
-            const Divider(color: Colors.white12),
-            _buildSettingsTile(icon: Icons.info_outline, title: 'À propos', subtitle: 'Version, légal et contact',
-                onTap: () => _pushSettings(const AboutScreen())),
-          ],
-        ),
+          ),
+          const Divider(color: Colors.white12),
+          _buildSettingsTile(icon: Icons.info_outline, title: 'À propos', subtitle: 'Version, légal et contact',
+              onTap: () => _pushSettings(const AboutScreen())),
+        ],
       ),
     );
   }
 
   Widget _buildContextualPage(SettingsService settings) {
-    return Container(
-      color: Colors.black.withValues(alpha: settings.barOpacity),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: const Text('Navigation'), 
-          backgroundColor: Colors.transparent, 
-          elevation: 0, 
-          foregroundColor: Colors.white,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => _centerPanelController.reverse(),
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Navigation'), 
+        backgroundColor: Colors.transparent, 
+        elevation: 0, 
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () {
+            _targetScroll = settings.reversePanels ? 2.0 : 1.0;
+            _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+          },
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(settings.reversePanels ? Icons.arrow_back : Icons.arrow_forward),
+            onPressed: () {
+              _targetScroll = settings.reversePanels ? 0.0 : 3.0;
+              _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+            },
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.arrow_forward),
-              onPressed: () => _rightPanelController.forward(),
-            ),
-          ],
-        ),
-        body: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          children: [
-            _buildLiveStatsGrid(settings),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _buildLiveStatsGrid(settings),
+          const SizedBox(height: 24),
+          const Divider(color: Colors.white24),
+          if (settings.navShowNextWaypoint) ...[
+            _buildNavSection('PROCHAIN WAYPOINT', Colors.greenAccent, widget.recordingService.nextWaypoint, widget.recordingService.distanceToNextWaypointMeters, true),
             const SizedBox(height: 24),
-            const Divider(color: Colors.white24),
-            if (settings.navShowNextWaypoint) ...[
-              _buildNavSection('PROCHAIN WAYPOINT', Colors.greenAccent, widget.recordingService.nextWaypoint, widget.recordingService.distanceToNextWaypointMeters, true),
-              const SizedBox(height: 24),
-            ],
-            if (settings.navShowDestination) ...[
-              _buildNavSection('DESTINATION', Colors.blueAccent, widget.recordingService.destinationWaypoint, widget.recordingService.distanceToDestinationMeters, false),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () {
-                  widget.settingsService.setWaypointSelectionMode(true);
-                  _centerPanelController.reverse();
-                },
-                icon: const Icon(Icons.navigation), label: const Text('Choisir un point'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.white10, foregroundColor: Colors.white),
-              ),
-              const Divider(color: Colors.white24, height: 40),
-            ],
-            if (settings.navShowMeasureTools) ...[
-              const Text('AZIMUT ET DISTANCE', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              _buildMeasureButton(context, label: 'Depuis ma position GPS', icon: Icons.gps_fixed, onPressed: () {
-                widget.settingsService.setMeasurementMode(MeasurementMode.fromGps);
-                _centerPanelController.reverse();
-              }),
-              const SizedBox(height: 8),
-              _buildMeasureButton(context, label: 'Entre deux points', icon: Icons.straighten, onPressed: () {
-                widget.settingsService.setMeasurementMode(MeasurementMode.betweenPoints);
-                _centerPanelController.reverse();
-              }),
-              const Divider(color: Colors.white24, height: 40),
-            ],
           ],
-        ),
+          if (settings.navShowDestination) ...[
+            _buildNavSection('DESTINATION', Colors.blueAccent, widget.recordingService.destinationWaypoint, widget.recordingService.distanceToDestinationMeters, false),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                widget.settingsService.setWaypointSelectionMode(true);
+                _targetScroll = settings.reversePanels ? 2.0 : 1.0;
+                _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+              },
+              icon: const Icon(Icons.navigation), label: const Text('Choisir un point'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.white10, foregroundColor: Colors.white),
+            ),
+            const Divider(color: Colors.white24, height: 40),
+          ],
+          if (settings.navShowMeasureTools) ...[
+            const Text('AZIMUT ET DISTANCE', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            _buildMeasureButton(context, label: 'Depuis ma position GPS', icon: Icons.gps_fixed, onPressed: () {
+              widget.settingsService.setMeasurementMode(MeasurementMode.fromGps);
+              _targetScroll = settings.reversePanels ? 2.0 : 1.0;
+              _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+            }),
+            const SizedBox(height: 8),
+            _buildMeasureButton(context, label: 'Entre deux points', icon: Icons.straighten, onPressed: () {
+              widget.settingsService.setMeasurementMode(MeasurementMode.betweenPoints);
+              _targetScroll = settings.reversePanels ? 2.0 : 1.0;
+              _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+            }),
+            const Divider(color: Colors.white24, height: 40),
+          ],
+        ],
       ),
     );
   }

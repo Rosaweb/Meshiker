@@ -102,7 +102,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Transparence bandeau', style: labelStyle),
+                    const Text('Transparence menus', style: labelStyle),
                     Text('${((1.1 - settings.barOpacity) * 100).round()}%', style: valueStyle),
                   ],
                 ),
