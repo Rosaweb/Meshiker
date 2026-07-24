@@ -77,6 +77,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _followUser = true; // Mode suivi par défaut
   bool _isMapReady = false;
   MapCamera? _latestCamera;
+
+  bool _tileLoadError = false;
+  final StreamController<void> _tileResetController = StreamController<void>.broadcast();
   
   StreamSubscription? _compassSubscription;
   double? _currentHeading;
@@ -137,7 +140,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _selectedSegmentUuids.dispose();
     _compassSubscription?.cancel();
     _menuExpandController.dispose();
+    _tileResetController.close();
     super.dispose();
+  }
+
+  void _onTileError(TileImage tile, Object error, StackTrace? stackTrace) {
+    if (mounted && !_tileLoadError) {
+      setState(() => _tileLoadError = true);
+    }
+  }
+
+  void _retryTiles() {
+    setState(() => _tileLoadError = false);
+    _tileResetController.add(null);
   }
 
   void _reloadViewportData(MapCamera camera) {
@@ -682,7 +697,37 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ],
             ),
-            
+
+            if (_tileLoadError && widget.vectorTileSource?.theme == null)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 12,
+                right: 12,
+                child: Material(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.cloud_off, color: Colors.white70, size: 18),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            "Pas de connexion internet : carte indisponible",
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _retryTiles,
+                          child: const Text('Réessayer', style: TextStyle(color: Colors.greenAccent)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
             if (widget.settingsService.showScale && _latestCamera != null)
               Positioned(
                 bottom: bottomMenuHeight + 10,
@@ -864,12 +909,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Widget _buildDynamicTileLayer() {
     final favIds = widget.settingsService.favoriteMapIds;
     if (favIds.isEmpty) {
-      return TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
+      return TileLayer(
+        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        errorTileCallback: _onTileError,
+        reset: _tileResetController.stream,
+      );
     }
-    
-    final currentId = favIds[widget.settingsService.currentMapIndex];
+
+    final rawIndex = widget.settingsService.currentMapIndex;
+    final currentId = favIds[rawIndex % favIds.length];
     final source = availableSources.firstWhere((s) => s.id == currentId, orElse: () => availableSources.first);
-    
+
     return TileLayer(
       urlTemplate: source.url,
       subdomains: const ['a', 'b', 'c'],
@@ -877,6 +927,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       tileProvider: NetworkTileProvider(
         headers: {'User-Agent': 'Meshiker/1.0'},
       ),
+      errorTileCallback: _onTileError,
+      reset: _tileResetController.stream,
     );
   }
 }

@@ -29,6 +29,25 @@ import 'recording_config.dart';
 
 const _uuid = Uuid();
 
+/// [ValueNotifier] variant that always notifies listeners on assignment,
+/// even when the new value compares equal to the previous one. Needed for
+/// [RecordingService.currentPosition]: a stationary GPS fix can repeat an
+/// identical [geo.Position], but the map still needs the redraw.
+class AlwaysNotifyValueNotifier<T> extends ChangeNotifier
+    implements ValueListenable<T> {
+  AlwaysNotifyValueNotifier(this._value);
+
+  T _value;
+
+  @override
+  T get value => _value;
+
+  set value(T newValue) {
+    _value = newValue;
+    notifyListeners();
+  }
+}
+
 class RecordingService {
   RecordingService({
     required this.isarService,
@@ -68,7 +87,8 @@ class RecordingService {
   final ValueNotifier<double> averageSpeedGlobalMps = ValueNotifier(0.0);
   final ValueNotifier<double> dailyDistanceMeters = ValueNotifier(0.0);
   final ValueNotifier<double> gpsAccuracyMeters = ValueNotifier(0.0);
-  final ValueNotifier<geo.Position?> currentPosition = ValueNotifier(null);
+  final AlwaysNotifyValueNotifier<geo.Position?> currentPosition =
+      AlwaysNotifyValueNotifier(null);
   final ValueNotifier<String> gpsStatus = ValueNotifier('-');
 
   // Stockage détaillé des satellites
@@ -420,13 +440,12 @@ class RecordingService {
 
     final lastPos = currentPosition.value;
 
-    // Mise à jour de la valeur - déclenche la notification aux listeners (MapScreen)
+    // Mise à jour de la valeur - déclenche toujours la notification aux
+    // listeners (MapScreen), même si la position est identique à la
+    // précédente (nécessaire pour garantir l'affichage dynamique sur la
+    // carte lors d'un arrêt prolongé).
     currentPosition.value = position;
-    
-    // On force la notification même si la position est très proche pour garantir 
-    // l'affichage dynamique sur la carte.
-    currentPosition.notifyListeners();
-    
+
     currentSpeedMps.value = position.speed;
     gpsAccuracyMeters.value = position.accuracy;
     

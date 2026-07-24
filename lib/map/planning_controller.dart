@@ -291,5 +291,6 @@ class PlanningController extends ChangeNotifier {
   void dispose() {
     points.dispose();
     magnetEnabled.dispose();
+    super.dispose();
   }
 }
