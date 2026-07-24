@@ -61,8 +61,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _targetScroll = isReversed ? 2.0 : 1.0;
     
     _scrollController = AnimationController(
-      vsync: this, 
+      vsync: this,
       duration: const Duration(milliseconds: 300),
+      // Le carrousel a 4 pages (index 0-3) : sans ces bornes explicites,
+      // AnimationController retombe sur ses bornes par défaut [0.0, 1.0],
+      // ce qui bloque silencieusement tout scroll au-delà de 1.0 (impossible
+      // d'atteindre les pages d'index 2/3, ex. le panneau "Navigation").
+      lowerBound: 0.0,
+      upperBound: 3.0,
       value: _targetScroll,
     );
 
@@ -98,14 +104,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     final view = View.of(context);
     final size = view.physicalSize;
     final dpr = view.devicePixelRatio;
+    // Android réserve inconditionnellement une bande le long des bords pour
+    // son propre geste "retour" (systemGestureInsets) : toute exclusion
+    // demandée à l'intérieur de cette bande est ignorée par l'OS. Il faut
+    // donc positionner notre bande d'exclusion juste APRÈS cette réserve
+    // système, sinon l'OS intercepte le swipe avant même que Flutter le voie.
+    final systemInsets = MediaQuery.of(context).systemGestureInsets;
     final widthPx = (edgeWidth * dpr).round();
+    final leftInsetPx = (systemInsets.left * dpr).round();
+    final rightInsetPx = (systemInsets.right * dpr).round();
     final heightPx = size.height.round();
     final rects = [
-      {'left': 0, 'top': 0, 'right': widthPx, 'bottom': heightPx},
+      {'left': leftInsetPx, 'top': 0, 'right': leftInsetPx + widthPx, 'bottom': heightPx},
       {
-        'left': (size.width.round() - widthPx),
+        'left': (size.width.round() - rightInsetPx - widthPx),
         'top': 0,
-        'right': size.width.round(),
+        'right': size.width.round() - rightInsetPx,
         'bottom': heightPx,
       },
     ];
@@ -129,7 +143,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   void _handleDragEnd() {
     _targetScroll = _scrollController.value.round().toDouble();
     _scrollController.animateTo(
-      _targetScroll, 
+      _targetScroll,
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut
     );
@@ -142,6 +156,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         final isOffline = connectivity.contains(ConnectivityResult.none) || connectivity.isEmpty;
         final screenWidth = MediaQuery.of(context).size.width;
         final isReversed = settings.reversePanels;
+        final systemGestureInsets = MediaQuery.of(context).systemGestureInsets;
 
         final List<Widget> pages = isReversed
             ? [
@@ -191,28 +206,39 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 ),
 
               // 2. LES VOLETS COULISSANTS (Bande horizontale exclusive)
-              AnimatedBuilder(
-                animation: _scrollController,
-                builder: (context, _) {
-                  final scroll = _scrollController.value;
-                  return Stack(
-                    children: List.generate(pages.length, (index) {
-                      if (index == mapIndex) return const SizedBox.shrink();
-                      
-                      final offset = index - scroll;
-                      if (offset <= -1.0 || offset >= 1.0) return const SizedBox.shrink();
+              // Positioned.fill est indispensable ici : un Stack imbriqué,
+              // placé tel quel comme enfant non positionné du Stack parent,
+              // se dimensionne uniquement d'après ses propres enfants NON
+              // positionnés. Or ici tous les enfants non positionnés sont des
+              // SizedBox.shrink() (le "trou" pour la carte) - le panneau
+              // réellement visible est toujours un Positioned.fill, qui ne
+              // compte pas dans ce calcul de taille. Sans ce wrapper, le
+              // Stack imbriqué s'effondre à 0x0 et les panneaux, bien que
+              // construits, sont rendus invisibles.
+              Positioned.fill(
+                child: AnimatedBuilder(
+                  animation: _scrollController,
+                  builder: (context, _) {
+                    final scroll = _scrollController.value;
+                    return Stack(
+                      children: List.generate(pages.length, (index) {
+                        if (index == mapIndex) return const SizedBox.shrink();
 
-                      return Positioned.fill(
-                        left: offset * screenWidth,
-                        right: -offset * screenWidth,
-                        child: Container(
-                          color: Colors.black.withValues(alpha: settings.barOpacity),
-                          child: pages[index],
-                        ),
-                      );
-                    }),
-                  );
-                },
+                        final offset = index - scroll;
+                        if (offset <= -1.0 || offset >= 1.0) return const SizedBox.shrink();
+
+                        return Positioned.fill(
+                          left: offset * screenWidth,
+                          right: -offset * screenWidth,
+                          child: Container(
+                            color: Colors.black.withValues(alpha: settings.barOpacity),
+                            child: pages[index],
+                          ),
+                        );
+                      }),
+                    );
+                  },
+                ),
               ),
 
               // 3. CAPTURE DU SWIPE (ZONES TACTILES)
@@ -221,13 +247,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 builder: (context, _) {
                   final currentScroll = _scrollController.value;
                   final isAtMap = currentScroll == mapIndex;
-                  
+
                   return Stack(
                     children: [
-                      // Zone Gauche
+                      // Zone Gauche (décalée au-delà de la bande réservée par
+                      // l'OS pour son geste "retour" - cf. _updateGestureExclusion)
                       Positioned(
-                        left: 0, top: 0, bottom: 0, 
-                        width: isAtMap ? settings.edgeSwipeWidth : screenWidth * 0.5,
+                        left: systemGestureInsets.left, top: 0, bottom: 0,
+                        width: isAtMap
+                            ? settings.edgeSwipeWidth
+                            : screenWidth * 0.5 - systemGestureInsets.left,
                         child: GestureDetector(
                           behavior: HitTestBehavior.translucent,
                           onHorizontalDragUpdate: (details) => _handleDrag(details, screenWidth),
@@ -236,8 +265,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                       ),
                       // Zone Droite
                       Positioned(
-                        right: 0, top: 0, bottom: 0, 
-                        width: isAtMap ? settings.edgeSwipeWidth : screenWidth * 0.5,
+                        right: systemGestureInsets.right, top: 0, bottom: 0,
+                        width: isAtMap
+                            ? settings.edgeSwipeWidth
+                            : screenWidth * 0.5 - systemGestureInsets.right,
                         child: GestureDetector(
                           behavior: HitTestBehavior.translucent,
                           onHorizontalDragUpdate: (details) => _handleDrag(details, screenWidth),
