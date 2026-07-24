@@ -1132,21 +1132,23 @@ class _BottomControlBar extends StatelessWidget {
                         onPressed: onToggleGpx,
                         child: Text('GPX', style: TextStyle(color: showAllGpx ? Colors.greenAccent : Colors.white38, fontWeight: FontWeight.bold, fontSize: 12)),
                       ),
-                    _RoundButton(
-                      onPressed: onToggleRecording,
-                      child: Container(
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          shape: isRecording ? BoxShape.rectangle : BoxShape.circle,
+                    if (displayMode == DisplayMode.gpx) ...[
+                      _RoundButton(
+                        onPressed: onToggleRecording,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: isRecording ? BoxShape.rectangle : BoxShape.circle,
+                          ),
                         ),
                       ),
-                    ),
-                    _RoundButton(
-                      onPressed: onToggleCompass,
-                      child: const Icon(Icons.explore, color: Colors.white38),
-                    ),
+                      _RoundButton(
+                        onPressed: onToggleCompass,
+                        child: const Icon(Icons.explore, color: Colors.white38),
+                      ),
+                    ],
                   ],
                 ),
               ),
