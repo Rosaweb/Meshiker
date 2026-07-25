@@ -58,10 +58,12 @@ class GpxScannerService extends ChangeNotifier {
       }
 
       await _scanRecursive(dir);
-      
-      // Après le scan rapide, on lance la segmentation en tâche de fond
-      unawaited(_processPendingSegmentations());
-      
+
+      // Après le scan rapide, la segmentation se poursuit en tâche de fond.
+      // On l'attend ici pour que isScanning (et donc le chargement affiché)
+      // couvre toute la durée du traitement, pas seulement l'indexation rapide.
+      await _processPendingSegmentations();
+
     } catch (e) {
       debugPrint('GpxScannerService: Scan error: $e');
     } finally {
