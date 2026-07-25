@@ -44,6 +44,8 @@ class MapScreen extends StatefulWidget {
     required this.ownerUuid,
     required this.settingsService,
     required this.recordingService,
+    required this.panelScrollAnimation,
+    required this.mapPageIndex,
     this.planningController,
     this.onPlanFinalized,
     this.initialCenter = const LatLng(45.8326, 6.8652),
@@ -57,6 +59,11 @@ class MapScreen extends StatefulWidget {
   final SettingsService settingsService;
   final RecordingService recordingService;
   final String ownerUuid;
+  // Anime le fondu du menu principal en fonction du carrousel de volets
+  // latéraux (cf. MainNavigationScreen), pour qu'il ne soit jamais visible
+  // en transparence sous un volet ouvert.
+  final Animation<double> panelScrollAnimation;
+  final int mapPageIndex;
   final PlanningController? planningController;
   final VoidCallback? onPlanFinalized;
   final LatLng initialCenter;
@@ -70,7 +77,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   late final MapController _mapController;
   final ValueNotifier<SegmentColorMode> _colorMode =
       ValueNotifier(SegmentColorMode.difficulty);
-  
+
   bool _planningActive = false;
   bool _isFinalizing = false;
   bool _dynamicRotation = false;
@@ -79,8 +86,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   MapCamera? _latestCamera;
 
   bool _tileLoadError = false;
-  final StreamController<void> _tileResetController = StreamController<void>.broadcast();
-  
+  final StreamController<void> _tileResetController =
+      StreamController<void>.broadcast();
+
   StreamSubscription? _compassSubscription;
   double? _currentHeading;
 
@@ -98,7 +106,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    
+
     // Écoute de la position pour le mode suivi
     widget.recordingService.currentPosition.addListener(_onLocationUpdate);
   }
@@ -110,13 +118,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (pos == null) return;
 
     if (_followUser) {
-      debugPrint('MapScreen: AUTO-CENTERING at ${pos.latitude}, ${pos.longitude}');
+      debugPrint(
+          'MapScreen: AUTO-CENTERING at ${pos.latitude}, ${pos.longitude}');
       _mapController.move(
-        LatLng(pos.latitude, pos.longitude), 
-        _mapController.camera.zoom
-      );
+          LatLng(pos.latitude, pos.longitude), _mapController.camera.zoom);
     }
-    
+
     // On force le rebuild pour mettre à jour le marqueur de position (LocationMarkerLayer)
     setState(() {});
   }
@@ -164,8 +171,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       maxLon: bounds.east,
       activeGpxNames: widget.settingsService.activeGpxNames,
     );
-    if (widget.settingsService.mapCreationStep == MapCreationStep.stretchArea && widget.settingsService.mapOrigin != null) {
-      widget.settingsService.updateMapTarget(camera.center.latitude, camera.center.longitude);
+    if (widget.settingsService.mapCreationStep == MapCreationStep.stretchArea &&
+        widget.settingsService.mapOrigin != null) {
+      widget.settingsService
+          .updateMapTarget(camera.center.latitude, camera.center.longitude);
     }
   }
 
@@ -179,7 +188,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     widget.planningController
         ?.updateCandidateSegments(widget.viewModel.segments.value);
 
-    if (widget.recordingService.isActive || widget.settingsService.activeGpxNames.isNotEmpty) {
+    if (widget.recordingService.isActive ||
+        widget.settingsService.activeGpxNames.isNotEmpty) {
       context.read<TileCacheService>().checkAndEvict(context);
     }
   }
@@ -200,27 +210,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // On cherche le segment le plus proche du point cliqué
     // Seuil de proximité augmenté pour faciliter le clic sur mobile (~30-40 mètres)
     const thresholdMeters = 40.0;
-    
+
     Segment? closestSegment;
     double minDistance = double.infinity;
 
-    debugPrint('MapScreen: Hit-testing for mesh selection at ${point.latitude}, ${point.longitude}');
+    debugPrint(
+        'MapScreen: Hit-testing for mesh selection at ${point.latitude}, ${point.longitude}');
 
     for (final segment in widget.viewModel.segments.value) {
-      final polyline = segment.points.map((p) => (lat: p.latitude, lon: p.longitude)).toList();
-      
+      final polyline = segment.points
+          .map((p) => (lat: p.latitude, lon: p.longitude))
+          .toList();
+
       final snap = GeoUtils.snapToPolyline(
-        point.latitude, 
-        point.longitude, 
-        polyline, 
-        thresholdMeters
-      );
+          point.latitude, point.longitude, polyline, thresholdMeters);
 
       if (snap != null) {
         final dist = geo.Geolocator.distanceBetween(
-          point.latitude, point.longitude, 
-          snap.lat, snap.lon
-        );
+            point.latitude, point.longitude, snap.lat, snap.lon);
         if (dist < minDistance) {
           minDistance = dist;
           closestSegment = segment;
@@ -268,7 +275,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final selectedUuids = _selectedSegmentUuids.value;
     if (selectedUuids.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sélectionnez d\'abord des segments sur la carte.')),
+        const SnackBar(
+            content: Text('Sélectionnez d\'abord des segments sur la carte.')),
       );
       return;
     }
@@ -320,7 +328,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Enregistrer la trace', style: TextStyle(color: Colors.white)),
+        title: const Text('Enregistrer la trace',
+            style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -345,11 +354,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         actions: [
           TextButton(
             onPressed: () => _confirmDiscardRecording(context),
-            child: const Text('ANNULER', style: TextStyle(color: Colors.white38)),
+            child:
+                const Text('ANNULER', style: TextStyle(color: Colors.white38)),
           ),
           TextButton(
-            onPressed: () => _confirmSaveRecording(context, nameController.text, descController.text),
-            child: const Text('ENREGISTRER', style: TextStyle(color: Colors.greenAccent)),
+            onPressed: () => _confirmSaveRecording(
+                context, nameController.text, descController.text),
+            child: const Text('ENREGISTRER',
+                style: TextStyle(color: Colors.greenAccent)),
           ),
         ],
       ),
@@ -361,13 +373,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Annuler l\'enregistrement ?', style: TextStyle(color: Colors.white)),
-        content: const Text('Toutes les données de cette session seront perdues.', style: TextStyle(color: Colors.white70)),
+        title: const Text('Annuler l\'enregistrement ?',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+            'Toutes les données de cette session seront perdues.',
+            style: TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('REPRENDRE')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('REPRENDRE')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRMER ANNULATION', style: TextStyle(color: Colors.redAccent)),
+            child: const Text('CONFIRMER ANNULATION',
+                style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -385,17 +403,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _confirmSaveRecording(BuildContext dialogContext, String name, String desc) async {
+  void _confirmSaveRecording(
+      BuildContext dialogContext, String name, String desc) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Enregistrer la trace ?', style: TextStyle(color: Colors.white)),
+        title: const Text('Enregistrer la trace ?',
+            style: TextStyle(color: Colors.white)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('RETOUR')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('RETOUR')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRMER', style: TextStyle(color: Colors.greenAccent)),
+            child: const Text('CONFIRMER',
+                style: TextStyle(color: Colors.greenAccent)),
           ),
         ],
       ),
@@ -414,10 +437,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         if (subPath != null) {
           final fileName = '$name.gpx';
           final fullPath = p.join(subPath, fileName);
-          
+
           result.trace.sourceFilePath = fullPath;
           await widget.isarService.saveTrace(result.trace);
-          
+
           debugPrint('Recording: Trace source path set to $fullPath');
         }
 
@@ -450,7 +473,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Créer une trace GPX', style: TextStyle(color: Colors.white)),
+        title: const Text('Créer une trace GPX',
+            style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -465,7 +489,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               decoration: const InputDecoration(
                 labelText: 'Nom de la trace',
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24)),
               ),
             ),
             TextField(
@@ -474,7 +499,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               decoration: const InputDecoration(
                 labelText: 'Description',
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24)),
               ),
             ),
           ],
@@ -487,20 +513,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           TextButton(
             onPressed: () async {
               if (nameController.text.isEmpty) return;
-              await _saveMergedTrace(nameController.text, descController.text, segments);
+              await _saveMergedTrace(
+                  nameController.text, descController.text, segments);
               if (mounted) {
                 Navigator.pop(context);
                 _selectedSegmentUuids.value = {}; // Reset sélection
               }
             },
-            child: const Text('ENREGISTRER', style: TextStyle(color: Colors.greenAccent)),
+            child: const Text('ENREGISTRER',
+                style: TextStyle(color: Colors.greenAccent)),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _saveMergedTrace(String name, String description, List<Segment> selectedSegments) async {
+  Future<void> _saveMergedTrace(
+      String name, String description, List<Segment> selectedSegments) async {
     // Pour fusionner, on récupère tous les points de tous les segments sélectionnés
     // Note: cette fusion est "brute", elle ne garantit pas la continuité topologique parfaite
     // si les segments ne sont pas ordonnés manuellement, mais c'est un début.
@@ -525,9 +554,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       // On simule un import à partir des points concaténés
       // On crée le XML GPX minimal
       final gpxContent = _buildGpxString(name, description, allPoints);
-      
+
       await importService.importXmlString(
-        gpxContent, 
+        gpxContent,
         ownerUuid: widget.ownerUuid,
         traceNameOverride: name,
       );
@@ -546,15 +575,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  String _buildGpxString(String name, String description, List<GpxTrackPoint> points) {
+  String _buildGpxString(
+      String name, String description, List<GpxTrackPoint> points) {
     final buffer = StringBuffer();
     buffer.writeln('<?xml version="1.0" encoding="UTF-8"?>');
     buffer.writeln('<gpx version="1.1" creator="Meshiker">');
-    buffer.writeln('  <metadata><name>$name</name><desc>$description</desc></metadata>');
+    buffer.writeln(
+        '  <metadata><name>$name</name><desc>$description</desc></metadata>');
     buffer.writeln('  <trk><name>$name</name><trkseg>');
     for (final p in points) {
       buffer.writeln('    <trkpt lat="${p.latitude}" lon="${p.longitude}">');
-      if (p.elevation != null) buffer.writeln('      <ele>${p.elevation}</ele>');
+      if (p.elevation != null)
+        buffer.writeln('      <ele>${p.elevation}</ele>');
       buffer.writeln('    </trkpt>');
     }
     buffer.writeln('  </trkseg></trk>');
@@ -599,7 +631,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([widget.settingsService, _menuExpandController]),
+      animation:
+          Listenable.merge([widget.settingsService, _menuExpandController]),
       builder: (context, _) {
         final bottomMenuHeight = 80.0 + (_menuExpandController.value * 80.0);
 
@@ -634,10 +667,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   final pos = widget.recordingService.currentPosition.value;
                   if (pos != null && _followUser) {
                     debugPrint('MapScreen: Initial re-centering in onMapReady');
-                    _mapController.move(
-                      LatLng(pos.latitude, pos.longitude), 
-                      widget.initialZoom
-                    );
+                    _mapController.move(LatLng(pos.latitude, pos.longitude),
+                        widget.initialZoom);
                   }
                 },
               ),
@@ -649,10 +680,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   )
                 else
                   _buildDynamicTileLayer(),
-
                 if (widget.settingsService.displayMode == DisplayMode.mesh)
                   _MeshLayer(
-                    viewModel: widget.viewModel, 
+                    viewModel: widget.viewModel,
                     selectedUuidsNotifier: _selectedSegmentUuids,
                   )
                 else
@@ -660,12 +690,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     viewModel: widget.viewModel,
                     isarService: widget.isarService,
                   ),
-                
                 _PoisLayer(viewModel: widget.viewModel),
-                
                 if (widget.settingsService.showAllWaypoints)
                   _WaypointsLayer(
-                    viewModel: widget.viewModel, 
+                    viewModel: widget.viewModel,
                     settings: widget.settingsService,
                     isarService: widget.isarService,
                     recordingService: widget.recordingService,
@@ -676,28 +704,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
                 if (widget.planningController != null)
                   _PlanningLayer(controller: widget.planningController!),
-
                 _LiveTrackLayer(recordingService: widget.recordingService),
-
-                _LocationMarkerLayer(recordingService: widget.recordingService, heading: _currentHeading),
-
-                if (widget.settingsService.measurementMode != MeasurementMode.none)
-                   _MeasurementLayer(
-                     mode: widget.settingsService.measurementMode,
-                     p1: widget.settingsService.measurePoint1,
-                     p2: widget.settingsService.measurePoint2,
-                     currentPos: widget.recordingService.currentPosition.value,
-                     mapCenter: _mapController.camera.center,
-                   ),
-
+                _LocationMarkerLayer(
+                    recordingService: widget.recordingService,
+                    heading: _currentHeading),
+                if (widget.settingsService.measurementMode !=
+                    MeasurementMode.none)
+                  _MeasurementLayer(
+                    mode: widget.settingsService.measurementMode,
+                    p1: widget.settingsService.measurePoint1,
+                    p2: widget.settingsService.measurePoint2,
+                    currentPos: widget.recordingService.currentPosition.value,
+                    mapCenter: _mapController.camera.center,
+                  ),
                 const RichAttributionWidget(
                   attributions: [
-                    TextSourceAttribution("Contributeurs de la toile d'araignee"),
+                    TextSourceAttribution(
+                        "Contributeurs de la toile d'araignee"),
                   ],
                 ),
               ],
             ),
-
             if (_tileLoadError && widget.vectorTileSource?.theme == null)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 8,
@@ -707,10 +734,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   color: Colors.black87,
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     child: Row(
                       children: [
-                        const Icon(Icons.cloud_off, color: Colors.white70, size: 18),
+                        const Icon(Icons.cloud_off,
+                            color: Colors.white70, size: 18),
                         const SizedBox(width: 8),
                         const Expanded(
                           child: Text(
@@ -720,14 +749,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ),
                         TextButton(
                           onPressed: _retryTiles,
-                          child: const Text('Réessayer', style: TextStyle(color: Colors.greenAccent)),
+                          child: const Text('Réessayer',
+                              style: TextStyle(color: Colors.greenAccent)),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-
             if (widget.settingsService.showScale && _latestCamera != null)
               Positioned(
                 bottom: bottomMenuHeight + 10,
@@ -741,109 +770,154 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-
             if (_isMapReady && _latestCamera != null)
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
-                child: widget.settingsService.mapCreationStep != MapCreationStep.none 
-                  ? _MapCreationMenu(
-                      settings: widget.settingsService,
-                      center: _mapController.camera.center,
-                    )
-                  : GestureDetector(
-                      onVerticalDragUpdate: (details) {
-                        if ((details.primaryDelta ?? 0) < -10 && !_menuExpanded) {
-                          _toggleMenu();
-                        } else if ((details.primaryDelta ?? 0) > 10 && _menuExpanded) {
-                          _toggleMenu();
-                        }
-                      },
-                      child: _BottomControlBar(
-                        opacity: widget.settingsService.mainMenuOpacity,
-                        displayMode: widget.settingsService.displayMode,
-                        heading: _currentHeading,
-                        dynamicRotation: _dynamicRotation,
-                        locationActive: widget.settingsService.locationEnabled,
-                        camera: _latestCamera!,
-                        unitSystem: widget.settingsService.unitSystem,
-                        measurementMode: widget.settingsService.measurementMode,
-                        measurePoint1: widget.settingsService.measurePoint1,
-                        measurePoint2: widget.settingsService.measurePoint2,
-                        currentPosition: widget.recordingService.currentPosition.value,
-                        expanded: _menuExpanded,
-                        expandProgress: _menuExpandController.value,
-                        showAllWaypoints: widget.settingsService.showAllWaypoints,
-                        showAllGpx: widget.settingsService.showAllGpx,
-                        showMesh: widget.settingsService.showMesh,
-                        onToggleRotation: () {
-                          setState(() => _dynamicRotation = !_dynamicRotation);
-                          if (!_dynamicRotation) _mapController.rotate(0);
+                child: widget.settingsService.mapCreationStep !=
+                        MapCreationStep.none
+                    ? _MapCreationMenu(
+                        settings: widget.settingsService,
+                        center: _mapController.camera.center,
+                      )
+                    : AnimatedBuilder(
+                        animation: widget.panelScrollAnimation,
+                        builder: (context, child) {
+                          // Fondu du menu principal à mesure qu'un volet latéral
+                          // recouvre l'écran, pour qu'il ne transparaisse pas
+                          // sous un volet dont l'opacité est réduite.
+                          final distance = (widget.panelScrollAnimation.value -
+                                  widget.mapPageIndex)
+                              .abs()
+                              .clamp(0.0, 1.0);
+                          final menuVisibility = 1.0 - distance;
+                          return IgnorePointer(
+                            ignoring: menuVisibility < 0.05,
+                            child:
+                                Opacity(opacity: menuVisibility, child: child),
+                          );
                         },
-                        onRecenter: () {
-                          final pos = widget.recordingService.currentPosition.value;
-                          setState(() => _followUser = true);
-                          if (pos != null) {
-                            _mapController.move(LatLng(pos.latitude, pos.longitude), _mapController.camera.zoom);
-                          } else {
-                            _mapController.move(widget.initialCenter, _mapController.camera.zoom);
-                          }
-                        },
-                        onToggleLocation: () {
-                          final newStatus = !widget.settingsService.locationEnabled;
-                          widget.settingsService.setLocationEnabled(newStatus);
-                          if (newStatus) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Localisation activée')),
-                            );
-                          }
-                        },
-                        onCycleMap: () {
-                          widget.settingsService.cycleMap();
-                        },
-                        onZoomIn: () {
-                          _mapController.move(_mapController.camera.center, _mapController.camera.zoom + 1);
-                        },
-                        onZoomOut: () {
-                          _mapController.move(_mapController.camera.center, _mapController.camera.zoom - 1);
-                        },
-                        onValidatePoint: () {
-                          final center = _mapController.camera.center;
-                          if (widget.settingsService.measurePoint1 == null) {
-                            widget.settingsService.setMeasurePoint1(center.latitude, center.longitude);
-                          } else {
-                            widget.settingsService.setMeasurePoint2(center.latitude, center.longitude);
-                          }
-                        },
-                        onCancelMeasure: () {
-                          widget.settingsService.clearMeasurement();
-                        },
-                        onToggleWaypoints: () => widget.settingsService.setShowAllWaypoints(!widget.settingsService.showAllWaypoints),
-                        onToggleGpx: () => widget.settingsService.setShowAllGpx(!widget.settingsService.showAllGpx),
-                        onToggleCompass: () { },
-                        onResegmentMesh: _resegmentTraces,
-                        onCreateTrace: _createTraceFromMesh,
-                        onClearSelection: () => _selectedSegmentUuids.value = {},
-                        onDeleteSelected: _deleteSelectedSegments,
-                        onToggleRecording: _handleToggleRecording,
-                        isRecording: widget.recordingService.isActive,
+                        child: GestureDetector(
+                          onVerticalDragUpdate: (details) {
+                            if ((details.primaryDelta ?? 0) < -10 &&
+                                !_menuExpanded) {
+                              _toggleMenu();
+                            } else if ((details.primaryDelta ?? 0) > 10 &&
+                                _menuExpanded) {
+                              _toggleMenu();
+                            }
+                          },
+                          child: _BottomControlBar(
+                            opacity: widget.settingsService.mainMenuOpacity,
+                            reversePanels: widget.settingsService.reversePanels,
+                            displayMode: widget.settingsService.displayMode,
+                            heading: _currentHeading,
+                            dynamicRotation: _dynamicRotation,
+                            locationActive:
+                                widget.settingsService.locationEnabled,
+                            camera: _latestCamera!,
+                            unitSystem: widget.settingsService.unitSystem,
+                            measurementMode:
+                                widget.settingsService.measurementMode,
+                            measurePoint1: widget.settingsService.measurePoint1,
+                            measurePoint2: widget.settingsService.measurePoint2,
+                            currentPosition:
+                                widget.recordingService.currentPosition.value,
+                            expanded: _menuExpanded,
+                            expandProgress: _menuExpandController.value,
+                            showAllWaypoints:
+                                widget.settingsService.showAllWaypoints,
+                            showAllGpx: widget.settingsService.showAllGpx,
+                            showMesh: widget.settingsService.showMesh,
+                            onToggleRotation: () {
+                              setState(
+                                  () => _dynamicRotation = !_dynamicRotation);
+                              if (!_dynamicRotation) _mapController.rotate(0);
+                            },
+                            onRecenter: () {
+                              final pos =
+                                  widget.recordingService.currentPosition.value;
+                              setState(() => _followUser = true);
+                              if (pos != null) {
+                                _mapController.move(
+                                    LatLng(pos.latitude, pos.longitude),
+                                    _mapController.camera.zoom);
+                              } else {
+                                _mapController.move(widget.initialCenter,
+                                    _mapController.camera.zoom);
+                              }
+                            },
+                            onToggleLocation: () {
+                              final newStatus =
+                                  !widget.settingsService.locationEnabled;
+                              widget.settingsService
+                                  .setLocationEnabled(newStatus);
+                              if (newStatus) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Localisation activée')),
+                                );
+                              }
+                            },
+                            onCycleMap: () {
+                              widget.settingsService.cycleMap();
+                            },
+                            onZoomIn: () {
+                              _mapController.move(_mapController.camera.center,
+                                  _mapController.camera.zoom + 1);
+                            },
+                            onZoomOut: () {
+                              _mapController.move(_mapController.camera.center,
+                                  _mapController.camera.zoom - 1);
+                            },
+                            onValidatePoint: () {
+                              final center = _mapController.camera.center;
+                              if (widget.settingsService.measurePoint1 ==
+                                  null) {
+                                widget.settingsService.setMeasurePoint1(
+                                    center.latitude, center.longitude);
+                              } else {
+                                widget.settingsService.setMeasurePoint2(
+                                    center.latitude, center.longitude);
+                              }
+                            },
+                            onCancelMeasure: () {
+                              widget.settingsService.clearMeasurement();
+                            },
+                            onToggleWaypoints: () => widget.settingsService
+                                .setShowAllWaypoints(
+                                    !widget.settingsService.showAllWaypoints),
+                            onToggleGpx: () => widget.settingsService
+                                .setShowAllGpx(
+                                    !widget.settingsService.showAllGpx),
+                            onToggleCompass: () {},
+                            onResegmentMesh: _resegmentTraces,
+                            onCreateTrace: _createTraceFromMesh,
+                            onClearSelection: () =>
+                                _selectedSegmentUuids.value = {},
+                            onDeleteSelected: _deleteSelectedSegments,
+                            onToggleRecording: _handleToggleRecording,
+                            isRecording: widget.recordingService.isActive,
+                          ),
+                        ),
                       ),
-                    ),
               ),
-
             if (widget.settingsService.waypointSelectionMode)
               Positioned(
                 top: 100,
                 left: 20,
                 right: 20,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
                     color: Colors.blueAccent.withValues(alpha: 0.9),
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 8)
+                      BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8)
                     ],
                   ),
                   child: Row(
@@ -853,31 +927,37 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       const Expanded(
                         child: Text(
                           'Touchez un waypoint sur la carte pour le définir comme destination',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13),
                         ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: () => widget.settingsService.setWaypointSelectionMode(false),
+                        onPressed: () => widget.settingsService
+                            .setWaypointSelectionMode(false),
                         visualDensity: VisualDensity.compact,
                       ),
                     ],
                   ),
                 ),
               ),
-
-            if (widget.settingsService.measurementMode != MeasurementMode.none ||
+            if (widget.settingsService.measurementMode !=
+                    MeasurementMode.none ||
                 widget.settingsService.mapCreationStep != MapCreationStep.none)
               IgnorePointer(
                 child: Center(
-                  child: Icon(
-                    Icons.add, 
-                    color: (widget.settingsService.mapCreationStep != MapCreationStep.none || widget.settingsService.measurementMode != MeasurementMode.none) ? Colors.red : Colors.white,
-                    size: 40
-                  ),
+                  child: Icon(Icons.add,
+                      color: (widget.settingsService.mapCreationStep !=
+                                  MapCreationStep.none ||
+                              widget.settingsService.measurementMode !=
+                                  MeasurementMode.none)
+                          ? Colors.red
+                          : Colors.white,
+                      size: 40),
                 ),
               ),
-
             if (widget.settingsService.mapCreationStep != MapCreationStep.none)
               _MapCreationOverlay(
                 step: widget.settingsService.mapCreationStep,
@@ -886,7 +966,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 camera: _latestCamera!,
                 onAdjust: widget.settingsService.adjustArea,
               ),
-
             if (widget.planningController != null)
               Positioned(
                 bottom: bottomMenuHeight + 20,
@@ -896,7 +975,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   controller: widget.planningController!,
                   active: _planningActive,
                   busy: _isFinalizing,
-                  onToggleActive: () => setState(() => _planningActive = !_planningActive),
+                  onToggleActive: () =>
+                      setState(() => _planningActive = !_planningActive),
                   onFinalize: _finalizePlan,
                 ),
               ),
@@ -918,7 +998,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     final rawIndex = widget.settingsService.currentMapIndex;
     final currentId = favIds[rawIndex % favIds.length];
-    final source = availableSources.firstWhere((s) => s.id == currentId, orElse: () => availableSources.first);
+    final source = availableSources.firstWhere((s) => s.id == currentId,
+        orElse: () => availableSources.first);
 
     return TileLayer(
       urlTemplate: source.url,
@@ -935,6 +1016,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
 class _BottomControlBar extends StatelessWidget {
   final double opacity;
+  final bool reversePanels;
   final DisplayMode displayMode;
   final double? heading;
   final bool dynamicRotation;
@@ -945,7 +1027,7 @@ class _BottomControlBar extends StatelessWidget {
   final ({double lat, double lon})? measurePoint1;
   final ({double lat, double lon})? measurePoint2;
   final geo.Position? currentPosition;
-  
+
   final bool expanded;
   final double expandProgress;
   final bool showAllWaypoints;
@@ -960,7 +1042,7 @@ class _BottomControlBar extends StatelessWidget {
   final VoidCallback onZoomOut;
   final VoidCallback onValidatePoint;
   final VoidCallback onCancelMeasure;
-  
+
   final VoidCallback onToggleWaypoints;
   final VoidCallback onToggleGpx;
   final VoidCallback onToggleCompass;
@@ -973,6 +1055,7 @@ class _BottomControlBar extends StatelessWidget {
 
   const _BottomControlBar({
     required this.opacity,
+    required this.reversePanels,
     required this.displayMode,
     required this.heading,
     required this.dynamicRotation,
@@ -1007,9 +1090,154 @@ class _BottomControlBar extends StatelessWidget {
     required this.isRecording,
   });
 
+  // Inverse l'ordre horizontal des boutons en mode gaucher (reversePanels),
+  // pour rester cohérent avec l'inversion des volets latéraux : ce qui reste
+  // sur la même ligne, seule sa position gauche/droite change.
+  List<Widget> _reorder(List<Widget> children) =>
+      reversePanels ? children.reversed.toList() : children;
+
   @override
   Widget build(BuildContext context) {
     final double totalHeight = 80.0 + (expandProgress * 80.0);
+
+    final List<Widget> meshButtons = [
+      // Boutons spécifiques au mode MESH (sans icônes)
+      _RoundButton(
+        onPressed: onResegmentMesh,
+        child: const Text('RECALCULER',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.greenAccent,
+                fontSize: 8,
+                fontWeight: FontWeight.bold)),
+      ),
+      _RoundButton(
+        onPressed: onCreateTrace,
+        child: const Text('CRÉER TRACE',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.greenAccent,
+                fontSize: 8,
+                fontWeight: FontWeight.bold)),
+      ),
+      _RoundButton(
+        onPressed: onClearSelection,
+        child:
+            const Icon(Icons.layers_clear, color: Colors.redAccent, size: 20),
+      ),
+      _RoundButton(
+          onPressed: onZoomOut,
+          child: const Icon(Icons.remove, color: Colors.white70)),
+      _RoundButton(
+          onPressed: onZoomIn,
+          child: const Icon(Icons.add, color: Colors.white70)),
+    ];
+
+    final List<Widget> gpxButtons = [
+      // Boutons par défaut (mode GPX)
+      _RoundButton(
+        onPressed: onToggleRotation,
+        child: Transform.rotate(
+          angle: ((heading ?? 0) * (pi / 180) * -1),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 3, height: 12, color: Colors.red),
+                  Container(width: 3, height: 12, color: Colors.white),
+                ],
+              ),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      _RoundButton(
+          onPressed: onRecenter,
+          child: const Icon(Icons.my_location, color: Colors.white70)),
+      _RoundButton(
+        onPressed: onToggleLocation,
+        child: Text('GPS',
+            style: TextStyle(
+                color: locationActive ? Colors.blue : Colors.redAccent,
+                fontWeight: FontWeight.bold,
+                fontSize: 12)),
+      ),
+      _RoundButton(
+          onPressed: onCycleMap,
+          child: const Text('MAP',
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 10))),
+      _RoundButton(
+          onPressed: onZoomOut,
+          child: const Icon(Icons.remove, color: Colors.white70)),
+      _RoundButton(
+          onPressed: onZoomIn,
+          child: const Icon(Icons.add, color: Colors.white70)),
+    ];
+
+    final List<Widget> meshExpandedButtons = [
+      _RoundButton(
+          onPressed: onRecenter,
+          child: const Icon(Icons.my_location, color: Colors.white70)),
+      _RoundButton(
+          onPressed: onCycleMap,
+          child: const Text('MAP',
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 10))),
+      _RoundButton(
+          onPressed: onDeleteSelected,
+          child: const Icon(Icons.delete_outline, color: Colors.redAccent)),
+      _RoundButton(
+        onPressed: onToggleWaypoints,
+        child: Icon(Icons.location_on,
+            color: showAllWaypoints ? Colors.greenAccent : Colors.white38),
+      ),
+    ];
+
+    final List<Widget> gpxExpandedButtons = [
+      _RoundButton(
+        onPressed: onToggleWaypoints,
+        child: Icon(Icons.location_on,
+            color: showAllWaypoints ? Colors.greenAccent : Colors.white38),
+      ),
+      _RoundButton(
+        onPressed: onToggleGpx,
+        child: Text('GPX',
+            style: TextStyle(
+                color: showAllGpx ? Colors.greenAccent : Colors.white38,
+                fontWeight: FontWeight.bold,
+                fontSize: 12)),
+      ),
+      _RoundButton(
+        onPressed: onToggleRecording,
+        child: Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: Colors.red,
+            shape: isRecording ? BoxShape.rectangle : BoxShape.circle,
+          ),
+        ),
+      ),
+      _RoundButton(
+        onPressed: onToggleCompass,
+        child: const Icon(Icons.explore, color: Colors.white38),
+      ),
+    ];
 
     return Container(
       height: totalHeight,
@@ -1024,65 +1252,11 @@ class _BottomControlBar extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                if (measurementMode == MeasurementMode.none) ...[
-                  if (displayMode == DisplayMode.mesh) ...[
-                    // Boutons spécifiques au mode MESH (sans icônes)
-                    _RoundButton(
-                      onPressed: onResegmentMesh,
-                      child: const Text('RECALCULER', textAlign: TextAlign.center, style: TextStyle(color: Colors.greenAccent, fontSize: 8, fontWeight: FontWeight.bold)),
-                    ),
-                    _RoundButton(
-                      onPressed: onCreateTrace,
-                      child: const Text('CRÉER TRACE', textAlign: TextAlign.center, style: TextStyle(color: Colors.greenAccent, fontSize: 8, fontWeight: FontWeight.bold)),
-                    ),
-                    _RoundButton(
-                      onPressed: onClearSelection,
-                      child: const Icon(Icons.layers_clear, color: Colors.redAccent, size: 20),
-                    ),
-                    
-                    _RoundButton(onPressed: onZoomOut, child: const Icon(Icons.remove, color: Colors.white70)),
-                    _RoundButton(onPressed: onZoomIn, child: const Icon(Icons.add, color: Colors.white70)),
-                  ] else ...[
-                    // Boutons par défaut (mode GPX)
-                    _RoundButton(
-                      onPressed: onToggleRotation,
-                      child: Transform.rotate(
-                        angle: ((heading ?? 0) * (pi / 180) * -1),
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(width: 3, height: 12, color: Colors.red),
-                                Container(width: 3, height: 12, color: Colors.white),
-                              ],
-                            ),
-                            Container(
-                              width: 6, 
-                              height: 6, 
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle, 
-                                color: Colors.black,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    
-                    _RoundButton(onPressed: onRecenter, child: const Icon(Icons.my_location, color: Colors.white70)),
-
-                    _RoundButton(
-                      onPressed: onToggleLocation,
-                      child: Text('GPS', style: TextStyle(color: locationActive ? Colors.blue : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-                    ),
-
-                    _RoundButton(onPressed: onCycleMap, child: const Text('MAP', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 10))),
-                    _RoundButton(onPressed: onZoomOut, child: const Icon(Icons.remove, color: Colors.white70)),
-                    _RoundButton(onPressed: onZoomIn, child: const Icon(Icons.add, color: Colors.white70)),
-                  ],
-                ] else ...[
+                if (measurementMode == MeasurementMode.none)
+                  ..._reorder(displayMode == DisplayMode.mesh
+                      ? meshButtons
+                      : gpxButtons)
+                else ...[
                   IconButton(
                     onPressed: onCancelMeasure,
                     icon: const Icon(Icons.close, color: Colors.redAccent),
@@ -1096,20 +1270,23 @@ class _BottomControlBar extends StatelessWidget {
                     mapCenter: camera.center,
                   ),
                   const Spacer(),
-                  if (measurementMode == MeasurementMode.betweenPoints && measurePoint1 == null)
+                  if (measurementMode == MeasurementMode.betweenPoints &&
+                      measurePoint1 == null)
                     ElevatedButton.icon(
                       onPressed: onValidatePoint,
                       icon: const Icon(Icons.check),
                       label: const Text('VALIDER PT 1'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green),
                     ),
-                  if (measurementMode == MeasurementMode.betweenPoints && measurePoint1 != null)
-                    const SizedBox(width: 48), // Pour équilibrer le bouton Close
+                  if (measurementMode == MeasurementMode.betweenPoints &&
+                      measurePoint1 != null)
+                    const SizedBox(
+                        width: 48), // Pour équilibrer le bouton Close
                 ],
               ],
             ),
           ),
-
           if (expandProgress > 0)
             Opacity(
               opacity: expandProgress,
@@ -1117,39 +1294,9 @@ class _BottomControlBar extends StatelessWidget {
                 height: 80 * expandProgress,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    if (displayMode == DisplayMode.mesh) ...[
-                       _RoundButton(onPressed: onRecenter, child: const Icon(Icons.my_location, color: Colors.white70)),
-                       _RoundButton(onPressed: onCycleMap, child: const Text('MAP', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 10))),
-                       _RoundButton(onPressed: onDeleteSelected, child: const Icon(Icons.delete_outline, color: Colors.redAccent)),
-                    ],
-                    _RoundButton(
-                      onPressed: onToggleWaypoints,
-                      child: Icon(Icons.location_on, color: showAllWaypoints ? Colors.greenAccent : Colors.white38),
-                    ),
-                    if (displayMode == DisplayMode.gpx)
-                      _RoundButton(
-                        onPressed: onToggleGpx,
-                        child: Text('GPX', style: TextStyle(color: showAllGpx ? Colors.greenAccent : Colors.white38, fontWeight: FontWeight.bold, fontSize: 12)),
-                      ),
-                    if (displayMode == DisplayMode.gpx) ...[
-                      _RoundButton(
-                        onPressed: onToggleRecording,
-                        child: Container(
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            shape: isRecording ? BoxShape.rectangle : BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                      _RoundButton(
-                        onPressed: onToggleCompass,
-                        child: const Icon(Icons.explore, color: Colors.white38),
-                      ),
-                    ],
-                  ],
+                  children: _reorder(displayMode == DisplayMode.mesh
+                      ? meshExpandedButtons
+                      : gpxExpandedButtons),
                 ),
               ),
             ),
@@ -1166,7 +1313,12 @@ class _MeasurementLayer extends StatelessWidget {
   final geo.Position? currentPos;
   final LatLng mapCenter;
 
-  const _MeasurementLayer({required this.mode, this.p1, this.p2, this.currentPos, required this.mapCenter});
+  const _MeasurementLayer(
+      {required this.mode,
+      this.p1,
+      this.p2,
+      this.currentPos,
+      required this.mapCenter});
 
   @override
   Widget build(BuildContext context) {
@@ -1179,9 +1331,9 @@ class _MeasurementLayer extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final end = (mode == MeasurementMode.betweenPoints && p2 != null) 
-      ? LatLng(p2!.lat, p2!.lon) 
-      : mapCenter;
+    final end = (mode == MeasurementMode.betweenPoints && p2 != null)
+        ? LatLng(p2!.lat, p2!.lon)
+        : mapCenter;
 
     return PolylineLayer(
       polylines: [
@@ -1214,25 +1366,31 @@ class _ActiveTracesLayer extends StatelessWidget {
           valueListenable: viewModel.segments,
           builder: (context, segments, _) {
             final List<Polyline> polylines = [];
-            
+
             for (final trace in traces) {
               final List<LatLng> points = [];
               for (final entry in trace.segments) {
-                final segment = segments.firstWhereOrNull((s) => s.localUuid == entry.segmentUuid);
+                final segment = segments
+                    .firstWhereOrNull((s) => s.localUuid == entry.segmentUuid);
                 if (segment != null) {
-                  final segmentPoints = entry.traveledForward ? segment.points : segment.points.reversed;
-                  points.addAll(segmentPoints.map((p) => LatLng(p.latitude, p.longitude)));
+                  final segmentPoints = entry.traveledForward
+                      ? segment.points
+                      : segment.points.reversed;
+                  points.addAll(segmentPoints
+                      .map((p) => LatLng(p.latitude, p.longitude)));
                 }
               }
               if (points.isNotEmpty) {
                 polylines.add(Polyline(
                   points: points,
-                  color: trace.colorHex != null ? Color(trace.colorHex!) : Colors.red,
+                  color: trace.colorHex != null
+                      ? Color(trace.colorHex!)
+                      : Colors.red,
                   strokeWidth: 4,
                 ));
               }
             }
-            
+
             return PolylineLayer(polylines: polylines);
           },
         );
@@ -1243,7 +1401,7 @@ class _ActiveTracesLayer extends StatelessWidget {
 
 class _MeshLayer extends StatelessWidget {
   const _MeshLayer({
-    required this.viewModel, 
+    required this.viewModel,
     required this.selectedUuidsNotifier,
   });
 
@@ -1263,12 +1421,14 @@ class _MeshLayer extends StatelessWidget {
                 for (final segment in segments)
                   Polyline(
                     points: [
-                      for (final p in segment.points) LatLng(p.latitude, p.longitude),
+                      for (final p in segment.points)
+                        LatLng(p.latitude, p.longitude),
                     ],
-                    color: selectedUuids.contains(segment.localUuid) 
-                        ? Colors.greenAccent 
+                    color: selectedUuids.contains(segment.localUuid)
+                        ? Colors.greenAccent
                         : Colors.blue,
-                    strokeWidth: selectedUuids.contains(segment.localUuid) ? 5.0 : 2.5,
+                    strokeWidth:
+                        selectedUuids.contains(segment.localUuid) ? 5.0 : 2.5,
                   ),
               ],
             );
@@ -1362,7 +1522,7 @@ class _OsmPoisLayer extends StatelessWidget {
                       ..name = poi.name
                       ..latitude = poi.location.latitude
                       ..longitude = poi.location.longitude;
-                    
+
                     showDialog(
                       context: context,
                       barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -1373,8 +1533,10 @@ class _OsmPoisLayer extends StatelessWidget {
                     );
                   },
                   child: Container(
-                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
-                    child: const Icon(Icons.place, color: Colors.blueAccent, size: 16),
+                    decoration: const BoxDecoration(
+                        shape: BoxShape.circle, color: Colors.white),
+                    child: const Icon(Icons.place,
+                        color: Colors.blueAccent, size: 16),
                   ),
                 ),
               ),
@@ -1400,9 +1562,10 @@ class _MapScaleWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final center = camera.center;
     final zoom = camera.zoom;
-    final metersPerPixel = 156543.03392 * cos(center.latitude * pi / 180) / pow(2, zoom);
+    final metersPerPixel =
+        156543.03392 * cos(center.latitude * pi / 180) / pow(2, zoom);
     double targetMeters = 100 * metersPerPixel;
-    
+
     double scaleMeters;
     if (targetMeters < 10) {
       scaleMeters = 10;
@@ -1427,15 +1590,21 @@ class _MapScaleWidget extends StatelessWidget {
     }
 
     final widthPx = scaleMeters / metersPerPixel;
-    String label = unitSystem == UnitSystem.metric 
-      ? (scaleMeters >= 1000 ? "${(scaleMeters / 1000).round()} km" : "${scaleMeters.round()} m")
-      : (scaleMeters * 3.28084 >= 5280 ? "${(scaleMeters * 3.28084 / 5280).round()} mi" : "${(scaleMeters * 3.28084).round()} ft");
+    String label = unitSystem == UnitSystem.metric
+        ? (scaleMeters >= 1000
+            ? "${(scaleMeters / 1000).round()} km"
+            : "${scaleMeters.round()} m")
+        : (scaleMeters * 3.28084 >= 5280
+            ? "${(scaleMeters * 3.28084 / 5280).round()} mi"
+            : "${(scaleMeters * 3.28084).round()} ft");
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+        Text(label,
+            style: TextStyle(
+                color: color, fontSize: 10, fontWeight: FontWeight.bold)),
         const SizedBox(height: 2),
         Container(
           width: widthPx,
@@ -1479,17 +1648,22 @@ class _LocationMarkerLayer extends StatelessWidget {
                   if (heading != null)
                     Transform.rotate(
                       angle: (heading! * (pi / 180)),
-                      child: const Icon(Icons.navigation, color: Colors.blue, size: 30),
+                      child: const Icon(Icons.navigation,
+                          color: Colors.blue, size: 30),
                     )
                   else
                     Container(
-                      width: 18, height: 18,
+                      width: 18,
+                      height: 18,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.red,
                         border: Border.all(color: Colors.white, width: 3),
                         boxShadow: [
-                          BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 6, spreadRadius: 2)
+                          BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.4),
+                              blurRadius: 6,
+                              spreadRadius: 2)
                         ],
                       ),
                     ),
@@ -1508,7 +1682,8 @@ class _PulsingHalo extends StatefulWidget {
   State<_PulsingHalo> createState() => _PulsingHaloState();
 }
 
-class _PulsingHaloState extends State<_PulsingHalo> with SingleTickerProviderStateMixin {
+class _PulsingHaloState extends State<_PulsingHalo>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
@@ -1555,7 +1730,8 @@ class _LiveTrackLayer extends StatelessWidget {
       builder: (context, points, _) {
         if (points.length < 2) return const SizedBox.shrink();
 
-        final latLngs = points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        final latLngs =
+            points.map((p) => LatLng(p.latitude, p.longitude)).toList();
 
         return PolylineLayer(
           polylines: [
@@ -1611,7 +1787,7 @@ class _PlanningLayer extends StatelessWidget {
       builder: (context, _) {
         final pts = controller.points.value;
         if (pts.isEmpty) return const SizedBox.shrink();
-        
+
         return Stack(
           children: [
             PolylineLayer(
@@ -1632,7 +1808,9 @@ class _PlanningLayer extends StatelessWidget {
                     height: 12,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: i == 0 ? Colors.green : (i == pts.length - 1 ? Colors.red : Colors.white),
+                        color: i == 0
+                            ? Colors.green
+                            : (i == pts.length - 1 ? Colors.red : Colors.white),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.black, width: 1),
                       ),
@@ -1677,9 +1855,14 @@ class _PlanningControls extends StatelessWidget {
           FloatingActionButton.extended(
             onPressed: busy ? null : onFinalize,
             backgroundColor: Colors.greenAccent,
-            label: busy 
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('ENREGISTRER', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            label: busy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('ENREGISTRER',
+                    style: TextStyle(
+                        color: Colors.black, fontWeight: FontWeight.bold)),
             icon: const Icon(Icons.check, color: Colors.black),
           ),
           const SizedBox(width: 12),
@@ -1692,7 +1875,9 @@ class _PlanningControls extends StatelessWidget {
           FloatingActionButton.extended(
             onPressed: onToggleActive,
             backgroundColor: Colors.orangeAccent,
-            label: const Text('PLANIFIER', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            label: const Text('PLANIFIER',
+                style: TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.bold)),
             icon: const Icon(Icons.edit_road, color: Colors.black),
           ),
       ],
@@ -1723,18 +1908,21 @@ class _MeasurementInfo extends StatelessWidget {
     } else if (p1 != null) {
       start = LatLng(p1!.lat, p1!.lon);
     } else {
-      return const Text('Positionnez la croix', style: TextStyle(color: Colors.white38, fontSize: 12));
+      return const Text('Positionnez la croix',
+          style: TextStyle(color: Colors.white38, fontSize: 12));
     }
 
-    final end = (mode == MeasurementMode.betweenPoints && p2 != null) 
-      ? LatLng(p2!.lat, p2!.lon) 
-      : mapCenter;
+    final end = (mode == MeasurementMode.betweenPoints && p2 != null)
+        ? LatLng(p2!.lat, p2!.lon)
+        : mapCenter;
 
-    final dist = geo.Geolocator.distanceBetween(start.latitude, start.longitude, end.latitude, end.longitude);
-    final azimut = GeoUtils.bearingDegrees(start.latitude, start.longitude, end.latitude, end.longitude);
+    final dist = geo.Geolocator.distanceBetween(
+        start.latitude, start.longitude, end.latitude, end.longitude);
+    final azimut = GeoUtils.bearingDegrees(
+        start.latitude, start.longitude, end.latitude, end.longitude);
 
-    final distStr = dist >= 1000 
-        ? '${(dist / 1000).toStringAsFixed(2)} km' 
+    final distStr = dist >= 1000
+        ? '${(dist / 1000).toStringAsFixed(2)} km'
         : '${dist.round()} m';
 
     return Column(
@@ -1742,7 +1930,10 @@ class _MeasurementInfo extends StatelessWidget {
       children: [
         Text(
           distStr,
-          style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 16),
+          style: const TextStyle(
+              color: Colors.orangeAccent,
+              fontWeight: FontWeight.bold,
+              fontSize: 16),
         ),
         Text(
           'Azimut : ${azimut.toStringAsFixed(1)}°',
@@ -1794,9 +1985,11 @@ class _MapCreationMenu extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (step == MapCreationStep.selectOrigin)
-            const Text('Positionnez la croix sur le point de départ', style: TextStyle(color: Colors.white70)),
+            const Text('Positionnez la croix sur le point de départ',
+                style: TextStyle(color: Colors.white70)),
           if (step == MapCreationStep.stretchArea)
-            const Text('Éloignez-vous pour définir la zone', style: TextStyle(color: Colors.white70)),
+            const Text('Éloignez-vous pour définir la zone',
+                style: TextStyle(color: Colors.white70)),
           if (step == MapCreationStep.adjustArea) ...[
             const Padding(
               padding: EdgeInsets.only(bottom: 12),
@@ -1813,26 +2006,35 @@ class _MapCreationMenu extends StatelessWidget {
             children: [
               TextButton(
                 onPressed: () => settings.cancelMapCreation(),
-                child: const Text('ANNULER', style: TextStyle(color: Colors.white38)),
+                child: const Text('ANNULER',
+                    style: TextStyle(color: Colors.white38)),
               ),
               const Spacer(),
               if (step == MapCreationStep.selectOrigin)
                 ElevatedButton(
-                  onPressed: () => settings.validateOrigin(center.latitude, center.longitude),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
-                  child: const Text('VALIDER ORIGINE', style: TextStyle(color: Colors.black)),
+                  onPressed: () => settings.validateOrigin(
+                      center.latitude, center.longitude),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.greenAccent),
+                  child: const Text('VALIDER ORIGINE',
+                      style: TextStyle(color: Colors.black)),
                 ),
               if (step == MapCreationStep.stretchArea)
                 ElevatedButton(
-                  onPressed: () => settings.validateArea(center.latitude, center.longitude),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
-                  child: const Text('VALIDER ZONE', style: TextStyle(color: Colors.black)),
+                  onPressed: () =>
+                      settings.validateArea(center.latitude, center.longitude),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.greenAccent),
+                  child: const Text('VALIDER ZONE',
+                      style: TextStyle(color: Colors.black)),
                 ),
               if (step == MapCreationStep.adjustArea)
                 ElevatedButton(
                   onPressed: () => _showSaveDialog(context, settings),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
-                  child: const Text('ENREGISTRER', style: TextStyle(color: Colors.black)),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.greenAccent),
+                  child: const Text('ENREGISTRER',
+                      style: TextStyle(color: Colors.black)),
                 ),
             ],
           ),
@@ -1850,66 +2052,83 @@ class _MapCreationMenu extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Enregistrer la carte', style: TextStyle(color: Colors.white)),
+        title: const Text('Enregistrer la carte',
+            style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Nom', labelStyle: TextStyle(color: Colors.white70))),
-            TextField(controller: descController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'Description', labelStyle: TextStyle(color: Colors.white70))),
+            TextField(
+                controller: nameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                    labelText: 'Nom',
+                    labelStyle: TextStyle(color: Colors.white70))),
+            TextField(
+                controller: descController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                    labelText: 'Description',
+                    labelStyle: TextStyle(color: Colors.white70))),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
           TextButton(
-                onPressed: () async {
-                  if (nameController.text.isEmpty) return;
-                  final isar = context.read<IsarService>();
-                  final messenger = ScaffoldMessenger.of(context);
-                  
-                  final map = OfflineMap()
-                    ..localUuid = const Uuid().v4()
-                    ..name = nameController.text
-                    ..description = descController.text
-                    ..minLat = min(settings.mapOrigin!.lat, settings.mapTarget!.lat)
-                    ..maxLat = max(settings.mapOrigin!.lat, settings.mapTarget!.lat)
-                    ..minLon = min(settings.mapOrigin!.lon, settings.mapTarget!.lon)
-                    ..maxLon = max(settings.mapOrigin!.lon, settings.mapTarget!.lon)
-                    ..minZoom = settings.minZoomDownload
-                    ..maxZoom = settings.maxZoomDownload
-                    ..isDownloading = true
-                    ..downloadProgress = 0.05;
-                  
-                  await isar.saveOfflineMap(map);
-                  settings.cancelMapCreation();
-                  if (context.mounted) Navigator.pop(context);
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ANNULER')),
+          TextButton(
+            onPressed: () async {
+              if (nameController.text.isEmpty) return;
+              final isar = context.read<IsarService>();
+              final messenger = ScaffoldMessenger.of(context);
 
-                  messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('Carte enregistrée', textAlign: TextAlign.center),
-                      duration: Duration(seconds: 2),
-                      behavior: SnackBarBehavior.floating,
-                      margin: EdgeInsets.symmetric(horizontal: 100, vertical: 200),
-                    ),
-                  );
+              final map = OfflineMap()
+                ..localUuid = const Uuid().v4()
+                ..name = nameController.text
+                ..description = descController.text
+                ..minLat = min(settings.mapOrigin!.lat, settings.mapTarget!.lat)
+                ..maxLat = max(settings.mapOrigin!.lat, settings.mapTarget!.lat)
+                ..minLon = min(settings.mapOrigin!.lon, settings.mapTarget!.lon)
+                ..maxLon = max(settings.mapOrigin!.lon, settings.mapTarget!.lon)
+                ..minZoom = settings.minZoomDownload
+                ..maxZoom = settings.maxZoomDownload
+                ..isDownloading = true
+                ..downloadProgress = 0.05;
 
-                  Future.delayed(const Duration(seconds: 5), () async {
-                    map.isDownloading = false;
-                    map.downloadProgress = 1.0;
-                    map.sizeBytes = 25 * 1024 * 1024;
-                    await isar.saveOfflineMap(map);
-                    
-                    messenger.showSnackBar(
-                      const SnackBar(
-                        content: Text('Le téléchargement de votre carte est terminé', textAlign: TextAlign.center),
-                        duration: Duration(seconds: 2),
-                        behavior: SnackBarBehavior.floating,
-                        margin: EdgeInsets.symmetric(horizontal: 50, vertical: 200),
-                      ),
-                    );
-                  });
-                },
-                child: const Text('VALIDER', style: TextStyle(color: Colors.greenAccent)),
-              ),
+              await isar.saveOfflineMap(map);
+              settings.cancelMapCreation();
+              if (context.mounted) Navigator.pop(context);
+
+              messenger.showSnackBar(
+                const SnackBar(
+                  content:
+                      Text('Carte enregistrée', textAlign: TextAlign.center),
+                  duration: Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                  margin: EdgeInsets.symmetric(horizontal: 100, vertical: 200),
+                ),
+              );
+
+              Future.delayed(const Duration(seconds: 5), () async {
+                map.isDownloading = false;
+                map.downloadProgress = 1.0;
+                map.sizeBytes = 25 * 1024 * 1024;
+                await isar.saveOfflineMap(map);
+
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Le téléchargement de votre carte est terminé',
+                        textAlign: TextAlign.center),
+                    duration: Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                    margin: EdgeInsets.symmetric(horizontal: 50, vertical: 200),
+                  ),
+                );
+              });
+            },
+            child: const Text('VALIDER',
+                style: TextStyle(color: Colors.greenAccent)),
+          ),
         ],
       ),
     );
@@ -1929,21 +2148,25 @@ class _AdjustmentArrows extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _ArrowBtn(icon: Icons.arrow_upward, onTap: () => onAdjust(0.001, 0)),
+              _ArrowBtn(
+                  icon: Icons.arrow_upward, onTap: () => onAdjust(0.001, 0)),
             ],
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _ArrowBtn(icon: Icons.arrow_back, onTap: () => onAdjust(0, -0.001)),
+              _ArrowBtn(
+                  icon: Icons.arrow_back, onTap: () => onAdjust(0, -0.001)),
               const SizedBox(width: 40),
-              _ArrowBtn(icon: Icons.arrow_forward, onTap: () => onAdjust(0, 0.001)),
+              _ArrowBtn(
+                  icon: Icons.arrow_forward, onTap: () => onAdjust(0, 0.001)),
             ],
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _ArrowBtn(icon: Icons.arrow_downward, onTap: () => onAdjust(-0.001, 0)),
+              _ArrowBtn(
+                  icon: Icons.arrow_downward, onTap: () => onAdjust(-0.001, 0)),
             ],
           ),
         ],
@@ -1975,9 +2198,9 @@ class _MapCreationOverlay extends StatelessWidget {
   final Function(double, double, {bool fromOrigin}) onAdjust;
 
   const _MapCreationOverlay({
-    required this.step, 
-    this.origin, 
-    this.target, 
+    required this.step,
+    this.origin,
+    this.target,
     required this.camera,
     required this.onAdjust,
   });
@@ -1987,14 +2210,16 @@ class _MapCreationOverlay extends StatelessWidget {
     if (origin == null) return const SizedBox.shrink();
 
     final p1 = camera.latLngToScreenPoint(LatLng(origin!.lat, origin!.lon));
-    final p2 = target != null 
+    final p2 = target != null
         ? camera.latLngToScreenPoint(LatLng(target!.lat, target!.lon))
         : camera.latLngToScreenPoint(camera.center);
 
     return IgnorePointer(
       child: CustomPaint(
         size: Size.infinite,
-        painter: _CreationPainter(p1: Offset(p1.x.toDouble(), p1.y.toDouble()), p2: Offset(p2.x.toDouble(), p2.y.toDouble())),
+        painter: _CreationPainter(
+            p1: Offset(p1.x.toDouble(), p1.y.toDouble()),
+            p2: Offset(p2.x.toDouble(), p2.y.toDouble())),
       ),
     );
   }
@@ -2008,28 +2233,35 @@ class _CreationPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromPoints(p1, p2);
-    
-    canvas.drawRect(
-      rect, 
-      Paint()..color = Colors.greenAccent.withValues(alpha: 0.3)..style = PaintingStyle.fill
-    );
 
     canvas.drawRect(
-      rect, 
-      Paint()..color = Colors.greenAccent..style = PaintingStyle.stroke..strokeWidth = 2
-    );
+        rect,
+        Paint()
+          ..color = Colors.greenAccent.withValues(alpha: 0.3)
+          ..style = PaintingStyle.fill);
 
-    final backgroundPath = ui.Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..color = Colors.greenAccent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2);
+
+    final backgroundPath = ui.Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
     final holePath = ui.Path()..addRect(rect);
-    
+
     canvas.drawPath(
-      ui.Path.combine(ui.PathOperation.difference, backgroundPath, holePath),
-      Paint()..color = Colors.black45
-    );
+        ui.Path.combine(ui.PathOperation.difference, backgroundPath, holePath),
+        Paint()..color = Colors.black45);
   }
 
   @override
-  bool shouldRepaint(_CreationPainter oldDelegate) => p1.dx != oldDelegate.p1.dx || p1.dy != oldDelegate.p1.dy || p2.dx != oldDelegate.p2.dx || p2.dy != oldDelegate.p2.dy;
+  bool shouldRepaint(_CreationPainter oldDelegate) =>
+      p1.dx != oldDelegate.p1.dx ||
+      p1.dy != oldDelegate.p1.dy ||
+      p2.dx != oldDelegate.p2.dx ||
+      p2.dy != oldDelegate.p2.dy;
 }
 
 class _ZoomRangeSelector extends StatelessWidget {
@@ -2050,20 +2282,24 @@ class _ZoomRangeSelector extends StatelessWidget {
     return Column(
       children: [
         Text(
-          "Niveaux de zoom à télécharger (${settings.minZoomDownload} - ${settings.maxZoomDownload})", 
-          style: const TextStyle(color: Colors.white70, fontSize: 10)
-        ),
+            "Niveaux de zoom à télécharger (${settings.minZoomDownload} - ${settings.maxZoomDownload})",
+            style: const TextStyle(color: Colors.white70, fontSize: 10)),
         const SizedBox(height: 4),
         Text(
           "Estimation : ~$estSizeMb MB",
-          style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+              color: Colors.greenAccent,
+              fontSize: 12,
+              fontWeight: FontWeight.bold),
         ),
         RangeSlider(
-          values: RangeValues(settings.minZoomDownload.toDouble(), settings.maxZoomDownload.toDouble()),
+          values: RangeValues(settings.minZoomDownload.toDouble(),
+              settings.maxZoomDownload.toDouble()),
           min: 0,
           max: 18,
           divisions: 18,
-          labels: RangeLabels(settings.minZoomDownload.toString(), settings.maxZoomDownload.toString()),
+          labels: RangeLabels(settings.minZoomDownload.toString(),
+              settings.maxZoomDownload.toString()),
           activeColor: Colors.greenAccent,
           onChanged: (values) {
             settings.setZoomRange(values.start.round(), values.end.round());

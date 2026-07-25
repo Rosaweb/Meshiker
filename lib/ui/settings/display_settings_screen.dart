@@ -13,7 +13,7 @@ class DisplaySettingsScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Affichage et Unités'),
+          title: const Text('Paramètres d\'affichage'),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,

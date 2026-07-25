@@ -45,7 +45,8 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
-  static const _gestureExclusionChannel = MethodChannel('meshiker/system_gestures');
+  static const _gestureExclusionChannel =
+      MethodChannel('meshiker/system_gestures');
 
   bool _showOnboarding = false;
 
@@ -55,10 +56,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   @override
   void initState() {
     super.initState();
-    
+
     final isReversed = widget.settingsService.reversePanels;
     _targetScroll = isReversed ? 2.0 : 1.0;
-    
+
     _scrollController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -114,7 +115,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     final rightInsetPx = (systemInsets.right * dpr).round();
     final heightPx = size.height.round();
     final rects = [
-      {'left': leftInsetPx, 'top': 0, 'right': leftInsetPx + widthPx, 'bottom': heightPx},
+      {
+        'left': leftInsetPx,
+        'top': 0,
+        'right': leftInsetPx + widthPx,
+        'bottom': heightPx
+      },
       {
         'left': (size.width.round() - rightInsetPx - widthPx),
         'top': 0,
@@ -122,7 +128,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         'bottom': heightPx,
       },
     ];
-    _gestureExclusionChannel.invokeMethod('setExclusionRects', rects).catchError((_) {});
+    _gestureExclusionChannel
+        .invokeMethod('setExclusionRects', rects)
+        .catchError((_) {});
   }
 
   Future<void> _checkFirstRun() async {
@@ -141,18 +149,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   void _handleDragEnd() {
     _targetScroll = _scrollController.value.round().toDouble();
-    _scrollController.animateTo(
-      _targetScroll,
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut
-    );
+    _scrollController.animateTo(_targetScroll,
+        duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer2<SettingsService, List<ConnectivityResult>>(
       builder: (context, settings, connectivity, _) {
-        final isOffline = connectivity.contains(ConnectivityResult.none) || connectivity.isEmpty;
+        final isOffline = connectivity.contains(ConnectivityResult.none) ||
+            connectivity.isEmpty;
         final screenWidth = MediaQuery.of(context).size.width;
         final isReversed = settings.reversePanels;
         final systemGestureInsets = MediaQuery.of(context).systemGestureInsets;
@@ -185,20 +191,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 settingsService: widget.settingsService,
                 recordingService: widget.recordingService,
                 ownerUuid: widget.ownerUuid,
+                panelScrollAnimation: _scrollController,
+                mapPageIndex: mapIndex,
               ),
 
               if (isOffline)
                 IgnorePointer(
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(30),
                       ),
                       child: const Text(
                         'En attente de connexion',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
@@ -224,13 +234,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                         if (index == mapIndex) return const SizedBox.shrink();
 
                         final offset = index - scroll;
-                        if (offset <= -1.0 || offset >= 1.0) return const SizedBox.shrink();
+                        if (offset <= -1.0 || offset >= 1.0)
+                          return const SizedBox.shrink();
 
                         return Positioned.fill(
                           left: offset * screenWidth,
                           right: -offset * screenWidth,
                           child: Container(
-                            color: Colors.black.withValues(alpha: settings.barOpacity),
+                            color: Colors.black
+                                .withValues(alpha: settings.barOpacity),
                             child: pages[index],
                           ),
                         );
@@ -252,25 +264,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                       // Zone Gauche (décalée au-delà de la bande réservée par
                       // l'OS pour son geste "retour" - cf. _updateGestureExclusion)
                       Positioned(
-                        left: systemGestureInsets.left, top: 0, bottom: 0,
+                        left: systemGestureInsets.left,
+                        top: 0,
+                        bottom: 0,
                         width: isAtMap
                             ? settings.edgeSwipeWidth
                             : screenWidth * 0.5 - systemGestureInsets.left,
                         child: GestureDetector(
                           behavior: HitTestBehavior.translucent,
-                          onHorizontalDragUpdate: (details) => _handleDrag(details, screenWidth),
+                          onHorizontalDragUpdate: (details) =>
+                              _handleDrag(details, screenWidth),
                           onHorizontalDragEnd: (_) => _handleDragEnd(),
                         ),
                       ),
                       // Zone Droite
                       Positioned(
-                        right: systemGestureInsets.right, top: 0, bottom: 0,
+                        right: systemGestureInsets.right,
+                        top: 0,
+                        bottom: 0,
                         width: isAtMap
                             ? settings.edgeSwipeWidth
                             : screenWidth * 0.5 - systemGestureInsets.right,
                         child: GestureDetector(
                           behavior: HitTestBehavior.translucent,
-                          onHorizontalDragUpdate: (details) => _handleDrag(details, screenWidth),
+                          onHorizontalDragUpdate: (details) =>
+                              _handleDrag(details, screenWidth),
                           onHorizontalDragEnd: (_) => _handleDragEnd(),
                         ),
                       ),
@@ -303,26 +321,49 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           icon: const Icon(Icons.close),
           onPressed: () {
             _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-            _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+            _scrollController.animateTo(_targetScroll,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut);
           },
         ),
       ),
       body: ListView(
         children: [
-          _buildSettingsTile(icon: Icons.account_circle_outlined, title: 'Mon compte', subtitle: 'Gérer mon abonnement',
+          _buildSettingsTile(
+              icon: Icons.account_circle_outlined,
+              title: 'Mon compte',
+              subtitle: 'Gérer mon abonnement',
               onTap: () => _pushSettings(const AccountSettingsScreen())),
           const Divider(color: Colors.white12),
-          _buildSettingsTile(icon: Icons.settings_suggest_outlined, title: 'Paramètres système', subtitle: 'Stockage GPX, Cache des cartes',
+          _buildSettingsTile(
+              icon: Icons.settings_suggest_outlined,
+              title: 'Paramètres système',
+              subtitle: 'Stockage GPX, Cache des cartes',
               onTap: () => _pushSettings(const SystemSettingsScreen())),
-          _buildSettingsTile(icon: Icons.display_settings, title: 'Paramètres d\'affichage', subtitle: 'Transparence, échelle',
+          _buildSettingsTile(
+              icon: Icons.display_settings,
+              title: 'Paramètres d\'affichage',
+              subtitle: 'Transparence, échelle',
               onTap: () => _pushSettings(const DisplaySettingsScreen())),
-          _buildSettingsTile(icon: Icons.map_outlined, title: 'Mes cartes', subtitle: 'Sélectionner vos favoris',
+          _buildSettingsTile(
+              icon: Icons.map_outlined,
+              title: 'Mes cartes',
+              subtitle: 'Sélectionner vos favoris',
               onTap: () => _pushSettings(const MapsSettingsScreen())),
-          _buildSettingsTile(icon: Icons.route_outlined, title: 'Track Manager', subtitle: 'Gérer vos pistes GPX',
+          _buildSettingsTile(
+              icon: Icons.route_outlined,
+              title: 'Track Manager',
+              subtitle: 'Gérer vos pistes GPX',
               onTap: () => _pushSettings(const TrackManagerScreen())),
-          _buildSettingsTile(icon: Icons.location_on_outlined, title: 'Waypoint Manager', subtitle: 'Gérer vos waypoints',
+          _buildSettingsTile(
+              icon: Icons.location_on_outlined,
+              title: 'Waypoint Manager',
+              subtitle: 'Gérer vos waypoints',
               onTap: () => _pushSettings(const WaypointManagerScreen())),
-          _buildSettingsTile(icon: Icons.timeline_outlined, title: 'Mesh manager', subtitle: 'Gérer les segments',
+          _buildSettingsTile(
+              icon: Icons.timeline_outlined,
+              title: 'Mesh manager',
+              subtitle: 'Gérer les segments',
               onTap: () => _pushSettings(const SegmentManagerScreen())),
           const Divider(color: Colors.white12),
           Padding(
@@ -330,7 +371,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('MODE D\'AFFICHAGE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                const Text('MODE D\'AFFICHAGE',
+                    style: TextStyle(
+                        color: Colors.greenAccent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
                 _buildDisplayModeSelector(settings),
               ],
@@ -345,23 +390,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Navigation'), 
-        backgroundColor: Colors.transparent, 
-        elevation: 0, 
+        title: const Text('Navigation'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         foregroundColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () {
             _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-            _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+            _scrollController.animateTo(_targetScroll,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut);
           },
         ),
         actions: [
           IconButton(
-            icon: Icon(settings.reversePanels ? Icons.arrow_back : Icons.arrow_forward),
+            icon: Icon(settings.reversePanels
+                ? Icons.arrow_back
+                : Icons.arrow_forward),
             onPressed: () {
               _targetScroll = settings.reversePanels ? 0.0 : 3.0;
-              _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+              _scrollController.animateTo(_targetScroll,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut);
             },
           ),
         ],
@@ -373,36 +424,65 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           const SizedBox(height: 24),
           const Divider(color: Colors.white24),
           if (settings.navShowNextWaypoint) ...[
-            _buildNavSection('PROCHAIN WAYPOINT', Colors.greenAccent, widget.recordingService.nextWaypoint, widget.recordingService.distanceToNextWaypointMeters, true),
+            _buildNavSection(
+                'PROCHAIN WAYPOINT',
+                Colors.greenAccent,
+                widget.recordingService.nextWaypoint,
+                widget.recordingService.distanceToNextWaypointMeters,
+                true),
             const SizedBox(height: 24),
           ],
           if (settings.navShowDestination) ...[
-            _buildNavSection('DESTINATION', Colors.blueAccent, widget.recordingService.destinationWaypoint, widget.recordingService.distanceToDestinationMeters, false),
+            _buildNavSection(
+                'DESTINATION',
+                Colors.blueAccent,
+                widget.recordingService.destinationWaypoint,
+                widget.recordingService.distanceToDestinationMeters,
+                false),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () {
                 widget.settingsService.setWaypointSelectionMode(true);
                 _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-                _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                _scrollController.animateTo(_targetScroll,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut);
               },
-              icon: const Icon(Icons.navigation), label: const Text('Choisir un point'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.white10, foregroundColor: Colors.white),
+              icon: const Icon(Icons.navigation),
+              label: const Text('Choisir un point'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white10,
+                  foregroundColor: Colors.white),
             ),
             const Divider(color: Colors.white24, height: 40),
           ],
           if (settings.navShowMeasureTools) ...[
-            const Text('AZIMUT ET DISTANCE', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+            const Text('AZIMUT ET DISTANCE',
+                style: TextStyle(
+                    color: Colors.orangeAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            _buildMeasureButton(context, label: 'Depuis ma position GPS', icon: Icons.gps_fixed, onPressed: () {
-              widget.settingsService.setMeasurementMode(MeasurementMode.fromGps);
+            _buildMeasureButton(context,
+                label: 'Depuis ma position GPS',
+                icon: Icons.gps_fixed, onPressed: () {
+              widget.settingsService
+                  .setMeasurementMode(MeasurementMode.fromGps);
               _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-              _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+              _scrollController.animateTo(_targetScroll,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut);
             }),
             const SizedBox(height: 8),
-            _buildMeasureButton(context, label: 'Entre deux points', icon: Icons.straighten, onPressed: () {
-              widget.settingsService.setMeasurementMode(MeasurementMode.betweenPoints);
+            _buildMeasureButton(context,
+                label: 'Entre deux points',
+                icon: Icons.straighten, onPressed: () {
+              widget.settingsService
+                  .setMeasurementMode(MeasurementMode.betweenPoints);
               _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-              _scrollController.animateTo(_targetScroll, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+              _scrollController.animateTo(_targetScroll,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut);
             }),
             const Divider(color: Colors.white24, height: 40),
           ],
@@ -411,21 +491,38 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 
-  Widget _buildNavSection(String label, Color color, ValueNotifier<Waypoint?> wpNotifier, ValueNotifier<double> distNotifier, bool isNext) {
+  Widget _buildNavSection(
+      String label,
+      Color color,
+      ValueNotifier<Waypoint?> wpNotifier,
+      ValueNotifier<double> distNotifier,
+      bool isNext) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+      Text(label,
+          style: TextStyle(
+              color: color, fontSize: 12, fontWeight: FontWeight.bold)),
       const SizedBox(height: 8),
       ValueListenableBuilder<Waypoint?>(
           valueListenable: wpNotifier,
           builder: (context, wp, _) {
-            if (wp == null) return (isNext ? const Text('Aucun point', style: TextStyle(color: Colors.white38)) : const SizedBox.shrink());
+            if (wp == null)
+              return (isNext
+                  ? const Text('Aucun point',
+                      style: TextStyle(color: Colors.white38))
+                  : const SizedBox.shrink());
             return ValueListenableBuilder<double>(
               valueListenable: distNotifier,
               builder: (context, dist, _) {
-                final speed = widget.recordingService.averageSpeedGlobalMps.value;
-                final eta = (speed > 0.5)
-                    ? _formatDuration(dist / speed) : '--:--';
-                return _buildNavigationInfo(name: wp.name, type: wp.category.value?.name ?? 'Point', distance: _formatDistance(dist), eta: eta, isNext: isNext);
+                final speed =
+                    widget.recordingService.averageSpeedGlobalMps.value;
+                final eta =
+                    (speed > 0.5) ? _formatDuration(dist / speed) : '--:--';
+                return _buildNavigationInfo(
+                    name: wp.name,
+                    type: wp.category.value?.name ?? 'Point',
+                    distance: _formatDistance(dist),
+                    eta: eta,
+                    isNext: isNext);
               },
             );
           }),
@@ -435,48 +532,63 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   Widget _buildLiveStatsGrid(SettingsService settings) {
     final recording = widget.recordingService;
     return GridView.count(
-      shrinkWrap: true, 
-      physics: const NeverScrollableScrollPhysics(), 
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       crossAxisCount: 3,
-      mainAxisSpacing: 10, 
+      mainAxisSpacing: 10,
       crossAxisSpacing: 10,
       childAspectRatio: 0.9,
       children: [
         if (settings.navShowSpeed)
-          AnimatedBuilder(animation: Listenable.merge([recording.currentSpeedMps, recording.averageSpeedDailyMps, recording.averageSpeedGlobalMps]), builder: (context, _) => _buildSpeedCard()),
-        
+          AnimatedBuilder(
+              animation: Listenable.merge([
+                recording.currentSpeedMps,
+                recording.averageSpeedDailyMps,
+                recording.averageSpeedGlobalMps
+              ]),
+              builder: (context, _) => _buildSpeedCard()),
         if (settings.navShowDailyDist)
-          ValueListenableBuilder<double>(valueListenable: recording.dailyDistanceMeters, builder: (context, dist, _) => _buildStatCard('Aujourd\'hui', _formatDistanceKm(dist), Icons.today)),
-        
+          ValueListenableBuilder<double>(
+              valueListenable: recording.dailyDistanceMeters,
+              builder: (context, dist, _) => _buildStatCard(
+                  'Aujourd\'hui', _formatDistanceKm(dist), Icons.today)),
         if (settings.navShowGpsAccuracy)
-          ValueListenableBuilder<double>(valueListenable: recording.gpsAccuracyMeters, builder: (context, acc, _) => _buildStatCard('Précision GPS', '${acc.round()} m', Icons.satellite_alt)),
-        
+          ValueListenableBuilder<double>(
+              valueListenable: recording.gpsAccuracyMeters,
+              builder: (context, acc, _) => _buildStatCard(
+                  'Précision GPS', '${acc.round()} m', Icons.satellite_alt)),
         if (settings.navShowTraceDist)
-          ValueListenableBuilder<double>(valueListenable: recording.trackDistanceDoneMeters, builder: (context, done, _) =>
-              ValueListenableBuilder<double>(valueListenable: recording.trackDistanceRemainingMeters, builder: (context, rem, _) =>
-                  _buildStatCard('Trace', '${_formatDistanceKm(done)} parc.\n${_formatDistanceKm(rem)} rest.', Icons.route, multiLine: true))),
-        
+          ValueListenableBuilder<double>(
+              valueListenable: recording.trackDistanceDoneMeters,
+              builder: (context, done, _) => ValueListenableBuilder<double>(
+                  valueListenable: recording.trackDistanceRemainingMeters,
+                  builder: (context, rem, _) => _buildStatCard(
+                      'Trace',
+                      '${_formatDistanceKm(done)} parc.\n${_formatDistanceKm(rem)} rest.',
+                      Icons.route,
+                      multiLine: true))),
         if (settings.navShowPedometer)
-          AnimatedBuilder(animation: widget.pedometerService, builder: (context, _) =>
-              _buildStatCard('Podomètre', '${widget.pedometerService.steps}', Icons.directions_walk, isActive: widget.pedometerService.isActive, onTap: () => widget.pedometerService.togglePedometer())),
-        
+          AnimatedBuilder(
+              animation: widget.pedometerService,
+              builder: (context, _) => _buildStatCard('Podomètre',
+                  '${widget.pedometerService.steps}', Icons.directions_walk,
+                  isActive: widget.pedometerService.isActive,
+                  onTap: () => widget.pedometerService.togglePedometer())),
         if (settings.navShowSatellites)
           ValueListenableBuilder<String>(
-            valueListenable: recording.gpsStatus, 
-            builder: (context, status, _) => _buildStatCard(
-              'Satellites', 
-              status, 
-              Icons.satellite_alt, 
-              multiLine: status.contains('\n'),
-              onTap: () => _showSatelliteDetails(context),
-            )
-          ),
-        
+              valueListenable: recording.gpsStatus,
+              builder: (context, status, _) => _buildStatCard(
+                    'Satellites',
+                    status,
+                    Icons.satellite_alt,
+                    multiLine: status.contains('\n'),
+                    onTap: () => _showSatelliteDetails(context),
+                  )),
         ValueListenableBuilder<String>(
           valueListenable: recording.solarTimes,
           builder: (context, times, _) => _buildStatCard(
-            'Soleil', 
-            times, 
+            'Soleil',
+            times,
             Icons.wb_sunny_outlined,
             multiLine: true,
           ),
@@ -500,19 +612,25 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Satellites détectés', style: TextStyle(color: Colors.white)),
+        title: const Text('Satellites détectés',
+            style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: breakdown.entries.map((e) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
-            child: Text('${e.key}: ${e.value}', style: const TextStyle(color: Colors.white70, fontSize: 16)),
-          )).toList(),
+          children: breakdown.entries
+              .map((e) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: Text('${e.key}: ${e.value}',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 16)),
+                  ))
+              .toList(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('FERMER', style: TextStyle(color: Colors.greenAccent)),
+            child: const Text('FERMER',
+                style: TextStyle(color: Colors.greenAccent)),
           ),
         ],
       ),
@@ -523,21 +641,43 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     final recording = widget.recordingService;
     return Container(
       padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white10)),
+      decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white10)),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, 
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(children: [Icon(Icons.speed, color: Colors.greenAccent, size: 14), SizedBox(width: 4), Text('Vitesse', style: TextStyle(color: Colors.white38, fontSize: 10))]),
+          const Row(children: [
+            Icon(Icons.speed, color: Colors.greenAccent, size: 14),
+            SizedBox(width: 4),
+            Text('Vitesse',
+                style: TextStyle(color: Colors.white38, fontSize: 10))
+          ]),
           Expanded(
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(_formatSpeed(recording.currentSpeedMps.value), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(_formatSpeed(recording.currentSpeedMps.value),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold)),
                   const SizedBox(height: 2),
-                  Text('Jour: ${_formatSpeed(recording.averageSpeedDailyMps.value)}', style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
-                  Text('Gén.: ${_formatSpeed(recording.averageSpeedGlobalMps.value)}', style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
+                  Text(
+                      'Jour: ${_formatSpeed(recording.averageSpeedDailyMps.value)}',
+                      style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500)),
+                  Text(
+                      'Gén.: ${_formatSpeed(recording.averageSpeedGlobalMps.value)}',
+                      style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500)),
                 ],
               ),
             ),
@@ -547,27 +687,41 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon, {bool isActive = false, VoidCallback? onTap, bool multiLine = false}) {
+  Widget _buildStatCard(String label, String value, IconData icon,
+      {bool isActive = false, VoidCallback? onTap, bool multiLine = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: isActive ? Colors.greenAccent : Colors.white10, width: isActive ? 2.0 : 1.0)),
+        decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: isActive ? Colors.greenAccent : Colors.white10,
+                width: isActive ? 2.0 : 1.0)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Icon(icon, color: isActive ? Colors.greenAccent : Colors.white38, size: 14), const SizedBox(width: 4), Expanded(child: Text(label, style: TextStyle(color: isActive ? Colors.greenAccent : Colors.white38, fontSize: 10), overflow: TextOverflow.ellipsis))]),
+          Row(children: [
+            Icon(icon,
+                color: isActive ? Colors.greenAccent : Colors.white38,
+                size: 14),
+            const SizedBox(width: 4),
+            Expanded(
+                child: Text(label,
+                    style: TextStyle(
+                        color: isActive ? Colors.greenAccent : Colors.white38,
+                        fontSize: 10),
+                    overflow: TextOverflow.ellipsis))
+          ]),
           Expanded(
             child: Center(
               child: FittedBox(
                 fit: BoxFit.scaleDown,
-                child: Text(
-                  value, 
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white, 
-                    fontSize: multiLine ? 11 : 16, 
-                    fontWeight: FontWeight.bold
-                  )
-                ),
+                child: Text(value,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: multiLine ? 11 : 16,
+                        fontWeight: FontWeight.bold)),
               ),
             ),
           ),
@@ -576,8 +730,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 
-  String _formatSpeed(double mps) => widget.settingsService.unitSystem == UnitSystem.metric ? (mps * 3.6).toStringAsFixed(1) : (mps * 2.23694).toStringAsFixed(1);
-  String _formatDistance(double m) => widget.settingsService.unitSystem == UnitSystem.metric ? (m >= 1000 ? '${(m / 1000).toStringAsFixed(1)} km' : '${m.round()} m') : (m * 3.28084 >= 5280 ? '${(m * 3.28084 / 5280).toStringAsFixed(1)} mi' : '${(m * 3.28084).round()} ft');
+  String _formatSpeed(double mps) =>
+      widget.settingsService.unitSystem == UnitSystem.metric
+          ? (mps * 3.6).toStringAsFixed(1)
+          : (mps * 2.23694).toStringAsFixed(1);
+  String _formatDistance(double m) => widget.settingsService.unitSystem ==
+          UnitSystem.metric
+      ? (m >= 1000 ? '${(m / 1000).toStringAsFixed(1)} km' : '${m.round()} m')
+      : (m * 3.28084 >= 5280
+          ? '${(m * 3.28084 / 5280).toStringAsFixed(1)} mi'
+          : '${(m * 3.28084).round()} ft');
   String _formatDistanceKm(double m) {
     if (widget.settingsService.unitSystem == UnitSystem.metric) {
       return '${(m / 1000).toStringAsFixed(2)} km';
@@ -585,23 +747,85 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       return '${(m * 0.000621371).toStringAsFixed(2)} mi';
     }
   }
-  String _formatDuration(double seconds) { if (seconds.isInfinite || seconds.isNaN || seconds < 0) return '--:--'; final d = Duration(seconds: seconds.round()); final h = d.inHours; final m = d.inMinutes.remainder(60); return h > 0 ? '${h}h ${m.toString().padLeft(2, '0')}m' : '${m}m'; }
 
-  Widget _buildNavigationInfo({required String name, required String type, required String distance, required String eta, required bool isNext}) {
+  String _formatDuration(double seconds) {
+    if (seconds.isInfinite || seconds.isNaN || seconds < 0) return '--:--';
+    final d = Duration(seconds: seconds.round());
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    return h > 0 ? '${h}h ${m.toString().padLeft(2, '0')}m' : '${m}m';
+  }
+
+  Widget _buildNavigationInfo(
+      {required String name,
+      required String type,
+      required String distance,
+      required String eta,
+      required bool isNext}) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(8), border: Border.all(color: isNext ? Colors.greenAccent.withValues(alpha: 0.2) : Colors.blueAccent.withValues(alpha: 0.2))),
+      decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: isNext
+                  ? Colors.greenAccent.withValues(alpha: 0.2)
+                  : Colors.blueAccent.withValues(alpha: 0.2))),
       child: Row(children: [
-        Icon(isNext ? Icons.redo : Icons.flag, color: isNext ? Colors.greenAccent : Colors.blueAccent),
+        Icon(isNext ? Icons.redo : Icons.flag,
+            color: isNext ? Colors.greenAccent : Colors.blueAccent),
         const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), Text(type, style: const TextStyle(color: Colors.white38, fontSize: 12))])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(distance, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)), Text(eta, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold))]),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold)),
+          Text(type,
+              style: const TextStyle(color: Colors.white38, fontSize: 12))
+        ])),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(distance,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16)),
+          Text(eta,
+              style: const TextStyle(
+                  color: Colors.orangeAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold))
+        ]),
       ]),
     );
   }
 
-  Widget _buildMeasureButton(BuildContext context, {required String label, required IconData icon, required VoidCallback onPressed}) => ElevatedButton.icon(onPressed: onPressed, icon: Icon(icon, size: 18), label: Text(label), style: ElevatedButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.05), foregroundColor: Colors.white, alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)));
-  Widget _buildSettingsTile({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) => ListTile(leading: Icon(icon, color: Colors.greenAccent), title: Text(title, style: const TextStyle(color: Colors.white)), subtitle: Text(subtitle, style: const TextStyle(color: Colors.white60)), trailing: const Icon(Icons.chevron_right, color: Colors.white24), onTap: onTap);
+  Widget _buildMeasureButton(BuildContext context,
+          {required String label,
+          required IconData icon,
+          required VoidCallback onPressed}) =>
+      ElevatedButton.icon(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 18),
+          label: Text(label),
+          style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.05),
+              foregroundColor: Colors.white,
+              alignment: Alignment.centerLeft,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12)));
+  Widget _buildSettingsTile(
+          {required IconData icon,
+          required String title,
+          required String subtitle,
+          required VoidCallback onTap}) =>
+      ListTile(
+          leading: Icon(icon, color: Colors.greenAccent),
+          title: Text(title, style: const TextStyle(color: Colors.white)),
+          subtitle:
+              Text(subtitle, style: const TextStyle(color: Colors.white60)),
+          trailing: const Icon(Icons.chevron_right, color: Colors.white24),
+          onTap: onTap);
 
   Widget _buildDisplayModeSelector(SettingsService settings) {
     return Container(
@@ -632,15 +856,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   }
 
   void _pushSettings(Widget screen) {
-    Navigator.push(context, PageRouteBuilder(
-      pageBuilder: (context, animation, secondaryAnimation) => screen,
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        return SlideTransition(
-          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
-          child: child,
-        );
-      },
-    ));
+    Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => screen,
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position:
+                  Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+                      .animate(animation),
+              child: child,
+            );
+          },
+        ));
   }
 
   Widget _buildOnboarding(bool isReversed) {
@@ -648,17 +876,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       onTap: () => setState(() => _showOnboarding = false),
       child: Container(
         color: Colors.black.withValues(alpha: 0.8),
-        child: const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        child: const Center(
+            child:
+                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.touch_app, color: Colors.white, size: 80),
           SizedBox(height: 20),
-          Text('Bienvenue !', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+          Text('Bienvenue !',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold)),
           SizedBox(height: 40),
           Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-            _HintGesture(icon: Icons.arrow_back, text: 'Swipe vers la droite\nParamètres'),
-            _HintGesture(icon: Icons.arrow_forward, text: 'Swipe vers la gauche\nNavigation')
+            _HintGesture(
+                icon: Icons.arrow_back,
+                text: 'Swipe vers la droite\nParamètres'),
+            _HintGesture(
+                icon: Icons.arrow_forward,
+                text: 'Swipe vers la gauche\nNavigation')
           ]),
           SizedBox(height: 60),
-          Text('Appuyez pour commencer', style: TextStyle(color: Colors.white70)),
+          Text('Appuyez pour commencer',
+              style: TextStyle(color: Colors.white70)),
         ])),
       ),
     );
@@ -666,9 +905,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 }
 
 class _HintGesture extends StatelessWidget {
-  final IconData icon; final String text;
+  final IconData icon;
+  final String text;
   const _HintGesture({required this.icon, required this.text});
-  @override Widget build(BuildContext context) => Column(children: [Icon(icon, color: Colors.blueAccent, size: 40), const SizedBox(height: 8), Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white))]);
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        Icon(icon, color: Colors.blueAccent, size: 40),
+        const SizedBox(height: 8),
+        Text(text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white))
+      ]);
 }
 
 class _ModeBtn extends StatelessWidget {
@@ -676,7 +923,8 @@ class _ModeBtn extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _ModeBtn({required this.label, required this.isSelected, required this.onTap});
+  const _ModeBtn(
+      {required this.label, required this.isSelected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
