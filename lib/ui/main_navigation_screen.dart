@@ -52,12 +52,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   late final AnimationController _scrollController;
   late double _targetScroll;
+  late bool _lastReversePanels;
 
   @override
   void initState() {
     super.initState();
 
     final isReversed = widget.settingsService.reversePanels;
+    _lastReversePanels = isReversed;
     _targetScroll = isReversed ? 2.0 : 1.0;
 
     _scrollController = AnimationController(
@@ -96,6 +98,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   void _onSettingsChanged() {
     _updateGestureExclusion(widget.settingsService.edgeSwipeWidth);
+
+    final isReversed = widget.settingsService.reversePanels;
+    if (isReversed != _lastReversePanels) {
+      _lastReversePanels = isReversed;
+      // Basculer le mode gaucher inverse l'ordre du carrousel de volets
+      // (cf. build()) : l'index qui pointait vers un panneau donné pointe
+      // désormais vers son symétrique. On remiroir la position courante
+      // pour que l'utilisateur reste sur le même panneau (typiquement les
+      // paramètres, d'où ce toggle est actionné) plutôt que de se retrouver
+      // téléporté sur un autre volet en revenant à l'écran principal.
+      _scrollController.value = 3.0 - _scrollController.value;
+      _targetScroll = 3.0 - _targetScroll;
+    }
+
     setState(() {});
   }
 
