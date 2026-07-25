@@ -18,7 +18,6 @@ import 'settings/system_settings_screen.dart';
 import 'tracks/track_manager_screen.dart';
 import 'segments/segment_manager_screen.dart';
 import 'waypoints/waypoint_manager_screen.dart';
-import 'settings/about_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final IsarService isarService;
@@ -313,18 +312,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           _buildSettingsTile(icon: Icons.account_circle_outlined, title: 'Mon compte', subtitle: 'Gérer mon abonnement',
               onTap: () => _pushSettings(const AccountSettingsScreen())),
           const Divider(color: Colors.white12),
-          _buildSettingsTile(icon: Icons.display_settings, title: 'Affichage et Unités', subtitle: 'Transparence, échelle, métrique/impérial',
+          _buildSettingsTile(icon: Icons.settings_suggest_outlined, title: 'Paramètres système', subtitle: 'Stockage GPX, Cache des cartes',
+              onTap: () => _pushSettings(const SystemSettingsScreen())),
+          _buildSettingsTile(icon: Icons.display_settings, title: 'Paramètres d\'affichage', subtitle: 'Transparence, échelle',
               onTap: () => _pushSettings(const DisplaySettingsScreen())),
           _buildSettingsTile(icon: Icons.map_outlined, title: 'Mes cartes', subtitle: 'Sélectionner vos favoris',
               onTap: () => _pushSettings(const MapsSettingsScreen())),
-          _buildSettingsTile(icon: Icons.settings_suggest_outlined, title: 'Paramètres système', subtitle: 'Stockage GPX, Cache des cartes',
-              onTap: () => _pushSettings(const SystemSettingsScreen())),
           _buildSettingsTile(icon: Icons.route_outlined, title: 'Track Manager', subtitle: 'Gérer vos pistes GPX',
               onTap: () => _pushSettings(const TrackManagerScreen())),
-          _buildSettingsTile(icon: Icons.timeline_outlined, title: 'Mesh manager', subtitle: 'Gérer les segments',
-              onTap: () => _pushSettings(const SegmentManagerScreen())),
           _buildSettingsTile(icon: Icons.location_on_outlined, title: 'Waypoint Manager', subtitle: 'Gérer vos waypoints',
               onTap: () => _pushSettings(const WaypointManagerScreen())),
+          _buildSettingsTile(icon: Icons.timeline_outlined, title: 'Mesh manager', subtitle: 'Gérer les segments',
+              onTap: () => _pushSettings(const SegmentManagerScreen())),
           const Divider(color: Colors.white12),
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -337,9 +336,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               ],
             ),
           ),
-          const Divider(color: Colors.white12),
-          _buildSettingsTile(icon: Icons.info_outline, title: 'À propos', subtitle: 'Version, légal et contact',
-              onTap: () => _pushSettings(const AboutScreen())),
         ],
       ),
     );

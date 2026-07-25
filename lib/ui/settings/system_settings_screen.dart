@@ -26,6 +26,10 @@ class SystemSettingsScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                const Text('UNITÉS DE MESURE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                _buildUnitsSection(context, settings),
+                const SizedBox(height: 32),
                 const Text('STOCKAGE GPX', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildGpxStorageSection(context, settings),
@@ -45,6 +49,86 @@ class SystemSettingsScreen extends StatelessWidget {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildUnitsSection(BuildContext context, SettingsService settings) {
+    const labelStyle = TextStyle(color: Colors.white, fontSize: 14);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Radio<UnitSystem>(
+                      value: UnitSystem.metric,
+                      groupValue: settings.unitSystem,
+                      onChanged: (v) => v != null ? settings.setUnitSystem(v) : null,
+                      activeColor: Colors.greenAccent,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const Text('Métrique', style: labelStyle),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    Radio<UnitSystem>(
+                      value: UnitSystem.imperial,
+                      groupValue: settings.unitSystem,
+                      onChanged: (v) => v != null ? settings.setUnitSystem(v) : null,
+                      activeColor: Colors.greenAccent,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const Text('Impérial', style: labelStyle),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Radio<bool>(
+                      value: true,
+                      groupValue: settings.useCelsius,
+                      onChanged: (v) => v != null ? settings.setTemperatureUnit(v) : null,
+                      activeColor: Colors.greenAccent,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const Text('Celsius', style: labelStyle),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    Radio<bool>(
+                      value: false,
+                      groupValue: settings.useCelsius,
+                      onChanged: (v) => v != null ? settings.setTemperatureUnit(v) : null,
+                      activeColor: Colors.greenAccent,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const Text('Fahrenheit', style: labelStyle),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

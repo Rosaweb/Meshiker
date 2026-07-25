@@ -27,6 +27,7 @@ class SettingsService extends ChangeNotifier {
   late SharedPreferences _prefs;
   
   double _barOpacity = 0.6;
+  double _mainMenuOpacity = 0.6;
   UnitSystem _unitSystem = UnitSystem.metric;
   bool _useCelsius = true;
   bool _showScale = true;
@@ -72,6 +73,7 @@ class SettingsService extends ChangeNotifier {
   ({double lat, double lon})? _measurePoint2;
 
   double get barOpacity => _barOpacity;
+  double get mainMenuOpacity => _mainMenuOpacity;
   UnitSystem get unitSystem => _unitSystem;
   bool get useCelsius => _useCelsius;
   bool get showScale => _showScale;
@@ -119,6 +121,7 @@ class SettingsService extends ChangeNotifier {
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     _barOpacity = _prefs.getDouble('bar_opacity') ?? 0.6;
+    _mainMenuOpacity = _prefs.getDouble('main_menu_opacity') ?? 0.6;
     _unitSystem = UnitSystem.values[_prefs.getInt('unit_system') ?? 0];
     _useCelsius = _prefs.getBool('use_celsius') ?? true;
     _showScale = _prefs.getBool('show_scale') ?? true;
@@ -335,6 +338,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setBarOpacity(double value) async {
     _barOpacity = value;
     await _prefs.setDouble('bar_opacity', value);
+    notifyListeners();
+  }
+
+  Future<void> setMainMenuOpacity(double value) async {
+    _mainMenuOpacity = value;
+    await _prefs.setDouble('main_menu_opacity', value);
     notifyListeners();
   }
 

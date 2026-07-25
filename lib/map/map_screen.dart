@@ -761,7 +761,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         }
                       },
                       child: _BottomControlBar(
-                        opacity: widget.settingsService.barOpacity,
+                        opacity: widget.settingsService.mainMenuOpacity,
                         displayMode: widget.settingsService.displayMode,
                         heading: _currentHeading,
                         dynamicRotation: _dynamicRotation,

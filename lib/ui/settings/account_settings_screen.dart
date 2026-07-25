@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../utils/subscription_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/utilisateur.dart';
+import 'about_screen.dart';
 
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
@@ -38,6 +39,24 @@ class AccountSettingsScreen extends StatelessWidget {
                     _buildIgnSubscriptionPlaceholder(),
                     const SizedBox(height: 32),
                     _buildSyncSection(user),
+                    const SizedBox(height: 32),
+                    const Divider(color: Colors.white12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.info_outline, color: Colors.greenAccent),
+                      title: const Text('À propos', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Version, légal et contact', style: TextStyle(color: Colors.white60)),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.white24),
+                      onTap: () => Navigator.push(context, PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) => const AboutScreen(),
+                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                          return SlideTransition(
+                            position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+                            child: child,
+                          );
+                        },
+                      )),
+                    ),
                   ],
                 );
               },

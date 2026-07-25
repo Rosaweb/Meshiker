@@ -27,82 +27,14 @@ class DisplaySettingsScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               children: [
-                const Text('UNITÉS DE MESURE', style: headerStyle),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Radio<UnitSystem>(
-                            value: UnitSystem.metric,
-                            groupValue: settings.unitSystem,
-                            onChanged: (v) => v != null ? settings.setUnitSystem(v) : null,
-                            activeColor: Colors.greenAccent,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          const Text('Métrique', style: labelStyle),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Radio<UnitSystem>(
-                            value: UnitSystem.imperial,
-                            groupValue: settings.unitSystem,
-                            onChanged: (v) => v != null ? settings.setUnitSystem(v) : null,
-                            activeColor: Colors.greenAccent,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          const Text('Impérial', style: labelStyle),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Radio<bool>(
-                            value: true,
-                            groupValue: settings.useCelsius,
-                            onChanged: (v) => v != null ? settings.setTemperatureUnit(v) : null,
-                            activeColor: Colors.greenAccent,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          const Text('Celsius', style: labelStyle),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Radio<bool>(
-                            value: false,
-                            groupValue: settings.useCelsius,
-                            onChanged: (v) => v != null ? settings.setTemperatureUnit(v) : null,
-                            activeColor: Colors.greenAccent,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          const Text('Fahrenheit', style: labelStyle),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const Divider(color: Colors.white12, height: 24),
                 const Text('INTERFACE ET CARTE', style: headerStyle),
                 const SizedBox(height: 12),
 
-                // Transparence
+                // Transparence : volets Paramètres / Outils de navigation
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Transparence menus', style: labelStyle),
+                    const Text('Transparence menu Paramètres/Outils', style: labelStyle),
                     Text('${((1.1 - settings.barOpacity) * 100).round()}%', style: valueStyle),
                   ],
                 ),
@@ -112,6 +44,24 @@ class DisplaySettingsScreen extends StatelessWidget {
                     value: 1.1 - settings.barOpacity,
                     min: 0.1, max: 1.0, divisions: 18,
                     onChanged: (v) => settings.setBarOpacity(1.1 - v),
+                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
+                  ),
+                ),
+
+                // Transparence : menu de la page principale (barre de contrôle sur la carte)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Transparence menu principal', style: labelStyle),
+                    Text('${((1.1 - settings.mainMenuOpacity) * 100).round()}%', style: valueStyle),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
+                  child: Slider(
+                    value: 1.1 - settings.mainMenuOpacity,
+                    min: 0.1, max: 1.0, divisions: 18,
+                    onChanged: (v) => settings.setMainMenuOpacity(1.1 - v),
                     activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
                   ),
                 ),
