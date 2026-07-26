@@ -54,6 +54,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   late final AnimationController _scrollController;
   late double _targetScroll;
   late bool _lastReversePanels;
+  late MapCreationStep _lastMapCreationStep;
 
   @override
   void initState() {
@@ -62,6 +63,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     final isReversed = widget.settingsService.reversePanels;
     _lastReversePanels = isReversed;
     _targetScroll = isReversed ? 2.0 : 1.0;
+    _lastMapCreationStep = widget.settingsService.mapCreationStep;
 
     _scrollController = AnimationController(
       vsync: this,
@@ -112,6 +114,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       _scrollController.value = 3.0 - _scrollController.value;
       _targetScroll = 3.0 - _targetScroll;
     }
+
+    final mapCreationStep = widget.settingsService.mapCreationStep;
+    if (mapCreationStep != MapCreationStep.none &&
+        _lastMapCreationStep == MapCreationStep.none) {
+      // Démarrer la création d'une carte hors-ligne se fait depuis un écran
+      // de paramètres poussé par-dessus ce widget (cf. MapsSettingsScreen).
+      // Le simple Navigator.pop qui le referme ne suffit pas à ramener le
+      // carrousel de volets sur la carte : sans ce recentrage explicite, le
+      // volet paramètres (resté à son ancienne position de scroll) reste
+      // affiché par-dessus la carte et masque les étapes de création.
+      _targetScroll = isReversed ? 2.0 : 1.0;
+      _scrollController.animateTo(_targetScroll,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    }
+    _lastMapCreationStep = mapCreationStep;
 
     setState(() {});
   }
@@ -901,15 +918,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           SizedBox(height: 40),
           Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
             _HintGesture(
-                icon: Icons.arrow_back,
+                icon: Icons.arrow_forward,
                 text: 'Swipe vers la droite\nParamètres'),
             _HintGesture(
-                icon: Icons.arrow_forward,
-                text: 'Swipe vers la gauche\nNavigation')
+                icon: Icons.arrow_back,
+                text: 'Swipe vers la gauche\nNavigation'),
           ]),
           SizedBox(height: 60),
           Text('Appuyez pour commencer',
               style: TextStyle(color: Colors.white70)),
+
+            SizedBox(height: 60),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                _HintGesture(
+                    icon: Icons.arrow_upward,
+                    text: 'Swipe vers le haut\nMenu étendu'),
+              ]),
         ])),
       ),
     );
