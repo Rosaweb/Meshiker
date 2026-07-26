@@ -11,7 +11,9 @@ import 'gpx_import_service.dart';
 
 import 'package:uuid/uuid.dart';
 import '../models/waypoint.dart';
+import 'gpx_models.dart';
 import 'gpx_parser.dart';
+import 'kml_parser.dart';
 
 class GpxScannerService extends ChangeNotifier {
   final IsarService isarService;
@@ -133,8 +135,9 @@ class GpxScannerService extends ChangeNotifier {
       for (final entity in entities) {
         final normalizedPath = p.canonicalize(entity.path);
         
-        if (entity is File && normalizedPath.toLowerCase().endsWith('.gpx')) {
-          debugPrint('GpxScannerService: Found GPX: $normalizedPath');
+        final lowerPath = normalizedPath.toLowerCase();
+        if (entity is File && (lowerPath.endsWith('.gpx') || lowerPath.endsWith('.kml'))) {
+          debugPrint('GpxScannerService: Found track file: $normalizedPath');
           await _processFile(entity);
           notifyListeners(); // Update UI periodically
         } else if (entity is Directory) {
@@ -156,7 +159,9 @@ class GpxScannerService extends ChangeNotifier {
 
     try {
       final content = await file.readAsString();
-      final parsed = GpxParser.parseString(content);
+      final GpxParseResult parsed = normalizedPath.toLowerCase().endsWith('.kml')
+          ? KmlParser.parseString(content)
+          : GpxParser.parseString(content);
 
       // 1. Création rapide de la trace (sans segmentation lourde)
       Trace? trace;

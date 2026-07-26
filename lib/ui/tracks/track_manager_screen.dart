@@ -127,7 +127,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => _refreshFolder(),
-              tooltip: 'Scanner le dossier GPX',
+              tooltip: 'Scanner le dossier GPX/KML',
             ),
           IconButton(
             icon: const Icon(Icons.done_all),
