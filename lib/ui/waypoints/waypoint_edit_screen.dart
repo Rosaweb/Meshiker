@@ -145,16 +145,28 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                           fillColor: Colors.white.withValues(alpha: 0.05),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                         ),
-                        items: _categories.map((c) => DropdownMenuItem(
-                          value: c, 
-                          child: Row(
-                            children: [
-                              Icon(_getIcon(c.iconName), color: Colors.greenAccent, size: 18),
-                              const SizedBox(width: 12),
-                              Text(c.name),
-                            ],
-                          )
-                        )).toList(),
+                        items: [
+                          const DropdownMenuItem<WaypointCategory>(
+                            value: null,
+                            child: Row(
+                              children: [
+                                Icon(Icons.block, color: Colors.white38, size: 18),
+                                SizedBox(width: 12),
+                                Text('Aucun', style: TextStyle(color: Colors.white38)),
+                              ],
+                            ),
+                          ),
+                          ..._categories.map((c) => DropdownMenuItem(
+                            value: c,
+                            child: Row(
+                              children: [
+                                Icon(_getIcon(c.iconName), color: Colors.greenAccent, size: 18),
+                                const SizedBox(width: 12),
+                                Text(c.name),
+                              ],
+                            )
+                          )),
+                        ],
                         onChanged: (v) => setState(() => _selectedCategory = v),
                       ),
                       const SizedBox(height: 16),

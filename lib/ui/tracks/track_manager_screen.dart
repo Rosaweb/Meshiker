@@ -32,24 +32,16 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
   String _searchQuery = '';
   TrackSortOption _sortOption = TrackSortOption.alphabetical;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _refreshFolder(silent: true);
-    });
-  }
-
-  Future<void> _refreshFolder({bool silent = false}) async {
+  Future<void> _refreshFolder() async {
     final scanner = context.read<GpxScannerService>();
     final settings = context.read<SettingsService>();
-    
+
     if (settings.gpxStoragePath == null || settings.gpxStoragePath!.isEmpty) return;
 
     try {
       await scanner.scanFolder(settings.gpxStoragePath!);
     } catch (e) {
-      if (mounted && !silent) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erreur lors du scan : $e')),
         );
