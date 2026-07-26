@@ -16,6 +16,7 @@ import 'settings/display_settings_screen.dart';
 import 'settings/account_settings_screen.dart';
 import 'settings/system_settings_screen.dart';
 import 'tracks/track_manager_screen.dart';
+import 'tracks/roadmap_screen.dart';
 import 'segments/segment_manager_screen.dart';
 import 'waypoints/waypoint_manager_screen.dart';
 
@@ -181,7 +182,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
         final List<Widget> pages = isReversed
             ? [
-                const WaypointManagerScreen(isTransparent: true),
+                const RoadmapScreen(isTransparent: true),
                 _buildContextualPage(settings),
                 const SizedBox.shrink(), // Trou pour la carte à l'index 2
                 _buildSettingsPage(settings),
@@ -190,7 +191,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 _buildSettingsPage(settings),
                 const SizedBox.shrink(), // Trou pour la carte à l'index 1
                 _buildContextualPage(settings),
-                const WaypointManagerScreen(isTransparent: true),
+                const RoadmapScreen(isTransparent: true),
               ];
 
         final mapIndex = isReversed ? 2 : 1;
@@ -457,13 +458,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 false),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: () {
-                widget.settingsService.setWaypointSelectionMode(true);
-                _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-                _scrollController.animateTo(_targetScroll,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut);
-              },
+              onPressed: () =>
+                  _pushSettings(const RoadmapScreen(isSelectionMode: true)),
               icon: const Icon(Icons.navigation),
               label: const Text('Choisir un point'),
               style: ElevatedButton.styleFrom(

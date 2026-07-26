@@ -60,6 +60,7 @@ class SettingsService extends ChangeNotifier {
   List<String> _activeGpxNames = []; // Traces actuellement suivies
   String? _navigationWaypointUuid; // Destination choisie
   bool _waypointSelectionMode = false;
+  String? _roadmapTraceName; // Trace unique chargée dans le Roadmap
 
   // État de création de carte hors ligne
   MapCreationStep _mapCreationStep = MapCreationStep.none;
@@ -104,6 +105,7 @@ class SettingsService extends ChangeNotifier {
   List<String> get activeGpxNames => _activeGpxNames;
   String? get navigationWaypointUuid => _navigationWaypointUuid;
   bool get waypointSelectionMode => _waypointSelectionMode;
+  String? get roadmapTraceName => _roadmapTraceName;
   final MapCreationStep _mapCreationStepProp = MapCreationStep.none;
   MapCreationStep get mapCreationStep => _mapCreationStep;
   ({double lat, double lon})? get mapOrigin => _mapOrigin;
@@ -161,6 +163,7 @@ class SettingsService extends ChangeNotifier {
     }
 
     _navigationWaypointUuid = _prefs.getString('nav_wp_uuid');
+    _roadmapTraceName = _prefs.getString('roadmap_trace_name');
     notifyListeners();
   }
 
@@ -244,6 +247,16 @@ class SettingsService extends ChangeNotifier {
 
   void setWaypointSelectionMode(bool value) {
     _waypointSelectionMode = value;
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapTraceName(String? name) async {
+    _roadmapTraceName = name;
+    if (name == null) {
+      await _prefs.remove('roadmap_trace_name');
+    } else {
+      await _prefs.setString('roadmap_trace_name', name);
+    }
     notifyListeners();
   }
 

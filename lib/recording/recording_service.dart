@@ -566,54 +566,24 @@ class RecordingService {
 
   Future<void> _updateNavigationStats(geo.Position position) async {
     final prefs = await SharedPreferences.getInstance();
-    final activeGpxList = prefs.getStringList('active_gpx_list') ?? [];
-    // Pour l'instant on garde la logique de navigation sur une seule trace,
-    // on prend la première de la liste si elle existe.
-    final activeGpx = activeGpxList.isNotEmpty ? activeGpxList.first : null;
+    final roadmapTrace = prefs.getString('roadmap_trace_name');
     final destUuid = prefs.getString('nav_wp_uuid');
 
-    if (_activeTrace?.name != activeGpx) {
-      if (activeGpx == null) {
+    if (_activeTrace?.name != roadmapTrace) {
+      if (roadmapTrace == null) {
         _activeTrace = null;
         _activePolyline = [];
         _traceWaypoints = [];
       } else {
-        _activeTrace = await isarService.isar.traces.filter().nameEqualTo(activeGpx).findFirst();
+        _activeTrace = await isarService.isar.traces.filter().nameEqualTo(roadmapTrace).findFirst();
         if (_activeTrace != null) {
           _activePolyline = await isarService.getTracePolyline(_activeTrace!);
-          _traceWaypoints = await isarService.searchWaypoints(filterGpxName: activeGpx);
-        }
-      }
-    }
-
-    if (destUuid != null) {
-      final dest = await isarService.isar.waypoints.filter().localUuidEqualTo(destUuid).findFirst();
-      destinationWaypoint.value = dest;
-      if (dest != null) {
-        if (_activePolyline.isNotEmpty) {
-          final snap = GeoUtils.snapToPolyline(position.latitude, position.longitude, _activePolyline, 50.0);
-          final destSnap = GeoUtils.snapToPolyline(dest.latitude, dest.longitude, _activePolyline, 100);
-          
-          if (snap != null && destSnap != null) {
-            final doneDist = GeoUtils.distanceToSnapMeters(_activePolyline, snap);
-            final destDist = GeoUtils.distanceToSnapMeters(_activePolyline, destSnap);
-            distanceToDestinationMeters.value = (destDist - doneDist).abs();
-          } else {
-            // Fallback direct si snap impossible
-            distanceToDestinationMeters.value = geo.Geolocator.distanceBetween(
-              position.latitude, position.longitude, dest.latitude, dest.longitude
-            );
-          }
+          _traceWaypoints = await isarService.searchWaypoints(filterGpxName: roadmapTrace);
         } else {
-          // Pas de trace active : distance directe
-          distanceToDestinationMeters.value = geo.Geolocator.distanceBetween(
-            position.latitude, position.longitude, dest.latitude, dest.longitude
-          );
+          _activePolyline = [];
+          _traceWaypoints = [];
         }
       }
-    } else {
-      destinationWaypoint.value = null;
-      distanceToDestinationMeters.value = 0;
     }
 
     if (_activePolyline.isEmpty) {
@@ -621,13 +591,26 @@ class RecordingService {
       trackDistanceRemainingMeters.value = 0;
       nextWaypoint.value = null;
       distanceToNextWaypointMeters.value = 0;
+
+      // Pas de trace chargée dans le Roadmap : distance directe si une
+      // destination a été choisie manuellement, sinon rien à afficher.
+      if (destUuid != null) {
+        final dest = await isarService.isar.waypoints.filter().localUuidEqualTo(destUuid).findFirst();
+        destinationWaypoint.value = dest;
+        distanceToDestinationMeters.value = dest != null
+            ? geo.Geolocator.distanceBetween(position.latitude, position.longitude, dest.latitude, dest.longitude)
+            : 0;
+      } else {
+        destinationWaypoint.value = null;
+        distanceToDestinationMeters.value = 0;
+      }
       return;
     }
 
     final snap = GeoUtils.snapToPolyline(
-      position.latitude, 
-      position.longitude, 
-      _activePolyline, 
+      position.latitude,
+      position.longitude,
+      _activePolyline,
       50.0
     );
 
@@ -635,7 +618,7 @@ class RecordingService {
 
     final totalDist = GeoUtils.polylineLengthMeters(_activePolyline);
     final doneDist = GeoUtils.distanceToSnapMeters(_activePolyline, snap);
-    
+
     trackDistanceDoneMeters.value = doneDist;
     trackDistanceRemainingMeters.value = totalDist - doneDist;
 
@@ -657,6 +640,31 @@ class RecordingService {
     }
     nextWaypoint.value = next;
     distanceToNextWaypointMeters.value = next != null ? minDistToNext : 0;
+
+    // Destination : waypoint choisi explicitement, sinon repli sur la fin
+    // de la trace chargée (qui n'a pas forcément de waypoint dessus — et
+    // qui, pour une boucle, coïncide déjà avec le point de départ).
+    if (destUuid != null) {
+      final dest = await isarService.isar.waypoints.filter().localUuidEqualTo(destUuid).findFirst();
+      if (dest != null) {
+        final destSnap = GeoUtils.snapToPolyline(dest.latitude, dest.longitude, _activePolyline, 100);
+        destinationWaypoint.value = dest;
+        distanceToDestinationMeters.value = destSnap != null
+            ? (GeoUtils.distanceToSnapMeters(_activePolyline, destSnap) - doneDist).abs()
+            : geo.Geolocator.distanceBetween(position.latitude, position.longitude, dest.latitude, dest.longitude);
+      } else {
+        destinationWaypoint.value = null;
+        distanceToDestinationMeters.value = 0;
+      }
+    } else {
+      final endPoint = _activePolyline.last;
+      destinationWaypoint.value = Waypoint()
+        ..localUuid = ''
+        ..name = 'Fin de trace'
+        ..latitude = endPoint.lat
+        ..longitude = endPoint.lon;
+      distanceToDestinationMeters.value = totalDist - doneDist;
+    }
   }
 
   Future<void> _persistDailyDistance(double distance) async {

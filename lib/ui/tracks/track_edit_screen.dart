@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
 import '../../models/trace.dart';
 import '../../utils/settings_service.dart';
+import 'roadmap_screen.dart';
 
 class TrackEditScreen extends StatefulWidget {
   final Trace trace;
@@ -111,6 +112,22 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      final settings = context.read<SettingsService>();
+                      await settings.setRoadmapTraceName(widget.trace.name);
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const RoadmapScreen()),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.navigation, size: 18, color: Colors.greenAccent),
+                    label: const Text('NAVIGUER', style: TextStyle(color: Colors.greenAccent)),
+                  ),
+                  const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: const Text('ANNULER', style: TextStyle(color: Colors.white54)),
