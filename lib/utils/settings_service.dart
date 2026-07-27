@@ -14,6 +14,11 @@ enum MapStartupMode { lastPosition, customPoint }
 
 enum DisplayMode { gpx, mesh }
 
+/// Écran d'où "Localiser sur la carte" a été déclenché depuis la fenêtre
+/// contextuelle d'un waypoint : détermine quel écran le bouton "Retour"
+/// flottant de la carte doit rouvrir derrière la fiche du waypoint.
+enum WaypointLocateOrigin { map, trackManager, roadmap }
+
 class AppSettings {
   final double barOpacity;
   final UnitSystem unitSystem;
@@ -92,6 +97,7 @@ class SettingsService extends ChangeNotifier {
   // uuid du waypoint concerné tant que le bouton "Retour" flottant est
   // affiché sur la carte, null sinon.
   String? _locatingWaypointUuid;
+  WaypointLocateOrigin _locatingWaypointOrigin = WaypointLocateOrigin.map;
 
   double get barOpacity => _barOpacity;
   double get mainMenuOpacity => _mainMenuOpacity;
@@ -139,6 +145,7 @@ class SettingsService extends ChangeNotifier {
   MapStartupMode get mapStartupMode => _mapStartupMode;
   bool get pickingStartupCenter => _pickingStartupCenter;
   String? get locatingWaypointUuid => _locatingWaypointUuid;
+  WaypointLocateOrigin get locatingWaypointOrigin => _locatingWaypointOrigin;
 
   ({double lat, double lon, double zoom})? get lastMapPosition =>
       (_lastMapLat != null && _lastMapLon != null && _lastMapZoom != null)
@@ -523,9 +530,13 @@ class SettingsService extends ChangeNotifier {
   }
 
   /// Démarre le mode "Localiser sur la carte" pour le waypoint [uuid] :
-  /// affiche le bouton "Retour" flottant sur MapScreen.
-  void startLocateWaypoint(String uuid) {
+  /// affiche le bouton "Retour" flottant sur MapScreen. [origin] indique
+  /// quel écran doit être rouvert derrière la fenêtre contextuelle quand
+  /// on presse ce bouton (Track Manager, Roadmap, ou rien de plus si on
+  /// venait déjà directement de la carte).
+  void startLocateWaypoint(String uuid, {WaypointLocateOrigin origin = WaypointLocateOrigin.map}) {
     _locatingWaypointUuid = uuid;
+    _locatingWaypointOrigin = origin;
     notifyListeners();
   }
 

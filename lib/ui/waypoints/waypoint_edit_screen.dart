@@ -15,6 +15,10 @@ class WaypointEditScreen extends StatefulWidget {
   final double? latitude;
   final double? longitude;
   final IsarService isarService;
+  /// Écran d'où cette fenêtre contextuelle a été ouverte (carte, Track
+  /// Manager, Roadmap). Transmis à "Localiser sur la carte" pour que le
+  /// bouton "Retour" de la carte sache où rouvrir cette fiche.
+  final WaypointLocateOrigin locateOrigin;
 
   const WaypointEditScreen({
     super.key,
@@ -22,6 +26,7 @@ class WaypointEditScreen extends StatefulWidget {
     this.latitude,
     this.longitude,
     required this.isarService,
+    this.locateOrigin = WaypointLocateOrigin.map,
   });
 
   @override
@@ -155,7 +160,9 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
   void _locateOnMap() {
     final wp = widget.waypoint;
     if (wp == null) return;
-    context.read<SettingsService>().startLocateWaypoint(wp.localUuid);
+    context.read<SettingsService>().startLocateWaypoint(
+        wp.localUuid,
+        origin: widget.locateOrigin);
     context.read<MapViewModel>().centerRequest.value =
         (lat: wp.latitude, lon: wp.longitude);
     Navigator.of(context).popUntil((route) => route.isFirst);

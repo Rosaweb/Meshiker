@@ -33,6 +33,8 @@ import 'map_view_model.dart';
 import 'planning_controller.dart';
 import 'vector_tile_source.dart';
 import '../ui/settings/maps_settings_screen.dart';
+import '../ui/tracks/roadmap_screen.dart';
+import '../ui/tracks/track_manager_screen.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({
@@ -133,16 +135,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _returnToWaypointPopup() async {
     final uuid = widget.settingsService.locatingWaypointUuid;
+    final origin = widget.settingsService.locatingWaypointOrigin;
     widget.settingsService.dismissLocateWaypointBackButton();
     if (uuid == null) return;
     final wp = await widget.isarService.waypointByUuid(uuid);
     if (wp == null || !mounted) return;
+
+    // Rouvre d'abord l'écran d'où "Localiser sur la carte" avait été
+    // déclenché (Track Manager, Roadmap), pour que fermer la fiche du
+    // waypoint révèle cet écran plutôt que la carte nue — symétrique au
+    // Navigator.popUntil(isFirst) fait à l'aller.
+    switch (origin) {
+      case WaypointLocateOrigin.trackManager:
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const TrackManagerScreen()));
+      case WaypointLocateOrigin.roadmap:
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const RoadmapScreen()));
+      case WaypointLocateOrigin.map:
+        break;
+    }
+    if (!mounted) return;
+
     showDialog(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.7),
       builder: (context) => WaypointEditScreen(
         waypoint: wp,
         isarService: widget.isarService,
+        locateOrigin: origin,
       ),
     ).then((_) => widget.viewModel.refreshNow());
   }

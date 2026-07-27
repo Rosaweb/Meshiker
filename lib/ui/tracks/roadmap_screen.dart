@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:isar_community/isar.dart';
 import '../../database/isar_service.dart';
+import '../../map/map_view_model.dart';
 import '../../models/trace.dart';
 import '../../models/waypoint.dart';
 import '../../utils/geo_utils.dart';
 import '../../utils/settings_service.dart';
 import '../../recording/recording_service.dart';
+import '../waypoints/waypoint_edit_screen.dart';
 import 'track_manager_screen.dart';
 
 /// Affiche les waypoints de la trace GPX unique actuellement chargée dans le
@@ -110,7 +112,21 @@ class RoadmapScreen extends StatelessWidget {
                                   recording.setDestination(entry.waypoint.localUuid);
                                   Navigator.pop(context);
                                 }
-                              : null,
+                              : () {
+                                  showDialog(
+                                    context: context,
+                                    barrierColor: Colors.black.withValues(alpha: 0.7),
+                                    builder: (context) => WaypointEditScreen(
+                                      waypoint: entry.waypoint,
+                                      isarService: isar,
+                                      locateOrigin: WaypointLocateOrigin.roadmap,
+                                    ),
+                                  ).then((_) {
+                                    if (context.mounted) {
+                                      context.read<MapViewModel>().refreshNow();
+                                    }
+                                  });
+                                },
                         );
                       },
                     );
