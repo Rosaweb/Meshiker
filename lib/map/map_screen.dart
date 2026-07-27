@@ -658,7 +658,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       longitude: point.longitude,
                       isarService: widget.isarService,
                     ),
-                  );
+                  ).then((_) => widget.viewModel.refreshNow());
                 },
                 onPositionChanged: _onPositionChanged,
                 onMapReady: () {
@@ -1491,7 +1491,7 @@ class _WaypointsLayer extends StatelessWidget {
                           waypoint: wp,
                           isarService: isarService,
                         ),
-                      );
+                      ).then((_) => viewModel.refreshNow());
                     }
                   },
                   child: Icon(
@@ -1541,7 +1541,7 @@ class _OsmPoisLayer extends StatelessWidget {
                         waypoint: wp,
                         isarService: isarService,
                       ),
-                    );
+                    ).then((_) => viewModel.refreshNow());
                   },
                   child: Container(
                     decoration: const BoxDecoration(

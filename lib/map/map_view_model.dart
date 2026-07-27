@@ -41,6 +41,10 @@ class MapViewModel {
 
   Timer? _debounce;
 
+  ({double minLat, double maxLat, double minLon, double maxLon})?
+      _lastBounds;
+  List<String> _lastActiveGpxNames = const [];
+
   /// A appeler quand le viewport de la carte change (deplacement, zoom).
   /// Debounce volontairement les appels rapproches (l'utilisateur qui
   /// deplace la carte declenche autrement des dizaines de requetes Isar
@@ -54,6 +58,8 @@ class MapViewModel {
     List<String> activeGpxNames = const [],
     Duration debounce = const Duration(milliseconds: 300),
   }) {
+    _lastBounds = (minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon);
+    _lastActiveGpxNames = activeGpxNames;
     _debounce?.cancel();
     _debounce = Timer(debounce, () {
       unawaited(_reload(
@@ -64,6 +70,23 @@ class MapViewModel {
         activeGpxNames: activeGpxNames,
       ));
     });
+  }
+
+  /// Recharge immediatement (sans debounce) le dernier viewport connu.
+  /// A appeler juste apres une ecriture ponctuelle (ex: creation d'un
+  /// waypoint depuis la carte) pour que le nouvel element apparaisse sans
+  /// attendre que l'utilisateur deplace la carte et redeclenche
+  /// [onViewportChanged] lui-meme.
+  Future<void> refreshNow() async {
+    final b = _lastBounds;
+    if (b == null) return;
+    await _reload(
+      minLat: b.minLat,
+      maxLat: b.maxLat,
+      minLon: b.minLon,
+      maxLon: b.maxLon,
+      activeGpxNames: _lastActiveGpxNames,
+    );
   }
 
   Future<void> _reload({
