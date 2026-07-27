@@ -39,13 +39,33 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
     if (settings.gpxStoragePath == null || settings.gpxStoragePath!.isEmpty) return;
 
     try {
-      await scanner.scanFolder(settings.gpxStoragePath!);
+      final result = await scanner.scanFolder(settings.gpxStoragePath!);
+      if (mounted) _showScanResultIfNeeded(result);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erreur lors du scan : $e')),
         );
       }
+    }
+  }
+
+  void _showScanResultIfNeeded(GpxScanResult result) {
+    switch (result) {
+      case GpxScanResult.ok:
+        return;
+      case GpxScanResult.directoryNotFound:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dossier GPX/KML introuvable.')),
+        );
+      case GpxScanResult.permissionDenied:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Accès au stockage refusé : autorisez "Tous les fichiers" pour Meshiker dans les paramètres Android, puis relancez le scan.'),
+            duration: Duration(seconds: 5),
+          ),
+        );
     }
   }
 
