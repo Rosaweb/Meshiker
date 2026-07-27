@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:isar_community/isar.dart';
+import '../../utils/offline_map_download_service.dart';
 import '../../utils/settings_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/offline_map/offline_map.dart';
@@ -189,11 +190,30 @@ class _OfflineMapsTab extends StatelessWidget {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    // Logic for importing local mbtiles
-                    await FilePicker.platform.pickFiles(
-                      type: FileType.custom,
-                      allowedExtensions: ['mbtiles'],
+                    // FileType.custom + allowedExtensions plante sur
+                    // certains appareils Android avec "Unsupported filter"
+                    // dès que l'extension n'a pas de type MIME enregistré
+                    // par le système (cas de .mbtiles) — on filtre donc
+                    // nous-mêmes après coup, comme suggéré par le plugin.
+                    final result = await FilePicker.platform.pickFiles(
+                      type: FileType.any,
                     );
+                    final path = result?.files.single.path;
+                    if (path == null) return;
+                    if (!path.toLowerCase().endsWith('.mbtiles')) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  'Sélectionnez un fichier .mbtiles')),
+                        );
+                      }
+                      return;
+                    }
+                    // TODO: l'import effectif (copie + enregistrement en
+                    // OfflineMap) n'est pas encore implémenté — le
+                    // téléchargement de "Créer une carte" est lui-même un
+                    // mock pour le moment (cf. _showSaveDialog).
                   },
                   icon: const Icon(Icons.file_download),
                   label: const Text('Importer'),
@@ -256,9 +276,17 @@ class _OfflineMapsTab extends StatelessWidget {
                             const Text('Erreur. Appuyez pour reprendre.', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
                         ],
                       ),
+                    onTap: map.isError && !map.isDownloading
+                        ? () => OfflineMapDownloadService(isarService: isar)
+                            .download(map, headers: const {'User-Agent': 'Meshiker/1.0'})
+                        : null,
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline, color: Colors.white38),
-                      onPressed: () => isar.deleteOfflineMap(map.id),
+                      onPressed: () async {
+                        await OfflineMapDownloadService(isarService: isar)
+                            .deleteFiles(map.localUuid);
+                        await isar.deleteOfflineMap(map.id);
+                      },
                     ),
                   );
                 },

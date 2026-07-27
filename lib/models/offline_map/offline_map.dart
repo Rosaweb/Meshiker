@@ -23,8 +23,16 @@ class OfflineMap {
   double downloadProgress = 0; // 0.0 to 1.0
   bool isDownloading = false;
   bool isError = false;
-  
-  String? localPath; // Path to the .mbtiles file once downloaded
+
+  // Identifiant du fond de carte (cf. MapSourceInfo.id dans
+  // maps_settings_screen.dart) téléchargé, et son urlTemplate résolu au
+  // moment du téléchargement (conservé même si la source venait à
+  // disparaître de la liste). Sert à MapScreen pour ne servir les tuiles
+  // locales que lorsque ce même fond de carte est affiché.
+  String sourceId = 'osm_standard';
+  String urlTemplate = '';
+
+  String? localPath; // Dossier contenant les tuiles téléchargées (<id>/z/x/y.png)
   int sizeBytes = 0;
 
   DateTime createdAt = DateTime.now();

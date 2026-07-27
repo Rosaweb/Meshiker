@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:isar_community/isar.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as p;
 import 'package:vector_map_tiles/vector_map_tiles.dart';
@@ -16,6 +18,7 @@ import '../models/point_of_interest.dart';
 import '../models/segment.dart';
 import '../models/offline_map/offline_map.dart';
 import '../search/local_search_engine.dart';
+import '../utils/offline_map_download_service.dart';
 import '../utils/settings_service.dart';
 import '../utils/tile_cache_service.dart';
 import 'package:provider/provider.dart';
@@ -999,16 +1002,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Widget _buildDynamicTileLayer() {
     final favIds = widget.settingsService.favoriteMapIds;
-    if (favIds.isEmpty) {
-      return TileLayer(
-        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        errorTileCallback: _onTileError,
-        reset: _tileResetController.stream,
-      );
-    }
-
-    final rawIndex = widget.settingsService.currentMapIndex;
-    final currentId = favIds[rawIndex % favIds.length];
+    final currentId = favIds.isNotEmpty
+        ? favIds[widget.settingsService.currentMapIndex % favIds.length]
+        : 'osm_standard';
     final source = availableSources.firstWhere((s) => s.id == currentId,
         orElse: () => availableSources.first);
 
@@ -1016,12 +1012,57 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       urlTemplate: source.url,
       subdomains: const ['a', 'b', 'c'],
       userAgentPackageName: 'com.example.meshiker',
-      tileProvider: NetworkTileProvider(
-        headers: {'User-Agent': 'Meshiker/1.0'},
-      ),
+      tileProvider: _buildTileProvider(source.id),
       errorTileCallback: _onTileError,
       reset: _tileResetController.stream,
     );
+  }
+
+  /// Sert les tuiles depuis les cartes hors-ligne déjà téléchargées pour ce
+  /// fond de carte ([sourceId]) quand elles sont disponibles localement, et
+  /// ne retombe sur le réseau que pour les tuiles manquantes -- c'est ce qui
+  /// rend une zone téléchargée ("Créer une carte") réellement consultable
+  /// hors connexion.
+  TileProvider _buildTileProvider(String sourceId) {
+    const headers = {'User-Agent': 'Meshiker/1.0'};
+    final completedMaps = widget.isarService.isar.offlineMaps
+        .filter()
+        .sourceIdEqualTo(sourceId)
+        .and()
+        .isDownloadingEqualTo(false)
+        .and()
+        .isErrorEqualTo(false)
+        .findAllSync();
+
+    final localDirs = completedMaps
+        .where((m) => m.localPath != null)
+        .map((m) => Directory(m.localPath!))
+        .toList();
+
+    if (localDirs.isEmpty) {
+      return NetworkTileProvider(headers: headers);
+    }
+    return _OfflineAwareTileProvider(localDirs: localDirs, headers: headers);
+  }
+}
+
+/// Consulte d'abord les tuiles téléchargées en local (voir
+/// [OfflineMapDownloadService]) avant de retomber sur le réseau, tuile par
+/// tuile -- une même zone peut ainsi être partiellement téléchargée sans
+/// empêcher l'affichage du reste depuis le réseau quand il est disponible.
+class _OfflineAwareTileProvider extends TileProvider {
+  _OfflineAwareTileProvider({required this.localDirs, super.headers});
+
+  final List<Directory> localDirs;
+
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
+    for (final dir in localDirs) {
+      final file = OfflineMapDownloadService.tileFile(
+          dir, coordinates.z, coordinates.x, coordinates.y);
+      if (file.existsSync()) return FileImage(file);
+    }
+    return NetworkImage(getTileUrl(coordinates, options), headers: headers);
   }
 }
 
@@ -2137,6 +2178,16 @@ class _MapCreationMenu extends StatelessWidget {
               final isar = context.read<IsarService>();
               final messenger = ScaffoldMessenger.of(context);
 
+              // Le fond de carte actuellement affiché est celui téléchargé :
+              // c'est ce que l'utilisateur vient de voir/ajuster à l'écran.
+              final favIds = settings.favoriteMapIds;
+              final sourceId = favIds.isNotEmpty
+                  ? favIds[settings.currentMapIndex % favIds.length]
+                  : 'osm_standard';
+              final source = availableSources.firstWhere(
+                  (s) => s.id == sourceId,
+                  orElse: () => availableSources.first);
+
               final map = OfflineMap()
                 ..localUuid = const Uuid().v4()
                 ..name = nameController.text
@@ -2147,8 +2198,10 @@ class _MapCreationMenu extends StatelessWidget {
                 ..maxLon = max(settings.mapOrigin!.lon, settings.mapTarget!.lon)
                 ..minZoom = settings.minZoomDownload
                 ..maxZoom = settings.maxZoomDownload
+                ..sourceId = source.id
+                ..urlTemplate = source.url
                 ..isDownloading = true
-                ..downloadProgress = 0.05;
+                ..downloadProgress = 0.0;
 
               await isar.saveOfflineMap(map);
               settings.cancelMapCreation();
@@ -2156,31 +2209,33 @@ class _MapCreationMenu extends StatelessWidget {
 
               messenger.showSnackBar(
                 const SnackBar(
-                  content:
-                      Text('Carte enregistrée', textAlign: TextAlign.center),
+                  content: Text('Téléchargement de la carte démarré',
+                      textAlign: TextAlign.center),
                   duration: Duration(seconds: 2),
                   behavior: SnackBarBehavior.floating,
                   margin: EdgeInsets.symmetric(horizontal: 100, vertical: 200),
                 ),
               );
 
-              Future.delayed(const Duration(seconds: 5), () async {
-                map.isDownloading = false;
-                map.downloadProgress = 1.0;
-                map.sizeBytes = 25 * 1024 * 1024;
-                await isar.saveOfflineMap(map);
-
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Le téléchargement de votre carte est terminé',
-                        textAlign: TextAlign.center),
-                    duration: Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                    margin: EdgeInsets.symmetric(horizontal: 50, vertical: 200),
-                  ),
-                );
-              });
+              unawaited(
+                OfflineMapDownloadService(isarService: isar)
+                    .download(map, headers: const {'User-Agent': 'Meshiker/1.0'})
+                    .then((_) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                          map.isError
+                              ? 'Échec du téléchargement de "${map.name}"'
+                              : 'Le téléchargement de "${map.name}" est terminé',
+                          textAlign: TextAlign.center),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 50, vertical: 200),
+                    ),
+                  );
+                }),
+              );
             },
             child: const Text('VALIDER',
                 style: TextStyle(color: Colors.greenAccent)),
