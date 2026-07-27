@@ -184,6 +184,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
 
     setState(() => _latestCamera = camera);
+    widget.viewModel.liveCamera.value = (
+      lat: camera.center.latitude,
+      lon: camera.center.longitude,
+      zoom: camera.zoom,
+    );
     _reloadViewportData(camera);
     widget.planningController
         ?.updateCandidateSegments(widget.viewModel.segments.value);
@@ -661,6 +666,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     _isMapReady = true;
                     _latestCamera = _mapController.camera;
                   });
+                  widget.viewModel.liveCamera.value = (
+                    lat: _mapController.camera.center.latitude,
+                    lon: _mapController.camera.center.longitude,
+                    zoom: _mapController.camera.zoom,
+                  );
                   _reloadViewportData(_mapController.camera);
 
                   // Correction technique : Recentrer immédiatement si la position est connue au chargement
@@ -775,7 +785,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 bottom: 0,
                 left: 0,
                 right: 0,
-                child: widget.settingsService.mapCreationStep !=
+                child: widget.settingsService.pickingStartupCenter
+                    ? _StartupCenterPickerMenu(
+                        settings: widget.settingsService,
+                        center: _mapController.camera.center,
+                        zoom: _mapController.camera.zoom,
+                      )
+                    : widget.settingsService.mapCreationStep !=
                         MapCreationStep.none
                     ? _MapCreationMenu(
                         settings: widget.settingsService,
@@ -945,17 +961,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             if (widget.settingsService.measurementMode !=
                     MeasurementMode.none ||
-                widget.settingsService.mapCreationStep != MapCreationStep.none)
-              IgnorePointer(
+                widget.settingsService.mapCreationStep !=
+                    MapCreationStep.none ||
+                widget.settingsService.pickingStartupCenter)
+              const IgnorePointer(
                 child: Center(
-                  child: Icon(Icons.add,
-                      color: (widget.settingsService.mapCreationStep !=
-                                  MapCreationStep.none ||
-                              widget.settingsService.measurementMode !=
-                                  MeasurementMode.none)
-                          ? Colors.red
-                          : Colors.white,
-                      size: 40),
+                  child: Icon(Icons.add, color: Colors.red, size: 40),
                 ),
               ),
             if (widget.settingsService.mapCreationStep != MapCreationStep.none)
@@ -1962,6 +1973,51 @@ class _RoundButton extends StatelessWidget {
           border: Border.all(color: Colors.white10),
         ),
         child: Center(child: child),
+      ),
+    );
+  }
+}
+
+/// Bandeau simplifié affiché quand l'utilisateur choisit le point fixe
+/// d'ouverture de la carte depuis les paramètres d'affichage (croix rouge
+/// centrale + annuler/valider, même principe que _MapCreationMenu).
+class _StartupCenterPickerMenu extends StatelessWidget {
+  final SettingsService settings;
+  final LatLng center;
+  final double zoom;
+  const _StartupCenterPickerMenu({
+    required this.settings,
+    required this.center,
+    required this.zoom,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Colors.black87,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Row(
+        children: [
+          TextButton(
+            onPressed: () => settings.cancelPickStartupCenter(),
+            child:
+                const Text('ANNULER', style: TextStyle(color: Colors.white38)),
+          ),
+          const Spacer(),
+          const Text('Positionnez la croix sur le point d\'ouverture',
+              style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const Spacer(),
+          ElevatedButton(
+            onPressed: () => settings.validateStartupCenter(
+                center.latitude, center.longitude, zoom),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
+            child:
+                const Text('VALIDER', style: TextStyle(color: Colors.black)),
+          ),
+        ],
       ),
     );
   }

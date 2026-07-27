@@ -33,6 +33,12 @@ class MapViewModel {
   final ValueNotifier<List<OsmPoi>> osmPois = ValueNotifier(const []);
   final ValueNotifier<bool> isRefreshingCommunityData = ValueNotifier(false);
 
+  /// Dernière position caméra connue de MapScreen (centre + zoom), tenue à
+  /// jour à chaque déplacement. Lu par MainNavigationScreen à la mise en
+  /// arrière-plan pour mémoriser où l'utilisateur a laissé la carte.
+  final ValueNotifier<({double lat, double lon, double zoom})?> liveCamera =
+      ValueNotifier(null);
+
   Timer? _debounce;
 
   /// A appeler quand le viewport de la carte change (deplacement, zoom).
@@ -152,5 +158,6 @@ class MapViewModel {
     segments.dispose();
     pois.dispose();
     isRefreshingCommunityData.dispose();
+    liveCamera.dispose();
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:latlong2/latlong.dart';
 import '../map/map_screen.dart';
 import '../map/map_view_model.dart';
 import '../models/waypoint.dart';
@@ -55,6 +56,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   late double _targetScroll;
   late bool _lastReversePanels;
   late MapCreationStep _lastMapCreationStep;
+  late bool _lastPickingStartupCenter;
 
   @override
   void initState() {
@@ -64,6 +66,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _lastReversePanels = isReversed;
     _targetScroll = isReversed ? 2.0 : 1.0;
     _lastMapCreationStep = widget.settingsService.mapCreationStep;
+    _lastPickingStartupCenter = widget.settingsService.pickingStartupCenter;
 
     _scrollController = AnimationController(
       vsync: this,
@@ -99,6 +102,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _updateGestureExclusion(widget.settingsService.edgeSwipeWidth);
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // On mémorise la position affichée dès que l'app quitte le premier
+    // plan (pause = point de sortie fiable ; "detached" arrive trop tard,
+    // le process peut déjà être en cours de destruction) pour la
+    // retrouver à la prochaine ouverture (MapStartupMode.lastPosition).
+    if (state == AppLifecycleState.paused) {
+      final cam = widget.mapViewModel.liveCamera.value;
+      if (cam != null) {
+        widget.settingsService.setLastMapPosition(cam.lat, cam.lon, cam.zoom);
+      }
+    }
+  }
+
   void _onSettingsChanged() {
     _updateGestureExclusion(widget.settingsService.edgeSwipeWidth);
 
@@ -129,6 +146,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
     }
     _lastMapCreationStep = mapCreationStep;
+
+    final pickingStartupCenter = widget.settingsService.pickingStartupCenter;
+    if (pickingStartupCenter && !_lastPickingStartupCenter) {
+      // Démarrage du choix du point d'ouverture personnalisé, déclenché
+      // depuis DisplaySettingsScreen (déjà refermé par son propre
+      // Navigator.pop) : on ramène le carrousel sur la carte pour révéler
+      // la croix rouge et le bandeau simplifié.
+      _targetScroll = isReversed ? 2.0 : 1.0;
+      _scrollController.animateTo(_targetScroll,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    } else if (!pickingStartupCenter && _lastPickingStartupCenter) {
+      // Validation ou annulation : on rouvre automatiquement les
+      // paramètres d'affichage d'où le choix a été lancé.
+      _pushSettings(const DisplaySettingsScreen());
+    }
+    _lastPickingStartupCenter = pickingStartupCenter;
 
     setState(() {});
   }
@@ -227,6 +260,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 ownerUuid: widget.ownerUuid,
                 panelScrollAnimation: _scrollController,
                 mapPageIndex: mapIndex,
+                initialCenter: _initialMapCenter(settings),
+                initialZoom: _initialMapZoom(settings),
               ),
 
               if (isOffline)
@@ -884,6 +919,36 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 
+  // Point de repli si aucune position n'a jamais été enregistrée (premier
+  // lancement de l'app, avant toute fermeture) : Mont Blanc, valeur
+  // historique par défaut de MapScreen.
+  static const _fallbackCenter = LatLng(45.8326, 6.8652);
+  static const _fallbackZoom = 13.0;
+
+  /// Centre de la carte à utiliser au démarrage : le point personnalisé si
+  /// l'utilisateur l'a choisi (MapStartupMode.customPoint), sinon la
+  /// dernière position mémorisée à la fermeture précédente, sinon le repli
+  /// Mont Blanc (première installation uniquement).
+  LatLng _initialMapCenter(SettingsService settings) {
+    if (settings.mapStartupMode == MapStartupMode.customPoint) {
+      final custom = settings.customMapCenter;
+      if (custom != null) return LatLng(custom.lat, custom.lon);
+    }
+    final last = settings.lastMapPosition;
+    if (last != null) return LatLng(last.lat, last.lon);
+    return _fallbackCenter;
+  }
+
+  double _initialMapZoom(SettingsService settings) {
+    if (settings.mapStartupMode == MapStartupMode.customPoint) {
+      final custom = settings.customMapCenter;
+      if (custom != null) return custom.zoom;
+    }
+    final last = settings.lastMapPosition;
+    if (last != null) return last.zoom;
+    return _fallbackZoom;
+  }
+
   void _pushSettings(Widget screen) {
     Navigator.push(
         context,
@@ -927,7 +992,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           SizedBox(height: 60),
           Text('Appuyez pour commencer',
               style: TextStyle(color: Colors.white70)),
-
             SizedBox(height: 60),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 _HintGesture(
