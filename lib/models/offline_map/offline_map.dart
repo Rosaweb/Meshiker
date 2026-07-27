@@ -35,6 +35,12 @@ class OfflineMap {
   String? localPath; // Dossier contenant les tuiles téléchargées (<id>/z/x/y.png)
   int sizeBytes = 0;
 
+  // Nom de la Trace associée si cette carte a été créée depuis le menu
+  // "Créer carte hors-ligne" d'une trace GPX (cf. TrackEditScreen) : dans
+  // ce cas, taper sur la carte dans "Mes cartes > Hors ligne" doit ouvrir
+  // directement le Roadmap de cette trace plutôt que ne rien faire.
+  String? linkedTraceName;
+
   DateTime createdAt = DateTime.now();
   DateTime updatedAt = DateTime.now();
 }

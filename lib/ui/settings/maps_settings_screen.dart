@@ -6,6 +6,7 @@ import '../../utils/offline_map_download_service.dart';
 import '../../utils/settings_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/offline_map/offline_map.dart';
+import '../tracks/roadmap_screen.dart';
 
 class MapSourceInfo {
   final String id;
@@ -276,10 +277,24 @@ class _OfflineMapsTab extends StatelessWidget {
                             const Text('Erreur. Appuyez pour reprendre.', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
                         ],
                       ),
-                    onTap: map.isError && !map.isDownloading
-                        ? () => OfflineMapDownloadService(isarService: isar)
-                            .download(map, headers: const {'User-Agent': 'Meshiker/1.0'})
-                        : null,
+                    onTap: () {
+                      if (map.isError && !map.isDownloading) {
+                        OfflineMapDownloadService(isarService: isar).download(
+                            map,
+                            headers: const {'User-Agent': 'Meshiker/1.0'});
+                        return;
+                      }
+                      // Carte créée depuis le menu d'une trace GPX (cf.
+                      // TrackEditScreen) : la retrouver dans la liste
+                      // rouvre directement le Roadmap de cette trace.
+                      final traceName = map.linkedTraceName;
+                      if (!map.isDownloading && traceName != null) {
+                        settings.setRoadmapTraceName(traceName);
+                        Navigator.pop(context);
+                        Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const RoadmapScreen()));
+                      }
+                    },
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline, color: Colors.white38),
                       onPressed: () async {

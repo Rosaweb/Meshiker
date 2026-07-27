@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -5,10 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 import '../../database/isar_service.dart';
+import '../../models/offline_map/offline_map.dart';
 import '../../models/trace.dart';
 import '../../search/local_search_engine.dart';
+import '../../utils/offline_map_download_service.dart';
 import '../../utils/settings_service.dart';
+import '../settings/maps_settings_screen.dart';
 import 'roadmap_screen.dart';
 
 enum _TraceMenuAction { navigate, offlineMap, elevationProfile, color, move, delete }
@@ -162,7 +167,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
             onSelected: _onMenuAction,
             itemBuilder: (context) => [
               _menuItem(_TraceMenuAction.navigate, Icons.navigation, 'Naviguer', color: Colors.greenAccent),
-              _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, 'Créer carte hors-ligne', enabled: false),
+              _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, 'Créer carte hors-ligne'),
               _menuItem(_TraceMenuAction.elevationProfile, Icons.show_chart, 'Profil altimétrique', enabled: false),
               const PopupMenuDivider(),
               _menuItem(_TraceMenuAction.color, Icons.palette_outlined, 'Couleur de la trace'),
@@ -202,6 +207,8 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
         _navigate();
         break;
       case _TraceMenuAction.offlineMap:
+        _createOfflineMap();
+        break;
       case _TraceMenuAction.elevationProfile:
         break;
       case _TraceMenuAction.color:
@@ -225,6 +232,76 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
       context,
       MaterialPageRoute(builder: (_) => const RoadmapScreen()),
     );
+  }
+
+  /// Calcule le plus petit quadrilatère (bounding box) contenant
+  /// intégralement la trace, télécharge les tuiles correspondantes et
+  /// enregistre le résultat dans "Mes cartes > Hors ligne" sous le même nom
+  /// que la trace. La carte créée est liée à la trace (OfflineMap.
+  /// linkedTraceName) pour que la retrouver dans la liste rouvre
+  /// directement le Roadmap de cette trace (cf. _OfflineMapsTab).
+  Future<void> _createOfflineMap() async {
+    final isar = context.read<IsarService>();
+    final settings = context.read<SettingsService>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final polyline = await isar.getTracePolyline(widget.trace);
+    if (polyline.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Cette trace ne contient aucun point.')),
+      );
+      return;
+    }
+
+    var minLat = polyline.first.lat, maxLat = polyline.first.lat;
+    var minLon = polyline.first.lon, maxLon = polyline.first.lon;
+    for (final point in polyline) {
+      if (point.lat < minLat) minLat = point.lat;
+      if (point.lat > maxLat) maxLat = point.lat;
+      if (point.lon < minLon) minLon = point.lon;
+      if (point.lon > maxLon) maxLon = point.lon;
+    }
+
+    // Même fond de carte que celui affiché à l'écran, mêmes bornes de zoom
+    // que celles proposées par défaut pour une création manuelle (cf.
+    // SettingsService.startMapCreation).
+    final favIds = settings.favoriteMapIds;
+    final sourceId = favIds.isNotEmpty
+        ? favIds[settings.currentMapIndex % favIds.length]
+        : 'osm_standard';
+    final source = availableSources.firstWhere((s) => s.id == sourceId,
+        orElse: () => availableSources.first);
+
+    final map = OfflineMap()
+      ..localUuid = const Uuid().v4()
+      ..name = widget.trace.name
+      ..minLat = minLat
+      ..maxLat = maxLat
+      ..minLon = minLon
+      ..maxLon = maxLon
+      ..minZoom = 10
+      ..maxZoom = 15
+      ..sourceId = source.id
+      ..urlTemplate = source.url
+      ..linkedTraceName = widget.trace.name
+      ..isDownloading = true
+      ..downloadProgress = 0.0;
+
+    await isar.saveOfflineMap(map);
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Téléchargement de la carte "${map.name}" démarré',
+            textAlign: TextAlign.center),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    unawaited(OfflineMapDownloadService(isarService: isar)
+        .download(map, headers: const {'User-Agent': 'Meshiker/1.0'}));
   }
 
   Future<void> _moveSourceFile() async {
