@@ -9,6 +9,7 @@ import '../../database/isar_service.dart';
 import '../../models/trace.dart';
 import '../../search/local_search_engine.dart';
 import '../../utils/settings_service.dart';
+import 'elevation_profile_dialog.dart';
 import 'roadmap_screen.dart';
 
 enum _TraceMenuAction { navigate, offlineMap, elevationProfile, color, move, delete }
@@ -163,7 +164,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
             itemBuilder: (context) => [
               _menuItem(_TraceMenuAction.navigate, Icons.navigation, 'Naviguer', color: Colors.greenAccent),
               _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, 'Créer carte hors-ligne', enabled: false),
-              _menuItem(_TraceMenuAction.elevationProfile, Icons.show_chart, 'Profil altimétrique', enabled: false),
+              _menuItem(_TraceMenuAction.elevationProfile, Icons.show_chart, 'Profil altimétrique'),
               const PopupMenuDivider(),
               _menuItem(_TraceMenuAction.color, Icons.palette_outlined, 'Couleur de la trace'),
               _menuItem(_TraceMenuAction.move, Icons.drive_file_move_outline, 'Déplacer'),
@@ -202,7 +203,9 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
         _navigate();
         break;
       case _TraceMenuAction.offlineMap:
+        break;
       case _TraceMenuAction.elevationProfile:
+        _showElevationProfile();
         break;
       case _TraceMenuAction.color:
         _showColorPicker();
@@ -224,6 +227,25 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const RoadmapScreen()),
+    );
+  }
+
+  Future<void> _showElevationProfile() async {
+    final isar = context.read<IsarService>();
+    final points = await isar.getTraceTrackPoints(widget.trace);
+    if (!mounted) return;
+
+    if (points.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cette trace ne contient aucun point.')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.7),
+      builder: (context) => ElevationProfileDialog(trace: widget.trace, points: points),
     );
   }
 
