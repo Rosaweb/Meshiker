@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:isar_community/isar.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/isar_service.dart';
 import '../../models/waypoint.dart';
@@ -107,6 +108,40 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
 
     await widget.isarService.saveWaypoint(wp);
     if (mounted) Navigator.pop(context);
+  }
+
+  /// Un waypoint est "nouveau" tant qu'il n'a jamais été enregistré dans
+  /// Isar (création par appui long sur la carte, ou pré-rempli depuis un
+  /// POI OSM) : dans ce cas on propose ANNULER. Dès qu'il s'agit d'un
+  /// waypoint déjà persisté (édité depuis le Waypoint Manager ou depuis un
+  /// marqueur existant sur la carte), ANNULER n'a pas de sens et on
+  /// propose SUPPRIMER à la place.
+  bool get _isNew => widget.waypoint == null || widget.waypoint!.id == Isar.autoIncrement;
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Supprimer', style: TextStyle(color: Colors.white)),
+        content: const Text('Voulez-vous vraiment supprimer ce waypoint ?',
+            style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ANNULER'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && widget.waypoint != null) {
+      await widget.isarService.deleteWaypoints([widget.waypoint!.id]);
+      if (mounted) Navigator.pop(context);
+    }
   }
 
   @override
@@ -223,10 +258,16 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('ANNULER', style: TextStyle(color: Colors.white54)),
-                  ),
+                  if (_isNew)
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('ANNULER', style: TextStyle(color: Colors.white54)),
+                    )
+                  else
+                    TextButton(
+                      onPressed: _confirmDelete,
+                      child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+                    ),
                   const SizedBox(width: 12),
                   ElevatedButton(
                     onPressed: _save,
