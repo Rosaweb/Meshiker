@@ -16,6 +16,7 @@ import 'settings/maps_settings_screen.dart';
 import 'settings/display_settings_screen.dart';
 import 'settings/account_settings_screen.dart';
 import 'settings/system_settings_screen.dart';
+import 'settings/help_screen.dart';
 import 'tracks/track_manager_screen.dart';
 import 'tracks/roadmap_screen.dart';
 import 'segments/segment_manager_screen.dart';
@@ -434,6 +435,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               title: 'Mesh manager',
               subtitle: 'Gérer les segments',
               onTap: () => _pushSettings(const SegmentManagerScreen())),
+          _buildSettingsTile(
+              icon: Icons.help_outline,
+              title: 'Aide',
+              subtitle: 'Assistance et prise en main',
+              onTap: () => _pushSettings(const HelpScreen())),
           const Divider(color: Colors.white12),
           Padding(
             padding: const EdgeInsets.all(16.0),
