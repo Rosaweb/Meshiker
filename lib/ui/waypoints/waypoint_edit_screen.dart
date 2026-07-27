@@ -218,21 +218,23 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      const Text('COULEUR DU POINT', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: _pickColor,
-                        child: Container(
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: _currentColor,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white24),
+                      Row(
+                        children: [
+                          const Text('COULEUR DU POINT', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: _pickColor,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: _currentColor,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: Colors.white24),
+                              ),
+                            ),
                           ),
-                          child: const Center(
-                            child: Icon(Icons.palette, color: Colors.white, size: 20),
-                          ),
-                        ),
+                        ],
                       ),
                       const SizedBox(height: 24),
                       Row(
