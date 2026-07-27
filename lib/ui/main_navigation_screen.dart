@@ -57,6 +57,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   late bool _lastReversePanels;
   late MapCreationStep _lastMapCreationStep;
   late bool _lastPickingStartupCenter;
+  late String? _lastLocatingWaypointUuid;
 
   @override
   void initState() {
@@ -67,6 +68,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _targetScroll = isReversed ? 2.0 : 1.0;
     _lastMapCreationStep = widget.settingsService.mapCreationStep;
     _lastPickingStartupCenter = widget.settingsService.pickingStartupCenter;
+    _lastLocatingWaypointUuid = widget.settingsService.locatingWaypointUuid;
 
     _scrollController = AnimationController(
       vsync: this,
@@ -163,6 +165,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     }
     _lastPickingStartupCenter = pickingStartupCenter;
 
+    final locatingWaypointUuid = widget.settingsService.locatingWaypointUuid;
+    if (locatingWaypointUuid != null && _lastLocatingWaypointUuid == null) {
+      // "Localiser sur la carte" déclenché depuis la fenêtre contextuelle
+      // d'un waypoint (WaypointEditScreen a déjà dépilé jusqu'à cet écran
+      // via Navigator.popUntil) : on ramène le carrousel sur la carte pour
+      // révéler le bouton "Retour" flottant.
+      _targetScroll = isReversed ? 2.0 : 1.0;
+      _scrollController.animateTo(_targetScroll,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    }
+    _lastLocatingWaypointUuid = locatingWaypointUuid;
+
     setState(() {});
   }
 
@@ -218,6 +232,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _targetScroll = _scrollController.value.round().toDouble();
     _scrollController.animateTo(_targetScroll,
         duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+
+    final mapIndex = widget.settingsService.reversePanels ? 2.0 : 1.0;
+    if (_targetScroll != mapIndex &&
+        widget.settingsService.locatingWaypointUuid != null) {
+      // L'utilisateur a quitté la carte pour un volet latéral : ce n'est
+      // plus une simple manipulation de la carte, le bouton "Retour" du
+      // mode "Localiser sur la carte" n'a plus lieu d'être.
+      widget.settingsService.dismissLocateWaypointBackButton();
+    }
   }
 
   @override

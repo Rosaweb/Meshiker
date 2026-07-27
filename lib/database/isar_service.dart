@@ -371,6 +371,10 @@ class IsarService {
     return isar.waypoints.where().findAll();
   }
 
+  Future<Waypoint?> waypointByUuid(String localUuid) {
+    return isar.waypoints.filter().localUuidEqualTo(localUuid).findFirst();
+  }
+
   Future<List<WaypointCategory>> allCategories() {
     return isar.waypointCategorys.where().sortByUpdatedAt().findAll();
   }

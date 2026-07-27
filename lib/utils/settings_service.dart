@@ -88,6 +88,11 @@ class SettingsService extends ChangeNotifier {
   double? _customMapZoom;
   bool _pickingStartupCenter = false;
 
+  // "Localiser sur la carte" depuis la fenêtre contextuelle d'un waypoint :
+  // uuid du waypoint concerné tant que le bouton "Retour" flottant est
+  // affiché sur la carte, null sinon.
+  String? _locatingWaypointUuid;
+
   double get barOpacity => _barOpacity;
   double get mainMenuOpacity => _mainMenuOpacity;
   UnitSystem get unitSystem => _unitSystem;
@@ -133,6 +138,7 @@ class SettingsService extends ChangeNotifier {
 
   MapStartupMode get mapStartupMode => _mapStartupMode;
   bool get pickingStartupCenter => _pickingStartupCenter;
+  String? get locatingWaypointUuid => _locatingWaypointUuid;
 
   ({double lat, double lon, double zoom})? get lastMapPosition =>
       (_lastMapLat != null && _lastMapLon != null && _lastMapZoom != null)
@@ -513,6 +519,21 @@ class SettingsService extends ChangeNotifier {
 
   void cancelPickStartupCenter() {
     _pickingStartupCenter = false;
+    notifyListeners();
+  }
+
+  /// Démarre le mode "Localiser sur la carte" pour le waypoint [uuid] :
+  /// affiche le bouton "Retour" flottant sur MapScreen.
+  void startLocateWaypoint(String uuid) {
+    _locatingWaypointUuid = uuid;
+    notifyListeners();
+  }
+
+  /// Referme le bouton "Retour", que ce soit parce qu'on l'a pressé (pour
+  /// rouvrir la fenêtre contextuelle) ou parce que l'utilisateur a fait
+  /// autre chose qu'un zoom/déplacement sur la carte.
+  void dismissLocateWaypointBackButton() {
+    _locatingWaypointUuid = null;
     notifyListeners();
   }
 }

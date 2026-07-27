@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:isar_community/isar.dart';
+import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/isar_service.dart';
+import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
+import '../../utils/settings_service.dart';
 
 class WaypointEditScreen extends StatefulWidget {
   final Waypoint? waypoint;
@@ -144,6 +147,20 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
     }
   }
 
+  /// Ferme la fenêtre contextuelle et centre l'écran principal (carte) sur
+  /// ce waypoint. Un bouton "Retour" flottant s'affiche sur la carte pour
+  /// revenir ici ; disponible uniquement pour un waypoint déjà enregistré
+  /// (un waypoint en cours de création n'a pas d'existence persistée à
+  /// laquelle revenir).
+  void _locateOnMap() {
+    final wp = widget.waypoint;
+    if (wp == null) return;
+    context.read<SettingsService>().startLocateWaypoint(wp.localUuid);
+    context.read<MapViewModel>().centerRequest.value =
+        (lat: wp.latitude, lon: wp.longitude);
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -236,6 +253,22 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                           ),
                         ],
                       ),
+                      if (!_isNew) ...[
+                        const SizedBox(height: 16),
+                        InkWell(
+                          onTap: _locateOnMap,
+                          child: const Row(
+                            children: [
+                              Icon(Icons.location_searching, color: Colors.greenAccent, size: 18),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text('Localiser sur la carte', style: TextStyle(color: Colors.white)),
+                              ),
+                              Icon(Icons.chevron_right, color: Colors.white24),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       Row(
                         children: [
