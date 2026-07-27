@@ -614,10 +614,14 @@ class RecordingService {
       50.0
     );
 
-    if (snap == null) return;
-
     final totalDist = GeoUtils.polylineLengthMeters(_activePolyline);
-    final doneDist = GeoUtils.distanceToSnapMeters(_activePolyline, snap);
+    // Tant que la position GPS n'est pas détectée sur la trace (hors de la
+    // marge de 50m), on calcule les distances par défaut depuis le DÉBUT
+    // de la trace plutôt que de ne rien afficher : dès que la position est
+    // détectée sur la trace, tout se recalcule par rapport à elle.
+    final doneDist = snap != null
+        ? GeoUtils.distanceToSnapMeters(_activePolyline, snap)
+        : 0.0;
 
     trackDistanceDoneMeters.value = doneDist;
     trackDistanceRemainingMeters.value = totalDist - doneDist;

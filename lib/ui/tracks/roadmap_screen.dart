@@ -102,6 +102,8 @@ class RoadmapScreen extends StatelessWidget {
                         return _RoadmapWaypointTile(
                           waypoint: entry.waypoint,
                           passed: entry.distanceAlongTrack <= doneDist,
+                          distanceMeters: (entry.distanceAlongTrack - doneDist).abs(),
+                          unitSystem: settings.unitSystem,
                           onTap: isSelectionMode
                               ? () {
                                   settings.setNavigationWaypoint(entry.waypoint.localUuid);
@@ -177,16 +179,27 @@ class _ProgressLine extends StatelessWidget {
 class _RoadmapWaypointTile extends StatelessWidget {
   final Waypoint waypoint;
   final bool passed;
+  final double distanceMeters;
+  final UnitSystem unitSystem;
   final VoidCallback? onTap;
 
   const _RoadmapWaypointTile({
     required this.waypoint,
     required this.passed,
+    required this.distanceMeters,
+    required this.unitSystem,
     required this.onTap,
   });
 
+  String _formatDistance(double m) => unitSystem == UnitSystem.metric
+      ? (m >= 1000 ? '${(m / 1000).toStringAsFixed(1)} km' : '${m.round()} m')
+      : (m * 3.28084 >= 5280
+          ? '${(m * 3.28084 / 5280).toStringAsFixed(1)} mi'
+          : '${(m * 3.28084).round()} ft');
+
   @override
   Widget build(BuildContext context) {
+    final distanceColor = passed ? Colors.white38 : Colors.greenAccent;
     return ListTile(
       enabled: onTap != null,
       leading: CircleAvatar(
@@ -201,6 +214,10 @@ class _RoadmapWaypointTile extends StatelessWidget {
       subtitle: Text(
         waypoint.category.value?.name ?? 'Point',
         style: const TextStyle(color: Colors.white38),
+      ),
+      trailing: Text(
+        _formatDistance(distanceMeters),
+        style: TextStyle(color: distanceColor, fontWeight: FontWeight.bold, fontSize: 13),
       ),
       onTap: onTap,
     );
