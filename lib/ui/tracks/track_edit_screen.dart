@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
 import '../../models/trace.dart';
+import '../../recording/recording_service.dart';
 import '../../search/local_search_engine.dart';
 import '../../utils/settings_service.dart';
 import 'roadmap_screen.dart';
@@ -218,6 +219,12 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
 
   Future<void> _navigate() async {
     final settings = context.read<SettingsService>();
+    final recording = context.read<RecordingService>();
+    // On repart sur une destination par défaut (fin de la trace) plutôt que
+    // de garder une éventuelle sélection manuelle faite lors d'une
+    // précédente navigation sur une autre trace.
+    await settings.setNavigationWaypoint(null);
+    await recording.setDestination(null);
     await settings.setRoadmapTraceName(widget.trace.name);
     if (!mounted) return;
     Navigator.pop(context);
