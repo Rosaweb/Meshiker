@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/enums.dart';
 import '../models/segment.dart';
+import '../ui/settings/maps_settings_screen.dart';
+import '../utils/settings_service.dart';
 
 /// Critere utilise pour colorer un Segment a l'ecran. L'utilisateur peut
 /// basculer entre ces modes (voir MapScreen) pour lire la toile
@@ -102,4 +104,18 @@ class MapStyle {
   };
 
   static Color poiColor(POIType type) => _poiColors[type] ?? _unknownColor;
+
+  /// Détermine quelle source de tuiles utiliser d'après les cartes favorites
+  /// de l'utilisateur (ou OpenStreetMap standard s'il n'en a configuré
+  /// aucune). Centralisé ici pour que MapScreen et tout autre aperçu de
+  /// carte (ex: illustration d'une trace) restent cohérents entre eux.
+  static MapSourceInfo resolveTileSource(SettingsService settings) {
+    final favIds = settings.favoriteMapIds;
+    if (favIds.isEmpty) {
+      return availableSources.firstWhere((s) => s.id == 'osm_standard');
+    }
+    final currentId = favIds[settings.currentMapIndex % favIds.length];
+    return availableSources.firstWhere((s) => s.id == currentId,
+        orElse: () => availableSources.first);
+  }
 }

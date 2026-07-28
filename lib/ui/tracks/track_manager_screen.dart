@@ -340,10 +340,9 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
             activeThumbColor: Colors.greenAccent,
           ),
       onTap: isProcessing ? null : () {
-        showDialog(
-          context: context,
-          barrierColor: Colors.black.withValues(alpha: 0.7),
-          builder: (_) => TrackEditScreen(trace: track),
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => TrackEditScreen(trace: track)),
         );
       },
     );

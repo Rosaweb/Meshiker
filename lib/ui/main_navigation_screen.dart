@@ -58,6 +58,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   late MapCreationStep _lastMapCreationStep;
   late bool _lastPickingStartupCenter;
   late String? _lastLocatingWaypointUuid;
+  late String? _lastLocatingTraceUuid;
 
   @override
   void initState() {
@@ -69,6 +70,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _lastMapCreationStep = widget.settingsService.mapCreationStep;
     _lastPickingStartupCenter = widget.settingsService.pickingStartupCenter;
     _lastLocatingWaypointUuid = widget.settingsService.locatingWaypointUuid;
+    _lastLocatingTraceUuid = widget.settingsService.locatingTraceUuid;
 
     _scrollController = AnimationController(
       vsync: this,
@@ -177,6 +179,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     }
     _lastLocatingWaypointUuid = locatingWaypointUuid;
 
+    final locatingTraceUuid = widget.settingsService.locatingTraceUuid;
+    if (locatingTraceUuid != null && _lastLocatingTraceUuid == null) {
+      // "Localiser sur la carte" déclenché depuis la fiche d'une trace GPX :
+      // on ramène le carrousel sur la carte pour révéler le bouton "Retour"
+      // flottant, comme pour un waypoint.
+      _targetScroll = isReversed ? 2.0 : 1.0;
+      _scrollController.animateTo(_targetScroll,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    }
+    _lastLocatingTraceUuid = locatingTraceUuid;
+
     setState(() {});
   }
 
@@ -240,6 +253,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       // plus une simple manipulation de la carte, le bouton "Retour" du
       // mode "Localiser sur la carte" n'a plus lieu d'être.
       widget.settingsService.dismissLocateWaypointBackButton();
+    }
+    if (_targetScroll != mapIndex &&
+        widget.settingsService.locatingTraceUuid != null) {
+      widget.settingsService.dismissLocateTraceBackButton();
     }
   }
 

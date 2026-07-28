@@ -6,12 +6,17 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
+import '../../gpx/gpx_models.dart';
 import '../../models/trace.dart';
 import '../../search/local_search_engine.dart';
 import '../../utils/settings_service.dart';
+import 'elevation_chart_painter.dart';
+import 'elevation_profile_data.dart';
 import 'roadmap_screen.dart';
+import 'trace_elevation_profile_screen.dart';
+import 'trace_map_preview.dart';
 
-enum _TraceMenuAction { navigate, offlineMap, elevationProfile, color, move, delete }
+enum _TraceMenuAction { navigate, offlineMap, color, move, delete }
 
 class TrackEditScreen extends StatefulWidget {
   final Trace trace;
@@ -26,6 +31,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
   late TextEditingController _nameController;
   late TextEditingController _descController;
   late Color _currentColor;
+  late final Future<List<GpxTrackPoint>> _pointsFuture;
 
   @override
   void initState() {
@@ -33,6 +39,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     _nameController = TextEditingController(text: widget.trace.name);
     _descController = TextEditingController(text: widget.trace.description ?? '');
     _currentColor = widget.trace.colorHex != null ? Color(widget.trace.colorHex!) : Colors.greenAccent;
+    _pointsFuture = context.read<IsarService>().getTraceTrackPoints(widget.trace);
   }
 
   @override
@@ -59,26 +66,20 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
         ? '${(widget.trace.totalDistanceMeters / 1000).toStringAsFixed(1)} km'
         : '${(widget.trace.totalDistanceMeters * 0.000621371).toStringAsFixed(1)} mi';
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.grey[900],
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white10),
-        ),
-        clipBehavior: Clip.antiAlias,
+    return Scaffold(
+      backgroundColor: Colors.grey[900],
+      body: SafeArea(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             _buildHeader(),
-            Flexible(
+            Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    TraceMapPreview(trace: widget.trace),
+                    const SizedBox(height: 24),
                     _buildInfoCard(dist),
                     const SizedBox(height: 24),
                     TextField(
@@ -93,6 +94,8 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                       ),
                     ),
+                    const SizedBox(height: 24),
+                    _buildElevationPreview(),
                   ],
                 ),
               ),
@@ -138,6 +141,11 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.black87),
+            onPressed: () => Navigator.pop(context),
+            visualDensity: VisualDensity.compact,
+          ),
           CircleAvatar(
             radius: 20,
             backgroundColor: Colors.white.withValues(alpha: 0.2),
@@ -163,7 +171,6 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
             itemBuilder: (context) => [
               _menuItem(_TraceMenuAction.navigate, Icons.navigation, 'Naviguer', color: Colors.greenAccent),
               _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, 'Créer carte hors-ligne', enabled: false),
-              _menuItem(_TraceMenuAction.elevationProfile, Icons.show_chart, 'Profil altimétrique', enabled: false),
               const PopupMenuDivider(),
               _menuItem(_TraceMenuAction.color, Icons.palette_outlined, 'Couleur de la trace'),
               _menuItem(_TraceMenuAction.move, Icons.drive_file_move_outline, 'Déplacer'),
@@ -202,7 +209,6 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
         _navigate();
         break;
       case _TraceMenuAction.offlineMap:
-      case _TraceMenuAction.elevationProfile:
         break;
       case _TraceMenuAction.color:
         _showColorPicker();
@@ -346,6 +352,73 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
         const SizedBox(height: 4),
         Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
       ],
+    );
+  }
+
+  Widget _buildElevationPreview() {
+    return FutureBuilder<List<GpxTrackPoint>>(
+      future: _pointsFuture,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox(
+            height: 140,
+            child: Center(
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.greenAccent),
+            ),
+          );
+        }
+
+        final points = snapshot.data!;
+        if (points.isEmpty || points.every((p) => p.elevation == null)) {
+          return Container(
+            height: 140,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text(
+              'Aucune donnée d\'altitude disponible.',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+          );
+        }
+
+        final series = ElevationSeries.fromPoints(points);
+        final settings = context.watch<SettingsService>();
+
+        return GestureDetector(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TraceElevationProfileScreen(trace: widget.trace, points: points),
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 140,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: ElevationChartPainter(
+                  distancesM: series.distancesM,
+                  elevations: series.elevations,
+                  minEle: series.minEle,
+                  maxEle: series.maxEle,
+                  windowStartM: 0,
+                  windowWidthM: series.totalDistanceM > 0 ? series.totalDistanceM : 1,
+                  highlightIndex: null,
+                  unitSystem: settings.unitSystem,
+                  lineColor: Colors.greenAccent,
+                  fillColor: Colors.greenAccent.withValues(alpha: 0.15),
+                  gridColor: Colors.white12,
+                  textColor: Colors.white38,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

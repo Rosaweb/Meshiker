@@ -32,8 +32,8 @@ import 'map_style.dart';
 import 'map_view_model.dart';
 import 'planning_controller.dart';
 import 'vector_tile_source.dart';
-import '../ui/settings/maps_settings_screen.dart';
 import '../ui/tracks/roadmap_screen.dart';
+import '../ui/tracks/track_edit_screen.dart';
 import '../ui/tracks/track_manager_screen.dart';
 
 class MapScreen extends StatefulWidget {
@@ -114,6 +114,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // Requêtes de recentrage ponctuelles (ex: "Localiser sur la carte"
     // depuis la fenêtre contextuelle d'un waypoint).
     widget.viewModel.centerRequest.addListener(_onCenterRequest);
+    // Idem, mais cadré sur une étendue (ex: "Localiser sur la carte" depuis
+    // la fiche d'une trace GPX).
+    widget.viewModel.centerBoundsRequest.addListener(_onCenterBoundsRequest);
   }
 
   void _onCenterRequest() {
@@ -124,12 +127,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     widget.viewModel.centerRequest.value = null;
   }
 
+  void _onCenterBoundsRequest() {
+    final b = widget.viewModel.centerBoundsRequest.value;
+    if (b == null) return;
+    setState(() => _followUser = false);
+    _mapController.fitCamera(CameraFit.bounds(
+      bounds: LatLngBounds(LatLng(b.minLat, b.minLon), LatLng(b.maxLat, b.maxLon)),
+      padding: const EdgeInsets.all(40),
+    ));
+    widget.viewModel.centerBoundsRequest.value = null;
+  }
+
   /// À appeler au début de toute action de la carte qui n'est pas un simple
   /// zoom/déplacement, pour faire disparaître le bouton "Retour" du mode
-  /// "Localiser sur la carte" (cf. WaypointEditScreen) s'il est affiché.
+  /// "Localiser sur la carte" (cf. WaypointEditScreen et TrackEditScreen)
+  /// s'il est affiché.
   void _dismissLocateBackButton() {
     if (widget.settingsService.locatingWaypointUuid != null) {
       widget.settingsService.dismissLocateWaypointBackButton();
+    }
+    if (widget.settingsService.locatingTraceUuid != null) {
+      widget.settingsService.dismissLocateTraceBackButton();
     }
   }
 
@@ -168,6 +186,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ).then((_) => widget.viewModel.refreshNow());
   }
 
+  /// Symétrique de [_returnToWaypointPopup] pour une trace GPX localisée
+  /// depuis sa fiche : il n'y a qu'un seul point d'entrée (TrackEditScreen),
+  /// donc pas de switch sur une origine, juste une repousse directe.
+  Future<void> _returnToTracePopup() async {
+    final uuid = widget.settingsService.locatingTraceUuid;
+    await widget.settingsService.dismissLocateTraceBackButton();
+    if (uuid == null || !mounted) return;
+    final trace = await widget.isarService.traceByUuid(uuid);
+    if (trace == null || !mounted) return;
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => TrackEditScreen(trace: trace)));
+  }
+
   void _onLocationUpdate() {
     if (!mounted || !_isMapReady) return;
 
@@ -201,6 +232,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void dispose() {
     widget.recordingService.currentPosition.removeListener(_onLocationUpdate);
     widget.viewModel.centerRequest.removeListener(_onCenterRequest);
+    widget.viewModel.centerBoundsRequest.removeListener(_onCenterBoundsRequest);
     _colorMode.dispose();
     _selectedSegmentUuids.dispose();
     _compassSubscription?.cancel();
@@ -797,7 +829,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ],
             ),
-            if (widget.settingsService.locatingWaypointUuid != null)
+            if (widget.settingsService.locatingWaypointUuid != null ||
+                widget.settingsService.locatingTraceUuid != null)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 8,
                 left: 12,
@@ -806,7 +839,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   borderRadius: BorderRadius.circular(24),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(24),
-                    onTap: () => _returnToWaypointPopup(),
+                    onTap: () => widget.settingsService.locatingTraceUuid != null
+                        ? _returnToTracePopup()
+                        : _returnToWaypointPopup(),
                     child: const Padding(
                       padding:
                           EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1115,19 +1150,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildDynamicTileLayer() {
-    final favIds = widget.settingsService.favoriteMapIds;
-    if (favIds.isEmpty) {
-      return TileLayer(
-        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        errorTileCallback: _onTileError,
-        reset: _tileResetController.stream,
-      );
-    }
-
-    final rawIndex = widget.settingsService.currentMapIndex;
-    final currentId = favIds[rawIndex % favIds.length];
-    final source = availableSources.firstWhere((s) => s.id == currentId,
-        orElse: () => availableSources.first);
+    final source = MapStyle.resolveTileSource(widget.settingsService);
 
     return TileLayer(
       urlTemplate: source.url,
