@@ -12,6 +12,7 @@ import 'track_edit_screen.dart';
 import '../../gpx/gpx_scanner_service.dart';
 
 enum TrackSortOption {
+  none,
   proximity,
   alphabetical,
   distAsc,
@@ -30,7 +31,10 @@ class TrackManagerScreen extends StatefulWidget {
 
 class _TrackManagerScreenState extends State<TrackManagerScreen> {
   String _searchQuery = '';
-  TrackSortOption _sortOption = TrackSortOption.alphabetical;
+  TrackSortOption _sortOption = TrackSortOption.none;
+  // Chemin (liste de noms de dossiers) dans lequel l'utilisateur est "entré"
+  // via un double-clic, pour n'afficher que le contenu de ce dossier.
+  List<String> _drillPath = [];
 
   Future<void> _refreshFolder() async {
     final scanner = context.read<GpxScannerService>();
@@ -76,6 +80,8 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
     }
 
     switch (_sortOption) {
+      case TrackSortOption.none:
+        break;
       case TrackSortOption.alphabetical:
         filtered.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
         break;
@@ -218,6 +224,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
                   underline: const SizedBox(),
                   style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold),
                   items: const [
+                    DropdownMenuItem(value: TrackSortOption.none, child: Text('Aucun (par défaut)')),
                     DropdownMenuItem(value: TrackSortOption.alphabetical, child: Text('Ordre alphabétique')),
                     DropdownMenuItem(value: TrackSortOption.proximity, child: Text('Proximité')),
                     DropdownMenuItem(value: TrackSortOption.distAsc, child: Text('Distance croissante')),
@@ -240,7 +247,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
     final rootPath = p.canonicalize(settings.gpxStoragePath!);
     
     // Si on a une recherche ou un tri spécifique, on passe en mode liste plate
-    if (_searchQuery.isNotEmpty || _sortOption != TrackSortOption.alphabetical) {
+    if (_searchQuery.isNotEmpty || _sortOption != TrackSortOption.none) {
       final sorted = _sortTracks(allTracks, userPos);
       return ListView.builder(
         itemCount: sorted.length,
@@ -278,26 +285,81 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
       }
     }
 
-    return ListView(
-      children: _buildTreeTiles(tree, settings),
+    // Si on a "double-cliqué" dans un dossier, on ne montre que son contenu.
+    _FolderNode currentNode = tree;
+    final validPath = <String>[];
+    for (final part in _drillPath) {
+      final next = currentNode.subfolders[part];
+      if (next == null) break;
+      currentNode = next;
+      validPath.add(part);
+    }
+    if (validPath.length != _drillPath.length) {
+      // Le dossier affiché a disparu (suppression/renommage) : on remonte
+      // au dernier niveau encore valide.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _drillPath = validPath);
+      });
+    }
+
+    return Column(
+      children: [
+        if (validPath.isNotEmpty) _buildBreadcrumbBar(validPath),
+        Expanded(
+          child: ListView(
+            children: _buildTreeTiles(currentNode, settings, pathPrefix: validPath),
+          ),
+        ),
+      ],
     );
   }
 
-  List<Widget> _buildTreeTiles(_FolderNode node, SettingsService settings, {int depth = 0}) {
+  Widget _buildBreadcrumbBar(List<String> path) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.05),
+      child: InkWell(
+        onTap: () => setState(() => _drillPath = path.sublist(0, path.length - 1)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            children: [
+              const Icon(Icons.arrow_back, color: Colors.white70),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  path.join(' / '),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildTreeTiles(_FolderNode node, SettingsService settings,
+      {int depth = 0, List<String> pathPrefix = const []}) {
     final List<Widget> tiles = [];
 
     // Dossiers d'abord (triés par nom)
     final sortedSubfolders = node.subfolders.keys.toList()..sort();
     for (final folderName in sortedSubfolders) {
       final subNode = node.subfolders[folderName]!;
+      final subPath = [...pathPrefix, folderName];
       tiles.add(
-        ExpansionTile(
-          leading: Padding(
-            padding: EdgeInsets.only(left: depth * 16.0),
-            child: const Icon(Icons.folder, color: Colors.blueAccent),
+        GestureDetector(
+          // Double-clic : "entre" dans le dossier pour n'afficher que son contenu.
+          onDoubleTap: () => setState(() => _drillPath = subPath),
+          child: ExpansionTile(
+            leading: Padding(
+              padding: EdgeInsets.only(left: depth * 16.0),
+              child: const Icon(Icons.folder, color: Colors.blueAccent),
+            ),
+            title: Text(folderName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            children: _buildTreeTiles(subNode, settings, depth: depth + 1, pathPrefix: subPath),
           ),
-          title: Text(folderName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          children: _buildTreeTiles(subNode, settings, depth: depth + 1),
         ),
       );
     }
