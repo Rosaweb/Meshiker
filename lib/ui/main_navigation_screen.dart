@@ -11,6 +11,7 @@ import '../database/isar_service.dart';
 import '../recording/recording_service.dart';
 import '../search/local_search_engine.dart';
 import '../utils/settings_service.dart';
+import '../utils/geo_utils.dart';
 import '../utils/pedometer_service.dart';
 import 'settings/maps_settings_screen.dart';
 import 'settings/display_settings_screen.dart';
@@ -550,8 +551,57 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             }),
             const Divider(color: Colors.white24, height: 40),
           ],
+          if (settings.locationEnabled) _buildCoordinatesSection(),
         ],
       ),
+    );
+  }
+
+  Widget _buildCoordinatesSection() {
+    return ValueListenableBuilder(
+      valueListenable: widget.recordingService.currentPosition,
+      builder: (context, pos, _) {
+        if (pos == null) {
+          return const Text('En attente de position GPS...',
+              style: TextStyle(color: Colors.white38, fontSize: 12));
+        }
+        final utm = GeoUtils.latLonToUtm(pos.latitude, pos.longitude);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('POSITION',
+                style: TextStyle(
+                    color: Colors.tealAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _buildCoordinateRow('Lat/Lon',
+                '${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}'),
+            const SizedBox(height: 6),
+            _buildCoordinateRow('UTM',
+                '${utm.zone}${utm.hemisphere} ${utm.easting.round()}E ${utm.northing.round()}N'),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCoordinateRow(String label, String value) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 60,
+          child: Text(label,
+              style: const TextStyle(color: Colors.white38, fontSize: 12)),
+        ),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 
