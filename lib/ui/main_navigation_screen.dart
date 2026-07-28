@@ -687,7 +687,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               builder: (context, _) => _buildStatCard('Podomètre',
                   '${widget.pedometerService.steps}', Icons.directions_walk,
                   isActive: widget.pedometerService.isActive,
-                  onTap: () => widget.pedometerService.togglePedometer())),
+                  onTap: () async {
+                    await widget.pedometerService.togglePedometer();
+                    if (context.mounted &&
+                        widget.pedometerService.permissionDenied) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                'Autorisez "Activité physique" dans les paramètres Android pour utiliser le podomètre.')),
+                      );
+                    }
+                  })),
         if (settings.navShowSatellites)
           ValueListenableBuilder<String>(
               valueListenable: recording.gpsStatus,

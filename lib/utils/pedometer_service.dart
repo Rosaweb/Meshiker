@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:pedometer/pedometer.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PedometerProfile {
@@ -41,10 +43,12 @@ class PedometerService extends ChangeNotifier {
   int _lastEventSteps = 0;
   String _status = '?';
   bool _isActive = false;
-  
+  bool _permissionDenied = false;
+
   int get steps => _steps;
   String get status => _status;
   bool get isActive => _isActive;
+  bool get permissionDenied => _permissionDenied;
 
   final Map<String, PedometerProfile> _profiles = {
     'steep_uphill': PedometerProfile(id: 'steep_uphill', minSlope: 0.15, maxSlope: 1.0, metersPerStep: 0.5),
@@ -76,9 +80,27 @@ class PedometerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void togglePedometer() {
+  /// Le capteur podomètre (TYPE_STEP_COUNTER) exige la permission runtime
+  /// ACTIVITY_RECOGNITION sur Android 10+ : sans cette demande explicite,
+  /// le flux de pas ne délivre jamais aucun événement (aucune erreur
+  /// visible), ce qui donnait l'impression d'un podomètre actif ("carte
+  /// verte") mais bloqué à 0 pas.
+  Future<void> togglePedometer() async {
     _isActive = !_isActive;
+    _permissionDenied = false;
     if (_isActive) {
+      if (Platform.isAndroid) {
+        var granted = (await ph.Permission.activityRecognition.status).isGranted;
+        if (!granted) {
+          granted = (await ph.Permission.activityRecognition.request()).isGranted;
+        }
+        if (!granted) {
+          _isActive = false;
+          _permissionDenied = true;
+          notifyListeners();
+          return;
+        }
+      }
       _initPedometer();
     }
     notifyListeners();
