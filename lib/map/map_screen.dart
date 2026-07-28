@@ -773,10 +773,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 left: 0,
                 right: 0,
                 child: Center(
-                  child: _MapScaleWidget(
-                    camera: _latestCamera!,
-                    color: Colors.black,
-                    unitSystem: widget.settingsService.unitSystem,
+                  child: AnimatedBuilder(
+                    // Même fondu que le menu principal, pour que l'échelle
+                    // disparaisse en même temps que lui sous un volet latéral.
+                    animation: widget.panelScrollAnimation,
+                    builder: (context, child) {
+                      final distance = (widget.panelScrollAnimation.value -
+                              widget.mapPageIndex)
+                          .abs()
+                          .clamp(0.0, 1.0);
+                      final menuVisibility = 1.0 - distance;
+                      return Opacity(opacity: menuVisibility, child: child);
+                    },
+                    child: _MapScaleWidget(
+                      camera: _latestCamera!,
+                      color: Colors.black,
+                      unitSystem: widget.settingsService.unitSystem,
+                    ),
                   ),
                 ),
               ),
