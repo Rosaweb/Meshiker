@@ -1,12 +1,11 @@
 import '../database/isar_service.dart';
-import '../models/point_of_interest.dart';
 import '../models/segment.dart';
 import '../models/trace.dart';
 import '../search/local_search_engine.dart';
 import 'segmentation_engine.dart';
 
-/// Persiste un [SegmentationResult] (segments/POI à upserter + trace) et
-/// met à jour l'index de recherche en conséquence.
+/// Persiste un [SegmentationResult] (segments à upserter + trace) et met
+/// à jour l'index de recherche en conséquence.
 ///
 /// Factorisé ici car TROIS chemins produisent désormais un
 /// `SegmentationResult` à persister de façon identique : l'import GPX
@@ -31,16 +30,10 @@ class SegmentationPersistence {
       for (final segment in result.segmentsToUpsert) {
         await isarService.isar.segments.put(segment);
       }
-      for (final poi in result.poisToUpsert) {
-        await isarService.isar.pointOfInterests.put(poi);
-      }
       await isarService.isar.traces.put(result.trace);
       if (additionalWork != null) await additionalWork();
     });
 
     searchEngine.indexTrace(result.trace);
-    for (final poi in result.poisToUpsert) {
-      searchEngine.indexPoi(poi);
-    }
   }
 }

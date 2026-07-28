@@ -232,6 +232,7 @@ class GpxScannerService extends ChangeNotifier {
                 ..associatedGpxName = associatedName
                 ..updatedAt = DateTime.now();
               await isarService.isar.waypoints.put(wp);
+              importService.searchEngine.indexWaypoint(wp);
             }
           }
         });

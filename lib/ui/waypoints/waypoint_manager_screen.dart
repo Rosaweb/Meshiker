@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
 import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
+import '../../search/local_search_engine.dart';
 import '../../utils/settings_service.dart';
 import '../../recording/recording_service.dart';
 import 'waypoint_edit_screen.dart';
@@ -325,10 +326,16 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
           TextButton(
             onPressed: () async {
-              await isar.deleteWaypoints(_selectedIds.toList());
+              final deletedUuids = await isar.deleteWaypoints(_selectedIds.toList());
+              if (mounted) {
+                final searchEngine = context.read<LocalSearchEngine>();
+                for (final uuid in deletedUuids) {
+                  searchEngine.removeWaypoint(uuid);
+                }
+              }
               setState(() => _selectedIds.clear());
               if (mounted) Navigator.pop(context);
-            }, 
+            },
             child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent))
           ),
         ],

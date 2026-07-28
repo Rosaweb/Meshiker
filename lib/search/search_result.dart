@@ -1,5 +1,5 @@
 /// Type de document renvoye par une recherche.
-enum SearchDocType { trace, pointOfInterest }
+enum SearchDocType { trace, pointOfInterest, waypoint }
 
 /// Un resultat de recherche, pret a afficher dans une liste (titre,
 /// sous-titre, score) sans que l'UI ait besoin de connaitre le detail du
@@ -15,8 +15,8 @@ class SearchResult {
 
   final SearchDocType docType;
 
-  /// UUID local de l'entite trouvee (Trace.localUuid ou
-  /// PointOfInterest.localUuid selon [docType]).
+  /// UUID local de l'entite trouvee (Trace.localUuid, PointOfInterest.localUuid
+  /// ou Waypoint.localUuid selon [docType]).
   final String uuid;
 
   final String title;

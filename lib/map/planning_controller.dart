@@ -259,18 +259,14 @@ class PlanningController extends ChangeNotifier {
       minLon: minLon,
       maxLon: maxLon,
     );
-    final nearbyPois = await isarService.poisInViewport(
-      minLat: minLat,
-      maxLat: maxLat,
-      minLon: minLon,
-      maxLon: maxLon,
-    );
 
     final engine = SegmentationEngine(config: config.segmentationConfig);
     final result = await engine.segment(
       gpx: parsed,
       nearbyExistingSegments: nearbySegments,
-      nearbyExistingPois: nearbyPois,
+      // Un plan ne produit jamais de <wpt> (voir `parsed` ci-dessus,
+      // waypoints: const []) : rien a resoudre.
+      nearbyExistingWaypoints: const [],
       ownerUuid: ownerUuid,
       traceNameOverride: traceName,
       activityType: activityType,

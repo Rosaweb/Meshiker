@@ -2,9 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/isar_service.dart';
 import '../../models/waypoint.dart';
+import '../../search/local_search_engine.dart';
 
 class WaypointEditScreen extends StatefulWidget {
   final Waypoint? waypoint;
@@ -106,7 +108,10 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
     wp.category.value = _selectedCategory;
 
     await widget.isarService.saveWaypoint(wp);
-    if (mounted) Navigator.pop(context);
+    if (mounted) {
+      context.read<LocalSearchEngine>().indexWaypoint(wp);
+      Navigator.pop(context);
+    }
   }
 
   @override
