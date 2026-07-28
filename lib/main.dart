@@ -10,6 +10,7 @@ import 'search/local_search_engine.dart';
 import 'ui/main_navigation_screen.dart';
 import 'utils/settings_service.dart';
 import 'utils/pedometer_service.dart';
+import 'utils/weather_service.dart';
 import 'utils/subscription_service.dart';
 import 'utils/tile_cache_service.dart';
 import 'gpx/gpx_import_service.dart';
@@ -52,6 +53,7 @@ void main() async {
       final importService = GpxImportService(isarService: isarService, searchEngine: searchEngine);
       final mapViewModel = MapViewModel(isarService: isarService);
       final pedometerService = PedometerService();
+      final weatherService = WeatherService();
       final recordingService = RecordingService(
         isarService: isarService,
         pedometerService: pedometerService,
@@ -88,6 +90,7 @@ void main() async {
           providers: [
             ChangeNotifierProvider.value(value: settingsService),
             ChangeNotifierProvider.value(value: pedometerService),
+            ChangeNotifierProvider.value(value: weatherService),
             ChangeNotifierProvider.value(value: subscriptionService),
             ChangeNotifierProvider.value(value: tileCacheService),
             Provider.value(value: isarService),
@@ -113,6 +116,7 @@ void main() async {
             mapViewModel: mapViewModel,
             recordingService: recordingService,
             pedometerService: pedometerService,
+            weatherService: weatherService,
             ownerUuid: ownerUuid,
           ),
         ),
@@ -152,6 +156,7 @@ class MyApp extends StatelessWidget {
   final MapViewModel mapViewModel;
   final RecordingService recordingService;
   final PedometerService pedometerService;
+  final WeatherService weatherService;
   final String ownerUuid;
 
   const MyApp({
@@ -163,6 +168,7 @@ class MyApp extends StatelessWidget {
     required this.mapViewModel,
     required this.recordingService,
     required this.pedometerService,
+    required this.weatherService,
     required this.ownerUuid,
   });
 
@@ -183,6 +189,7 @@ class MyApp extends StatelessWidget {
         mapViewModel: mapViewModel,
         recordingService: recordingService,
         pedometerService: pedometerService,
+        weatherService: weatherService,
         ownerUuid: ownerUuid,
       ),
     );
