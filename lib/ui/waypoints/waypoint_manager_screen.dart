@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
+import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
 import '../../utils/settings_service.dart';
 import '../../recording/recording_service.dart';
@@ -307,7 +308,9 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           waypoint: wp,
           isarService: context.read<IsarService>(),
         ),
-      );
+      ).then((_) {
+        if (context.mounted) context.read<MapViewModel>().refreshNow();
+      });
     }
   }
 

@@ -7,18 +7,21 @@ import '../models/trace.dart';
 import '../search/local_search_engine.dart';
 import 'gpx_models.dart';
 import 'gpx_parser.dart';
+import 'kml_parser.dart';
 import 'segmentation_engine.dart';
 import 'segmentation_persistence.dart';
 
-/// Orchestration complete d'un import GPX : lecture du fichier, parsing,
-/// decoupage en segments (en s'appuyant sur la toile locale deja connue),
-/// persistance dans Isar, puis mise a jour incrementale du moteur de
-/// recherche local.
+/// Orchestration complete d'un import GPX ou KML : lecture du fichier,
+/// parsing, decoupage en segments (en s'appuyant sur la toile locale deja
+/// connue), persistance dans Isar, puis mise a jour incrementale du moteur
+/// de recherche local.
 ///
 /// C'est le point d'entree a appeler depuis l'UI ("Importer un fichier
-/// GPX"). Toute la logique metier reste dans SegmentationEngine (pur, testable
-/// sans base de donnees) ; cette classe ne fait que la plomberie
-/// IO + Isar + index de recherche autour.
+/// GPX/KML"). Toute la logique metier reste dans SegmentationEngine (pur,
+/// testable sans base de donnees) ; cette classe ne fait que la plomberie
+/// IO + Isar + index de recherche autour. GpxParser et KmlParser produisent
+/// tous deux le meme GpxParseResult, donc tout ce qui suit le parsing est
+/// identique pour les deux formats.
 class GpxImportService {
   GpxImportService({
     required this.isarService,
@@ -45,8 +48,10 @@ class GpxImportService {
     ActivityType activityType = ActivityType.hiking,
   }) async {
     final content = await gpxFile.readAsString();
-    return importXmlString(
+    final isKml = gpxFile.path.toLowerCase().endsWith('.kml');
+    return _importContent(
       content,
+      isKml: isKml,
       ownerUuid: ownerUuid,
       traceNameOverride: traceNameOverride,
       activityType: activityType,
@@ -58,8 +63,39 @@ class GpxImportService {
     required String ownerUuid,
     String? traceNameOverride,
     ActivityType activityType = ActivityType.hiking,
+  }) {
+    return _importContent(
+      xmlContent,
+      isKml: false,
+      ownerUuid: ownerUuid,
+      traceNameOverride: traceNameOverride,
+      activityType: activityType,
+    );
+  }
+
+  Future<SegmentationResult?> importKmlString(
+    String kmlContent, {
+    required String ownerUuid,
+    String? traceNameOverride,
+    ActivityType activityType = ActivityType.hiking,
+  }) {
+    return _importContent(
+      kmlContent,
+      isKml: true,
+      ownerUuid: ownerUuid,
+      traceNameOverride: traceNameOverride,
+      activityType: activityType,
+    );
+  }
+
+  Future<SegmentationResult?> _importContent(
+    String content, {
+    required bool isKml,
+    required String ownerUuid,
+    String? traceNameOverride,
+    ActivityType activityType = ActivityType.hiking,
   }) async {
-    final parsed = GpxParser.parseString(xmlContent);
+    final parsed = isKml ? KmlParser.parseString(content) : GpxParser.parseString(content);
     if (parsed.trackPoints.isEmpty) {
       return null; // On laisse le scanner gérer les waypoints seuls
     }

@@ -30,7 +30,7 @@ class SystemSettingsScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 _buildUnitsSection(context, settings),
                 const SizedBox(height: 32),
-                const Text('STOCKAGE GPX', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                const Text('STOCKAGE GPX/KML', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildGpxStorageSection(context, settings),
                 const SizedBox(height: 32),

@@ -7,6 +7,11 @@ enum MeasurementMode { none, fromGps, betweenPoints }
 
 enum MapCreationStep { none, selectOrigin, stretchArea, adjustArea, finalize }
 
+/// Mode de positionnement de la carte à l'ouverture de l'application :
+/// soit on reprend la dernière position affichée avant fermeture, soit on
+/// revient toujours à un point fixe choisi par l'utilisateur.
+enum MapStartupMode { lastPosition, customPoint }
+
 enum DisplayMode { gpx, mesh }
 
 class AppSettings {
@@ -60,6 +65,7 @@ class SettingsService extends ChangeNotifier {
   List<String> _activeGpxNames = []; // Traces actuellement suivies
   String? _navigationWaypointUuid; // Destination choisie
   bool _waypointSelectionMode = false;
+  String? _roadmapTraceName; // Trace unique chargée dans le Roadmap
 
   // État de création de carte hors ligne
   MapCreationStep _mapCreationStep = MapCreationStep.none;
@@ -71,6 +77,16 @@ class SettingsService extends ChangeNotifier {
   MeasurementMode _measurementMode = MeasurementMode.none;
   ({double lat, double lon})? _measurePoint1;
   ({double lat, double lon})? _measurePoint2;
+
+  // Position de la carte à l'ouverture de l'application.
+  MapStartupMode _mapStartupMode = MapStartupMode.lastPosition;
+  double? _lastMapLat;
+  double? _lastMapLon;
+  double? _lastMapZoom;
+  double? _customMapLat;
+  double? _customMapLon;
+  double? _customMapZoom;
+  bool _pickingStartupCenter = false;
 
   double get barOpacity => _barOpacity;
   double get mainMenuOpacity => _mainMenuOpacity;
@@ -104,6 +120,7 @@ class SettingsService extends ChangeNotifier {
   List<String> get activeGpxNames => _activeGpxNames;
   String? get navigationWaypointUuid => _navigationWaypointUuid;
   bool get waypointSelectionMode => _waypointSelectionMode;
+  String? get roadmapTraceName => _roadmapTraceName;
   final MapCreationStep _mapCreationStepProp = MapCreationStep.none;
   MapCreationStep get mapCreationStep => _mapCreationStep;
   ({double lat, double lon})? get mapOrigin => _mapOrigin;
@@ -113,6 +130,19 @@ class SettingsService extends ChangeNotifier {
   MeasurementMode get measurementMode => _measurementMode;
   ({double lat, double lon})? get measurePoint1 => _measurePoint1;
   ({double lat, double lon})? get measurePoint2 => _measurePoint2;
+
+  MapStartupMode get mapStartupMode => _mapStartupMode;
+  bool get pickingStartupCenter => _pickingStartupCenter;
+
+  ({double lat, double lon, double zoom})? get lastMapPosition =>
+      (_lastMapLat != null && _lastMapLon != null && _lastMapZoom != null)
+          ? (lat: _lastMapLat!, lon: _lastMapLon!, zoom: _lastMapZoom!)
+          : null;
+
+  ({double lat, double lon, double zoom})? get customMapCenter =>
+      (_customMapLat != null && _customMapLon != null && _customMapZoom != null)
+          ? (lat: _customMapLat!, lon: _customMapLon!, zoom: _customMapZoom!)
+          : null;
 
   // Index de la carte actuellement affichée parmi les favoris
   int _currentMapIndex = 0;
@@ -161,6 +191,16 @@ class SettingsService extends ChangeNotifier {
     }
 
     _navigationWaypointUuid = _prefs.getString('nav_wp_uuid');
+    _roadmapTraceName = _prefs.getString('roadmap_trace_name');
+
+    _mapStartupMode =
+        MapStartupMode.values[_prefs.getInt('map_startup_mode') ?? 0];
+    _lastMapLat = _prefs.getDouble('last_map_lat');
+    _lastMapLon = _prefs.getDouble('last_map_lon');
+    _lastMapZoom = _prefs.getDouble('last_map_zoom');
+    _customMapLat = _prefs.getDouble('custom_map_lat');
+    _customMapLon = _prefs.getDouble('custom_map_lon');
+    _customMapZoom = _prefs.getDouble('custom_map_zoom');
     notifyListeners();
   }
 
@@ -244,6 +284,16 @@ class SettingsService extends ChangeNotifier {
 
   void setWaypointSelectionMode(bool value) {
     _waypointSelectionMode = value;
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapTraceName(String? name) async {
+    _roadmapTraceName = name;
+    if (name == null) {
+      await _prefs.remove('roadmap_trace_name');
+    } else {
+      await _prefs.setString('roadmap_trace_name', name);
+    }
     notifyListeners();
   }
 
@@ -421,6 +471,48 @@ class SettingsService extends ChangeNotifier {
   void setZoomRange(int min, int max) {
     _minZoomDownload = min;
     _maxZoomDownload = max;
+    notifyListeners();
+  }
+
+  Future<void> setMapStartupMode(MapStartupMode mode) async {
+    _mapStartupMode = mode;
+    await _prefs.setInt('map_startup_mode', mode.index);
+    notifyListeners();
+  }
+
+  /// Enregistre la position de la carte au moment où l'application passe
+  /// en arrière-plan, pour la restaurer à la prochaine ouverture (mode
+  /// [MapStartupMode.lastPosition]).
+  Future<void> setLastMapPosition(double lat, double lon, double zoom) async {
+    _lastMapLat = lat;
+    _lastMapLon = lon;
+    _lastMapZoom = zoom;
+    await _prefs.setDouble('last_map_lat', lat);
+    await _prefs.setDouble('last_map_lon', lon);
+    await _prefs.setDouble('last_map_zoom', zoom);
+  }
+
+  /// Démarre le mode sélection du point d'ouverture personnalisé : la carte
+  /// affiche une croix rouge centrale et un bandeau simplifié
+  /// (annuler/valider), cf. MapScreen.
+  void startPickStartupCenter() {
+    _pickingStartupCenter = true;
+    notifyListeners();
+  }
+
+  Future<void> validateStartupCenter(double lat, double lon, double zoom) async {
+    _customMapLat = lat;
+    _customMapLon = lon;
+    _customMapZoom = zoom;
+    _pickingStartupCenter = false;
+    await _prefs.setDouble('custom_map_lat', lat);
+    await _prefs.setDouble('custom_map_lon', lon);
+    await _prefs.setDouble('custom_map_zoom', zoom);
+    notifyListeners();
+  }
+
+  void cancelPickStartupCenter() {
+    _pickingStartupCenter = false;
     notifyListeners();
   }
 }

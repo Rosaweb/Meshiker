@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:latlong2/latlong.dart';
 import '../map/map_screen.dart';
 import '../map/map_view_model.dart';
 import '../models/waypoint.dart';
@@ -16,6 +17,7 @@ import 'settings/display_settings_screen.dart';
 import 'settings/account_settings_screen.dart';
 import 'settings/system_settings_screen.dart';
 import 'tracks/track_manager_screen.dart';
+import 'tracks/roadmap_screen.dart';
 import 'segments/segment_manager_screen.dart';
 import 'waypoints/waypoint_manager_screen.dart';
 
@@ -53,6 +55,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   late final AnimationController _scrollController;
   late double _targetScroll;
   late bool _lastReversePanels;
+  late MapCreationStep _lastMapCreationStep;
+  late bool _lastPickingStartupCenter;
 
   @override
   void initState() {
@@ -61,6 +65,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     final isReversed = widget.settingsService.reversePanels;
     _lastReversePanels = isReversed;
     _targetScroll = isReversed ? 2.0 : 1.0;
+    _lastMapCreationStep = widget.settingsService.mapCreationStep;
+    _lastPickingStartupCenter = widget.settingsService.pickingStartupCenter;
 
     _scrollController = AnimationController(
       vsync: this,
@@ -96,6 +102,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     _updateGestureExclusion(widget.settingsService.edgeSwipeWidth);
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // On mémorise la position affichée dès que l'app quitte le premier
+    // plan (pause = point de sortie fiable ; "detached" arrive trop tard,
+    // le process peut déjà être en cours de destruction) pour la
+    // retrouver à la prochaine ouverture (MapStartupMode.lastPosition).
+    if (state == AppLifecycleState.paused) {
+      final cam = widget.mapViewModel.liveCamera.value;
+      if (cam != null) {
+        widget.settingsService.setLastMapPosition(cam.lat, cam.lon, cam.zoom);
+      }
+    }
+  }
+
   void _onSettingsChanged() {
     _updateGestureExclusion(widget.settingsService.edgeSwipeWidth);
 
@@ -111,6 +131,37 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       _scrollController.value = 3.0 - _scrollController.value;
       _targetScroll = 3.0 - _targetScroll;
     }
+
+    final mapCreationStep = widget.settingsService.mapCreationStep;
+    if (mapCreationStep != MapCreationStep.none &&
+        _lastMapCreationStep == MapCreationStep.none) {
+      // Démarrer la création d'une carte hors-ligne se fait depuis un écran
+      // de paramètres poussé par-dessus ce widget (cf. MapsSettingsScreen).
+      // Le simple Navigator.pop qui le referme ne suffit pas à ramener le
+      // carrousel de volets sur la carte : sans ce recentrage explicite, le
+      // volet paramètres (resté à son ancienne position de scroll) reste
+      // affiché par-dessus la carte et masque les étapes de création.
+      _targetScroll = isReversed ? 2.0 : 1.0;
+      _scrollController.animateTo(_targetScroll,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    }
+    _lastMapCreationStep = mapCreationStep;
+
+    final pickingStartupCenter = widget.settingsService.pickingStartupCenter;
+    if (pickingStartupCenter && !_lastPickingStartupCenter) {
+      // Démarrage du choix du point d'ouverture personnalisé, déclenché
+      // depuis DisplaySettingsScreen (déjà refermé par son propre
+      // Navigator.pop) : on ramène le carrousel sur la carte pour révéler
+      // la croix rouge et le bandeau simplifié.
+      _targetScroll = isReversed ? 2.0 : 1.0;
+      _scrollController.animateTo(_targetScroll,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    } else if (!pickingStartupCenter && _lastPickingStartupCenter) {
+      // Validation ou annulation : on rouvre automatiquement les
+      // paramètres d'affichage d'où le choix a été lancé.
+      _pushSettings(const DisplaySettingsScreen());
+    }
+    _lastPickingStartupCenter = pickingStartupCenter;
 
     setState(() {});
   }
@@ -181,7 +232,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
         final List<Widget> pages = isReversed
             ? [
-                const WaypointManagerScreen(isTransparent: true),
+                const RoadmapScreen(isTransparent: true),
                 _buildContextualPage(settings),
                 const SizedBox.shrink(), // Trou pour la carte à l'index 2
                 _buildSettingsPage(settings),
@@ -190,7 +241,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 _buildSettingsPage(settings),
                 const SizedBox.shrink(), // Trou pour la carte à l'index 1
                 _buildContextualPage(settings),
-                const WaypointManagerScreen(isTransparent: true),
+                const RoadmapScreen(isTransparent: true),
               ];
 
         final mapIndex = isReversed ? 2 : 1;
@@ -209,6 +260,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 ownerUuid: widget.ownerUuid,
                 panelScrollAnimation: _scrollController,
                 mapPageIndex: mapIndex,
+                initialCenter: _initialMapCenter(settings),
+                initialZoom: _initialMapZoom(settings),
               ),
 
               if (isOffline)
@@ -457,13 +510,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 false),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: () {
-                widget.settingsService.setWaypointSelectionMode(true);
-                _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-                _scrollController.animateTo(_targetScroll,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut);
-              },
+              onPressed: () =>
+                  _pushSettings(const RoadmapScreen(isSelectionMode: true)),
               icon: const Icon(Icons.navigation),
               label: const Text('Choisir un point'),
               style: ElevatedButton.styleFrom(
@@ -871,6 +919,36 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 
+  // Point de repli si aucune position n'a jamais été enregistrée (premier
+  // lancement de l'app, avant toute fermeture) : Mont Blanc, valeur
+  // historique par défaut de MapScreen.
+  static const _fallbackCenter = LatLng(45.8326, 6.8652);
+  static const _fallbackZoom = 13.0;
+
+  /// Centre de la carte à utiliser au démarrage : le point personnalisé si
+  /// l'utilisateur l'a choisi (MapStartupMode.customPoint), sinon la
+  /// dernière position mémorisée à la fermeture précédente, sinon le repli
+  /// Mont Blanc (première installation uniquement).
+  LatLng _initialMapCenter(SettingsService settings) {
+    if (settings.mapStartupMode == MapStartupMode.customPoint) {
+      final custom = settings.customMapCenter;
+      if (custom != null) return LatLng(custom.lat, custom.lon);
+    }
+    final last = settings.lastMapPosition;
+    if (last != null) return LatLng(last.lat, last.lon);
+    return _fallbackCenter;
+  }
+
+  double _initialMapZoom(SettingsService settings) {
+    if (settings.mapStartupMode == MapStartupMode.customPoint) {
+      final custom = settings.customMapCenter;
+      if (custom != null) return custom.zoom;
+    }
+    final last = settings.lastMapPosition;
+    if (last != null) return last.zoom;
+    return _fallbackZoom;
+  }
+
   void _pushSettings(Widget screen) {
     Navigator.push(
         context,
@@ -905,15 +983,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           SizedBox(height: 40),
           Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
             _HintGesture(
-                icon: Icons.arrow_back,
+                icon: Icons.arrow_forward,
                 text: 'Swipe vers la droite\nParamètres'),
             _HintGesture(
-                icon: Icons.arrow_forward,
-                text: 'Swipe vers la gauche\nNavigation')
+                icon: Icons.arrow_back,
+                text: 'Swipe vers la gauche\nNavigation'),
           ]),
           SizedBox(height: 60),
           Text('Appuyez pour commencer',
               style: TextStyle(color: Colors.white70)),
+            SizedBox(height: 60),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                _HintGesture(
+                    icon: Icons.arrow_upward,
+                    text: 'Swipe vers le haut\nMenu étendu'),
+              ]),
         ])),
       ),
     );

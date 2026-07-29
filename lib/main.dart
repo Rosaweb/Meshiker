@@ -33,34 +33,30 @@ void main() async {
     try {
       WidgetsFlutterBinding.ensureInitialized();
       
-      // Initialisation des services
+      // Initialisation des services strictement nécessaires à la première
+      // frame (local, rapide, requis pour construire l'arbre de providers).
       final isarService = await IsarService.open();
       final settingsService = SettingsService();
       await settingsService.init();
 
+      // Le reste (abonnements RevenueCat, cache de tuiles, index de
+      // recherche, service d'enregistrement) est instancié tout de suite
+      // mais initialisé APRES runApp(), en arrière-plan : ce sont tous des
+      // ChangeNotifier/ValueNotifier déjà écoutés par l'UI, qui se met à
+      // jour d'elle-même une fois prêts. Ça évite que l'affichage de
+      // l'interface attende des appels réseau (RevenueCat) qui peuvent
+      // mettre plusieurs secondes à échouer en zone blanche.
       final subscriptionService = SubscriptionService();
-      try {
-        await subscriptionService.init();
-      } catch (e) {
-        debugPrint('RevenueCat init error: $e');
-      }
-
       final tileCacheService = TileCacheService(settingsService: settingsService);
-      await tileCacheService.init();
-      
       final searchEngine = LocalSearchEngine();
-      await searchEngine.rebuildFromDatabase(isarService);
-
       final importService = GpxImportService(isarService: isarService, searchEngine: searchEngine);
-      
       final mapViewModel = MapViewModel(isarService: isarService);
       final pedometerService = PedometerService();
       final recordingService = RecordingService(
-        isarService: isarService, 
+        isarService: isarService,
         pedometerService: pedometerService,
         settingsService: settingsService,
       );
-      await recordingService.init();
 
       const ownerUuid = 'user-local-123';
 
@@ -70,10 +66,22 @@ void main() async {
         ownerUuid: ownerUuid,
       );
 
-      // Initial scan if path is set
-      if (settingsService.gpxStoragePath != null) {
-        unawaited(gpxScanner.scanFolder(settingsService.gpxStoragePath!));
-      }
+      // Tâches subsidiaires : lancées sans attendre, jamais prioritaires
+      // sur l'affichage de l'interface.
+      unawaited(() async {
+        try {
+          await subscriptionService.init();
+        } catch (e) {
+          debugPrint('RevenueCat init error: $e');
+        }
+        await tileCacheService.init();
+        await searchEngine.rebuildFromDatabase(isarService);
+        await recordingService.init();
+
+        if (settingsService.gpxStoragePath != null) {
+          unawaited(gpxScanner.scanFolder(settingsService.gpxStoragePath!));
+        }
+      }());
 
       runApp(
         MultiProvider(

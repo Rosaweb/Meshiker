@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:isar_community/isar.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as p;
 import 'package:vector_map_tiles/vector_map_tiles.dart';
@@ -16,6 +18,7 @@ import '../models/point_of_interest.dart';
 import '../models/segment.dart';
 import '../models/offline_map/offline_map.dart';
 import '../search/local_search_engine.dart';
+import '../utils/offline_map_download_service.dart';
 import '../utils/settings_service.dart';
 import '../utils/tile_cache_service.dart';
 import 'package:provider/provider.dart';
@@ -184,6 +187,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
 
     setState(() => _latestCamera = camera);
+    widget.viewModel.liveCamera.value = (
+      lat: camera.center.latitude,
+      lon: camera.center.longitude,
+      zoom: camera.zoom,
+    );
     _reloadViewportData(camera);
     widget.planningController
         ?.updateCandidateSegments(widget.viewModel.segments.value);
@@ -653,7 +661,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       longitude: point.longitude,
                       isarService: widget.isarService,
                     ),
-                  );
+                  ).then((_) => widget.viewModel.refreshNow());
                 },
                 onPositionChanged: _onPositionChanged,
                 onMapReady: () {
@@ -661,6 +669,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     _isMapReady = true;
                     _latestCamera = _mapController.camera;
                   });
+                  widget.viewModel.liveCamera.value = (
+                    lat: _mapController.camera.center.latitude,
+                    lon: _mapController.camera.center.longitude,
+                    zoom: _mapController.camera.zoom,
+                  );
                   _reloadViewportData(_mapController.camera);
 
                   // Correction technique : Recentrer immédiatement si la position est connue au chargement
@@ -775,7 +788,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 bottom: 0,
                 left: 0,
                 right: 0,
-                child: widget.settingsService.mapCreationStep !=
+                child: widget.settingsService.pickingStartupCenter
+                    ? _StartupCenterPickerMenu(
+                        settings: widget.settingsService,
+                        center: _mapController.camera.center,
+                        zoom: _mapController.camera.zoom,
+                      )
+                    : widget.settingsService.mapCreationStep !=
                         MapCreationStep.none
                     ? _MapCreationMenu(
                         settings: widget.settingsService,
@@ -945,17 +964,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             if (widget.settingsService.measurementMode !=
                     MeasurementMode.none ||
-                widget.settingsService.mapCreationStep != MapCreationStep.none)
-              IgnorePointer(
+                widget.settingsService.mapCreationStep !=
+                    MapCreationStep.none ||
+                widget.settingsService.pickingStartupCenter)
+              const IgnorePointer(
                 child: Center(
-                  child: Icon(Icons.add,
-                      color: (widget.settingsService.mapCreationStep !=
-                                  MapCreationStep.none ||
-                              widget.settingsService.measurementMode !=
-                                  MeasurementMode.none)
-                          ? Colors.red
-                          : Colors.white,
-                      size: 40),
+                  child: Icon(Icons.add, color: Colors.red, size: 40),
                 ),
               ),
             if (widget.settingsService.mapCreationStep != MapCreationStep.none)
@@ -988,16 +1002,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Widget _buildDynamicTileLayer() {
     final favIds = widget.settingsService.favoriteMapIds;
-    if (favIds.isEmpty) {
-      return TileLayer(
-        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        errorTileCallback: _onTileError,
-        reset: _tileResetController.stream,
-      );
-    }
-
-    final rawIndex = widget.settingsService.currentMapIndex;
-    final currentId = favIds[rawIndex % favIds.length];
+    final currentId = favIds.isNotEmpty
+        ? favIds[widget.settingsService.currentMapIndex % favIds.length]
+        : 'osm_standard';
     final source = availableSources.firstWhere((s) => s.id == currentId,
         orElse: () => availableSources.first);
 
@@ -1005,12 +1012,57 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       urlTemplate: source.url,
       subdomains: const ['a', 'b', 'c'],
       userAgentPackageName: 'com.example.meshiker',
-      tileProvider: NetworkTileProvider(
-        headers: {'User-Agent': 'Meshiker/1.0'},
-      ),
+      tileProvider: _buildTileProvider(source.id),
       errorTileCallback: _onTileError,
       reset: _tileResetController.stream,
     );
+  }
+
+  /// Sert les tuiles depuis les cartes hors-ligne déjà téléchargées pour ce
+  /// fond de carte ([sourceId]) quand elles sont disponibles localement, et
+  /// ne retombe sur le réseau que pour les tuiles manquantes -- c'est ce qui
+  /// rend une zone téléchargée ("Créer une carte") réellement consultable
+  /// hors connexion.
+  TileProvider _buildTileProvider(String sourceId) {
+    const headers = {'User-Agent': 'Meshiker/1.0'};
+    final completedMaps = widget.isarService.isar.offlineMaps
+        .filter()
+        .sourceIdEqualTo(sourceId)
+        .and()
+        .isDownloadingEqualTo(false)
+        .and()
+        .isErrorEqualTo(false)
+        .findAllSync();
+
+    final localDirs = completedMaps
+        .where((m) => m.localPath != null)
+        .map((m) => Directory(m.localPath!))
+        .toList();
+
+    if (localDirs.isEmpty) {
+      return NetworkTileProvider(headers: headers);
+    }
+    return _OfflineAwareTileProvider(localDirs: localDirs, headers: headers);
+  }
+}
+
+/// Consulte d'abord les tuiles téléchargées en local (voir
+/// [OfflineMapDownloadService]) avant de retomber sur le réseau, tuile par
+/// tuile -- une même zone peut ainsi être partiellement téléchargée sans
+/// empêcher l'affichage du reste depuis le réseau quand il est disponible.
+class _OfflineAwareTileProvider extends TileProvider {
+  _OfflineAwareTileProvider({required this.localDirs, super.headers});
+
+  final List<Directory> localDirs;
+
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
+    for (final dir in localDirs) {
+      final file = OfflineMapDownloadService.tileFile(
+          dir, coordinates.z, coordinates.x, coordinates.y);
+      if (file.existsSync()) return FileImage(file);
+    }
+    return NetworkImage(getTileUrl(coordinates, options), headers: headers);
   }
 }
 
@@ -1480,7 +1532,7 @@ class _WaypointsLayer extends StatelessWidget {
                           waypoint: wp,
                           isarService: isarService,
                         ),
-                      );
+                      ).then((_) => viewModel.refreshNow());
                     }
                   },
                   child: Icon(
@@ -1530,7 +1582,7 @@ class _OsmPoisLayer extends StatelessWidget {
                         waypoint: wp,
                         isarService: isarService,
                       ),
-                    );
+                    ).then((_) => viewModel.refreshNow());
                   },
                   child: Container(
                     decoration: const BoxDecoration(
@@ -1967,6 +2019,51 @@ class _RoundButton extends StatelessWidget {
   }
 }
 
+/// Bandeau simplifié affiché quand l'utilisateur choisit le point fixe
+/// d'ouverture de la carte depuis les paramètres d'affichage (croix rouge
+/// centrale + annuler/valider, même principe que _MapCreationMenu).
+class _StartupCenterPickerMenu extends StatelessWidget {
+  final SettingsService settings;
+  final LatLng center;
+  final double zoom;
+  const _StartupCenterPickerMenu({
+    required this.settings,
+    required this.center,
+    required this.zoom,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Colors.black87,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Row(
+        children: [
+          TextButton(
+            onPressed: () => settings.cancelPickStartupCenter(),
+            child:
+                const Text('ANNULER', style: TextStyle(color: Colors.white38)),
+          ),
+          const Spacer(),
+          const Text('Positionnez la croix sur le point d\'ouverture',
+              style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const Spacer(),
+          ElevatedButton(
+            onPressed: () => settings.validateStartupCenter(
+                center.latitude, center.longitude, zoom),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
+            child:
+                const Text('VALIDER', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MapCreationMenu extends StatelessWidget {
   final SettingsService settings;
   final LatLng center;
@@ -2081,6 +2178,16 @@ class _MapCreationMenu extends StatelessWidget {
               final isar = context.read<IsarService>();
               final messenger = ScaffoldMessenger.of(context);
 
+              // Le fond de carte actuellement affiché est celui téléchargé :
+              // c'est ce que l'utilisateur vient de voir/ajuster à l'écran.
+              final favIds = settings.favoriteMapIds;
+              final sourceId = favIds.isNotEmpty
+                  ? favIds[settings.currentMapIndex % favIds.length]
+                  : 'osm_standard';
+              final source = availableSources.firstWhere(
+                  (s) => s.id == sourceId,
+                  orElse: () => availableSources.first);
+
               final map = OfflineMap()
                 ..localUuid = const Uuid().v4()
                 ..name = nameController.text
@@ -2091,8 +2198,10 @@ class _MapCreationMenu extends StatelessWidget {
                 ..maxLon = max(settings.mapOrigin!.lon, settings.mapTarget!.lon)
                 ..minZoom = settings.minZoomDownload
                 ..maxZoom = settings.maxZoomDownload
+                ..sourceId = source.id
+                ..urlTemplate = source.url
                 ..isDownloading = true
-                ..downloadProgress = 0.05;
+                ..downloadProgress = 0.0;
 
               await isar.saveOfflineMap(map);
               settings.cancelMapCreation();
@@ -2100,31 +2209,33 @@ class _MapCreationMenu extends StatelessWidget {
 
               messenger.showSnackBar(
                 const SnackBar(
-                  content:
-                      Text('Carte enregistrée', textAlign: TextAlign.center),
+                  content: Text('Téléchargement de la carte démarré',
+                      textAlign: TextAlign.center),
                   duration: Duration(seconds: 2),
                   behavior: SnackBarBehavior.floating,
                   margin: EdgeInsets.symmetric(horizontal: 100, vertical: 200),
                 ),
               );
 
-              Future.delayed(const Duration(seconds: 5), () async {
-                map.isDownloading = false;
-                map.downloadProgress = 1.0;
-                map.sizeBytes = 25 * 1024 * 1024;
-                await isar.saveOfflineMap(map);
-
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Le téléchargement de votre carte est terminé',
-                        textAlign: TextAlign.center),
-                    duration: Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                    margin: EdgeInsets.symmetric(horizontal: 50, vertical: 200),
-                  ),
-                );
-              });
+              unawaited(
+                OfflineMapDownloadService(isarService: isar)
+                    .download(map, headers: const {'User-Agent': 'Meshiker/1.0'})
+                    .then((_) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                          map.isError
+                              ? 'Échec du téléchargement de "${map.name}"'
+                              : 'Le téléchargement de "${map.name}" est terminé',
+                          textAlign: TextAlign.center),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 50, vertical: 200),
+                    ),
+                  );
+                }),
+              );
             },
             child: const Text('VALIDER',
                 style: TextStyle(color: Colors.greenAccent)),

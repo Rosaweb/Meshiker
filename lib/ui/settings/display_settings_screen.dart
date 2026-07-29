@@ -128,6 +128,39 @@ class DisplaySettingsScreen extends StatelessWidget {
                 ),
 
                 const Divider(color: Colors.white12, height: 24),
+                const Text('OUVERTURE DE LA CARTE', style: headerStyle),
+                const SizedBox(height: 4),
+                RadioListTile<MapStartupMode>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: Colors.greenAccent,
+                  title: const Text('Reprendre là où j\'ai arrêté', style: labelStyle),
+                  value: MapStartupMode.lastPosition,
+                  groupValue: settings.mapStartupMode,
+                  onChanged: (mode) {
+                    if (mode != null) settings.setMapStartupMode(mode);
+                  },
+                ),
+                RadioListTile<MapStartupMode>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: Colors.greenAccent,
+                  title: const Text('Point personnalisé', style: labelStyle),
+                  subtitle: settings.mapStartupMode == MapStartupMode.customPoint
+                      ? const Text('Touchez pour choisir/modifier le point sur la carte',
+                          style: TextStyle(color: Colors.white38, fontSize: 11))
+                      : null,
+                  value: MapStartupMode.customPoint,
+                  groupValue: settings.mapStartupMode,
+                  onChanged: (mode) {
+                    if (mode == null) return;
+                    settings.setMapStartupMode(mode);
+                    settings.startPickStartupCenter();
+                    Navigator.pop(context);
+                  },
+                ),
+
+                const Divider(color: Colors.white12, height: 24),
                 ListTile(
                   title: const Text('Personnaliser le volet de navigation', style: labelStyle),
                   trailing: const Icon(Icons.chevron_right, color: Colors.white24),
