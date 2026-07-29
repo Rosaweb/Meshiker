@@ -52,6 +52,14 @@ class Segment implements Syncable {
   /// l'endroit ou à l'envers.
   List<PointGPS> points = [];
 
+  /// UUID locaux ([Waypoint.localUuid]) des waypoints tombant sur ce
+  /// segment, résolus par [SegmentationEngine] à partir des `<wpt>` GPX
+  /// comme s'ils étaient écrits "in-line" parmi les points de la trace.
+  /// Référence par UUID (pas d'[IsarLink]) pour rester cohérent avec
+  /// [TraceSegmentEntry.segmentUuid] ; le Waypoint référencé reste géré
+  /// et personnalisable indépendamment via son propre écran d'édition.
+  List<String> waypointUuids = [];
+
   /// Mode de progression : sentier connu ("routé", affiché aimanté) ou
   /// tracé libre hors-piste.
   @Enumerated(EnumType.ordinal)

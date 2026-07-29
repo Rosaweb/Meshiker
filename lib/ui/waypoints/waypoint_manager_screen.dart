@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
 import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
+import '../../search/local_search_engine.dart';
 import '../../utils/settings_service.dart';
 import '../../recording/recording_service.dart';
 import 'waypoint_edit_screen.dart';
@@ -29,8 +30,13 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   WaypointCategory? _typeFilter;
   bool _sortByDistance = false;
   List<WaypointCategory> _allCategories = [];
-  
+
   final Set<int> _selectedIds = {};
+
+  // Groupe (dossier personnel ou trace GPX) dans lequel l'utilisateur est
+  // "entré" via un double-clic, pour n'afficher que son contenu.
+  int? _drillFolderId;
+  String? _drillGpxName;
 
   @override
   void initState() {
@@ -235,49 +241,133 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
 
     final sortedGpxNames = gpxGroups.keys.toList()..sort();
 
-    return ListView(
-      children: [
-        // 1. DOSSIERS PERSONNELS (Même si vides)
-        for (var folder in folders)
-          ExpansionTile(
-            initiallyExpanded: false,
-            leading: const Icon(Icons.folder, color: Colors.blueAccent, size: 20),
-            title: Text(folder.name, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-            children: (customGroups[folder.id] ?? []).isEmpty 
-              ? [const ListTile(title: Text('Dossier vide', style: TextStyle(color: Colors.white24, fontSize: 12)))]
-              : customGroups[folder.id]!.map((w) => _WaypointTile(
-                  waypoint: w, 
+    // Si on a "double-cliqué" sur un dossier/une trace, on n'affiche que son contenu.
+    if (_drillFolderId != null) {
+      final folder = folders.where((f) => f.id == _drillFolderId).firstOrNull;
+      if (folder == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _drillFolderId = null);
+        });
+      } else {
+        final items = customGroups[folder.id] ?? [];
+        return Column(
+          children: [
+            _buildBreadcrumbBar(folder.name, () => setState(() => _drillFolderId = null)),
+            Expanded(
+              child: items.isEmpty
+                ? const Center(child: Text('Dossier vide', style: TextStyle(color: Colors.white24)))
+                : ListView(
+                    children: items.map((w) => _WaypointTile(
+                      waypoint: w,
+                      isSelected: _selectedIds.contains(w.id),
+                      onTap: () => _handleTap(w, settings),
+                      onLongPress: () => _toggleSelection(w.id),
+                    )).toList(),
+                  ),
+            ),
+          ],
+        );
+      }
+    } else if (_drillGpxName != null) {
+      if (!sortedGpxNames.contains(_drillGpxName)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _drillGpxName = null);
+        });
+      } else {
+        final items = gpxGroups[_drillGpxName] ?? [];
+        return Column(
+          children: [
+            _buildBreadcrumbBar(_drillGpxName!, () => setState(() => _drillGpxName = null)),
+            Expanded(
+              child: ListView(
+                children: items.map((w) => _WaypointTile(
+                  waypoint: w,
                   isSelected: _selectedIds.contains(w.id),
                   onTap: () => _handleTap(w, settings),
                   onLongPress: () => _toggleSelection(w.id),
                 )).toList(),
+              ),
+            ),
+          ],
+        );
+      }
+    }
+
+    return ListView(
+      children: [
+        // 1. DOSSIERS PERSONNELS (Même si vides)
+        for (var folder in folders)
+          GestureDetector(
+            // Double-clic : "entre" dans le dossier pour n'afficher que son contenu.
+            onDoubleTap: () => setState(() => _drillFolderId = folder.id),
+            child: ExpansionTile(
+              initiallyExpanded: false,
+              leading: const Icon(Icons.folder, color: Colors.blueAccent, size: 20),
+              title: Text(folder.name, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+              children: (customGroups[folder.id] ?? []).isEmpty
+                ? [const ListTile(title: Text('Dossier vide', style: TextStyle(color: Colors.white24, fontSize: 12)))]
+                : customGroups[folder.id]!.map((w) => _WaypointTile(
+                    waypoint: w,
+                    isSelected: _selectedIds.contains(w.id),
+                    onTap: () => _handleTap(w, settings),
+                    onLongPress: () => _toggleSelection(w.id),
+                  )).toList(),
+            ),
           ),
 
         // 2. TRACES GPX
         for (var name in sortedGpxNames)
-          ExpansionTile(
-            initiallyExpanded: false,
-            leading: const Icon(Icons.route, color: Colors.greenAccent, size: 20),
-            title: Text(name, style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
-            children: gpxGroups[name]!.map((w) => _WaypointTile(
-              waypoint: w, 
-              isSelected: _selectedIds.contains(w.id),
-              onTap: () => _handleTap(w, settings),
-              onLongPress: () => _toggleSelection(w.id),
-            )).toList(),
+          GestureDetector(
+            onDoubleTap: () => setState(() => _drillGpxName = name),
+            child: ExpansionTile(
+              initiallyExpanded: false,
+              leading: const Icon(Icons.route, color: Colors.greenAccent, size: 20),
+              title: Text(name, style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+              children: gpxGroups[name]!.map((w) => _WaypointTile(
+                waypoint: w,
+                isSelected: _selectedIds.contains(w.id),
+                onTap: () => _handleTap(w, settings),
+                onLongPress: () => _toggleSelection(w.id),
+              )).toList(),
+            ),
           ),
-        
+
         // 3. INDÉPENDANTS
         if (noFolder.isNotEmpty) ...[
           const SizedBox(height: 8),
           ...noFolder.map((w) => _WaypointTile(
-            waypoint: w, 
+            waypoint: w,
             isSelected: _selectedIds.contains(w.id),
             onTap: () => _handleTap(w, settings),
             onLongPress: () => _toggleSelection(w.id),
           )),
         ],
       ],
+    );
+  }
+
+  Widget _buildBreadcrumbBar(String label, VoidCallback onBack) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.05),
+      child: InkWell(
+        onTap: onBack,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            children: [
+              const Icon(Icons.arrow_back, color: Colors.white70),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -325,10 +415,16 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
           TextButton(
             onPressed: () async {
-              await isar.deleteWaypoints(_selectedIds.toList());
+              final deletedUuids = await isar.deleteWaypoints(_selectedIds.toList());
+              if (mounted) {
+                final searchEngine = context.read<LocalSearchEngine>();
+                for (final uuid in deletedUuids) {
+                  searchEngine.removeWaypoint(uuid);
+                }
+              }
               setState(() => _selectedIds.clear());
               if (mounted) Navigator.pop(context);
-            }, 
+            },
             child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent))
           ),
         ],

@@ -34,9 +34,9 @@ class GpxImportService {
   final SegmentationEngine engine;
 
   /// Marge (en degres) ajoutee autour de la bounding box du fichier GPX
-  /// pour charger les segments/POI locaux potentiellement concernes.
+  /// pour charger les segments/waypoints locaux potentiellement concernes.
   /// ~0.01 degre correspond a environ 1 km, une marge large et peu
-  /// couteuse (peu de segments/POI a cette echelle sur un appareil
+  /// couteuse (peu de segments/waypoints a cette echelle sur un appareil
   /// individuel) qui evite de rater une correspondance juste en dehors
   /// de la trace stricte.
   static const _viewportMarginDegrees = 0.01;
@@ -107,16 +107,16 @@ class GpxImportService {
     final minLon = lons.reduce((a, b) => a < b ? a : b) - _viewportMarginDegrees;
     final maxLon = lons.reduce((a, b) => a > b ? a : b) + _viewportMarginDegrees;
 
-    // Pre-chargement cible : seuls les segments/POI de la zone concernee
-    // sont charges depuis Isar, jamais toute la base (voir
-    // IsarService.segmentsInViewport / poisInViewport, indexes).
+    // Pre-chargement cible : seuls les segments/waypoints de la zone
+    // concernee sont charges depuis Isar, jamais toute la base (voir
+    // IsarService.segmentsInViewport / searchWaypoints, indexes).
     final nearbySegments = await isarService.segmentsInViewport(
       minLat: minLat,
       maxLat: maxLat,
       minLon: minLon,
       maxLon: maxLon,
     );
-    final nearbyPois = await isarService.poisInViewport(
+    final nearbyWaypoints = await isarService.searchWaypoints(
       minLat: minLat,
       maxLat: maxLat,
       minLon: minLon,
@@ -126,7 +126,7 @@ class GpxImportService {
     final result = await engine.segment(
       gpx: parsed,
       nearbyExistingSegments: nearbySegments,
-      nearbyExistingPois: nearbyPois,
+      nearbyExistingWaypoints: nearbyWaypoints,
       ownerUuid: ownerUuid,
       traceNameOverride: traceNameOverride,
       activityType: activityType,
@@ -162,15 +162,12 @@ class GpxImportService {
       final nearbySegments = await isarService.segmentsInViewport(
         minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon,
       );
-      final nearbyPois = await isarService.poisInViewport(
-        minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon,
-      );
 
       // On simule un import pour cette trace existante
       final result = await engine.segment(
         gpx: GpxParseResult(trackPoints: trackPoints, waypoints: [], traceName: trace.name),
         nearbyExistingSegments: nearbySegments.where((s) => !trace.segments.any((e) => e.segmentUuid == s.localUuid)).toList(),
-        nearbyExistingPois: nearbyPois,
+        nearbyExistingWaypoints: const [],
         ownerUuid: trace.ownerUuid,
         activityType: trace.activityType,
       );
@@ -188,11 +185,8 @@ class GpxImportService {
         result: SegmentationResult(
           trace: trace,
           segmentsToUpsert: result.segmentsToUpsert,
-          poisToUpsert: result.poisToUpsert,
           newSegmentsCount: result.newSegmentsCount,
           reusedSegmentsCount: result.reusedSegmentsCount,
-          newPoisCount: result.newPoisCount,
-          reusedPoisCount: result.reusedPoisCount,
         ),
         searchEngine: searchEngine,
       );

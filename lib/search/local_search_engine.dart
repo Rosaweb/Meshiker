@@ -2,19 +2,20 @@ import 'package:isar_community/isar.dart';
 import '../database/isar_service.dart';
 import '../models/point_of_interest.dart';
 import '../models/trace.dart';
+import '../models/waypoint.dart';
 import 'search_result.dart';
 import 'trigram_index.dart';
 
-/// Moteur de recherche local : indexe les Trace et PointOfInterest deja
-/// presents dans la base Isar de l'appareil et permet une recherche
-/// floue instantanee, sans aucun appel reseau.
+/// Moteur de recherche local : indexe les Trace, PointOfInterest et
+/// Waypoint deja presents dans la base Isar de l'appareil et permet une
+/// recherche floue instantanee, sans aucun appel reseau.
 ///
 /// L'index vit entierement en memoire (voir TrigramIndex) et se
 /// reconstruit au demarrage de l'app via rebuildFromDatabase, puis se met
 /// a jour de facon incrementale a chaque ecriture (indexTrace/indexPoi/
-/// removeDocument) plutot que par reconstruction complete -- important
-/// pour rester reactif y compris apres plusieurs annees d'usage, quand la
-/// base locale contient plusieurs milliers d'entites.
+/// indexWaypoint/removeDocument) plutot que par reconstruction complete --
+/// important pour rester reactif y compris apres plusieurs annees d'usage,
+/// quand la base locale contient plusieurs milliers d'entites.
 class LocalSearchEngine {
   LocalSearchEngine();
 
@@ -45,6 +46,11 @@ class LocalSearchEngine {
     for (final poi in pois) {
       indexPoi(poi);
     }
+
+    final waypoints = await db.isar.waypoints.where().findAll();
+    for (final wp in waypoints) {
+      indexWaypoint(wp);
+    }
   }
 
   void indexTrace(Trace trace) {
@@ -66,8 +72,18 @@ class LocalSearchEngine {
     _subtitles[docId] = poi.type.name;
   }
 
+  void indexWaypoint(Waypoint waypoint) {
+    final docId = 'waypoint:${waypoint.localUuid}';
+    final text = [waypoint.name, waypoint.description ?? ''].join(' ');
+    _index.indexDocument(docId, text);
+    _docTypes[docId] = SearchDocType.waypoint;
+    _titles[docId] = waypoint.name;
+    _subtitles[docId] = waypoint.category.value?.name;
+  }
+
   void removeTrace(String localUuid) => _remove('trace', localUuid);
   void removePoi(String localUuid) => _remove('poi', localUuid);
+  void removeWaypoint(String localUuid) => _remove('waypoint', localUuid);
 
   void _remove(String prefix, String localUuid) {
     final docId = '$prefix:$localUuid';

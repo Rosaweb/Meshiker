@@ -5,11 +5,10 @@ import 'package:collection/collection.dart';
 
 import '../models/enums.dart';
 import '../models/gps_point.dart';
-import '../models/point_of_interest.dart';
 import '../models/segment.dart';
 import '../models/trace.dart';
 import '../models/trace_segment_entry.dart';
-import '../search/text_normalizer.dart';
+import '../models/waypoint.dart';
 import '../utils/geo_utils.dart';
 import 'gpx_models.dart';
 import '../utils/valhalla_service.dart';
@@ -21,7 +20,7 @@ class SegmentationConfig {
   const SegmentationConfig({
     this.minPointSpacingMeters = 3.0,
     this.offRoadSnapBufferMeters = 15.0,
-    this.poiDedupBufferMeters = 25.0,
+    this.waypointAttachBufferMeters = 25.0,
     this.enablePauseDetection = true,
     this.stopGapDuration = const Duration(minutes: 3),
     this.minSegmentPoints = 3,
@@ -37,9 +36,11 @@ class SegmentationConfig {
   /// Rayon (m) pour la fusion géométrique quand hors du réseau OSM.
   final double offRoadSnapBufferMeters;
 
-  /// Rayon (m) pour dedoublonner un waypoint GPX avec un POI deja
-  /// enregistre localement (ou avec un autre waypoint du meme fichier).
-  final double poiDedupBufferMeters;
+  /// Rayon (m) pour rattacher un `<wpt>` GPX au [Waypoint] deja indexe
+  /// localement pour ce meme point (voir GpxScannerService, indexation
+  /// rapide) et au point de trace le plus proche, afin de determiner a
+  /// quel segment issu du decoupage ce waypoint appartient.
+  final double waypointAttachBufferMeters;
 
   /// Active la detection d'arrets prolonges comme points de coupure.
   final bool enablePauseDetection;
@@ -87,45 +88,47 @@ class ModeOverride {
 
 /// Resultat d'un decoupage : tout ce qu'il faut pour persister l'import
 /// (la trace, les segments a upserter -- nouveaux ou juste mis a jour en
-/// frequentation --, les POI a upserter) ainsi que quelques compteurs
-/// utiles pour informer l'utilisateur ("6 segments deja connus, 3
-/// nouveaux, 2 points d'interet ajoutes").
+/// frequentation, waypoints GPX rattaches inclus --) ainsi que quelques
+/// compteurs utiles pour informer l'utilisateur ("6 segments deja connus,
+/// 3 nouveaux").
 class SegmentationResult {
   SegmentationResult({
     required this.trace,
     required this.segmentsToUpsert,
-    required this.poisToUpsert,
     required this.newSegmentsCount,
     required this.reusedSegmentsCount,
-    required this.newPoisCount,
-    required this.reusedPoisCount,
   });
 
   final Trace trace;
   final List<Segment> segmentsToUpsert;
-  final List<PointOfInterest> poisToUpsert;
   final int newSegmentsCount;
   final int reusedSegmentsCount;
-  final int newPoisCount;
-  final int reusedPoisCount;
 }
 
 /// Decoupe une trace GPX en segments elementaires, en s'appuyant sur la
-/// toile locale deja connue (segments et POI deja enregistres sur
-/// l'appareil) pour eviter de dupliquer un chemin deja emprunte.
+/// toile locale deja connue (segments deja enregistres sur l'appareil)
+/// pour eviter de dupliquer un chemin deja emprunte.
 ///
 /// Points de coupure retenus, par ordre de priorite :
 /// 1. bornes de la trace (premier/dernier point) ;
 /// 2. rupture entre deux segments GPX distincts (perte GPS reelle) ;
-/// 3. proximite d'un waypoint GPX (POI, nouveau ou deja connu) ;
-/// 4. arret prolonge, si SegmentationConfig.enablePauseDetection ;
-/// 5. changement de bascule aimant manuelle en cours d'enregistrement
+/// 3. arret prolonge, si SegmentationConfig.enablePauseDetection ;
+/// 4. changement de bascule aimant manuelle en cours d'enregistrement
 ///    (voir ModeOverride, alimente par RecordingService, etape 3).
 ///
+/// Les `<wpt>` GPX ne sont PAS un point de coupure : ils sont rattaches
+/// (par UUID, voir [Segment.waypointUuids]) au segment issu du decoupage
+/// qui contient leur point de trace le plus proche, comme s'ils etaient
+/// ecrits "in-line" parmi les points de position. Le [Waypoint] lui-meme
+/// n'est pas cree ici (voir GpxScannerService, indexation rapide) : ce
+/// moteur se contente de retrouver, parmi [nearbyExistingWaypoints], celui
+/// qui correspond a chaque `<wpt>` et de reference son UUID sur le
+/// segment concerne.
+///
 /// Cette classe est volontairement PURE : aucun acces a Isar. C'est
-/// l'appelant (voir GpxImportService) qui fournit les segments/POI deja
-/// charges depuis la base pour la zone concernee, ce qui rend le moteur
-/// facilement testable unitairement, sans base de donnees.
+/// l'appelant (voir GpxImportService) qui fournit les segments/waypoints
+/// deja charges depuis la base pour la zone concernee, ce qui rend le
+/// moteur facilement testable unitairement, sans base de donnees.
 ///
 /// Limite assumee : si la nouvelle trace croise le MILIEU d'un segment
 /// deja enregistre (une vraie nouvelle intersection), ce module ne
@@ -142,7 +145,7 @@ class SegmentationEngine {
   Future<SegmentationResult> segment({
     required GpxParseResult gpx,
     required List<Segment> nearbyExistingSegments,
-    required List<PointOfInterest> nearbyExistingPois,
+    required List<Waypoint> nearbyExistingWaypoints,
     required String ownerUuid,
     String? traceNameOverride,
     ActivityType activityType = ActivityType.hiking,
@@ -168,19 +171,24 @@ class SegmentationEngine {
     final sortedOverrides = List<ModeOverride>.of(modeOverrides)
       ..sort((a, b) => a.at.compareTo(b.at));
 
-    final poiResolutions = <_PoiResolution>[];
+    // Resolution des <wpt> vers leur Waypoint local deja indexe + leur
+    // point de trace le plus proche, pour rattachement au segment
+    // correspondant une fois le decoupage effectue plus bas.
+    final wptResolutions = <_WaypointResolution>[];
     for (final wpt in gpx.waypoints) {
-      poiResolutions.add(
-        _resolvePoi(wpt, nearbyExistingPois, poiResolutions, ownerUuid),
+      final resolution = _resolveWaypointForAttachment(
+        wpt,
+        cleaned,
+        nearbyExistingWaypoints,
       );
+      if (resolution != null) wptResolutions.add(resolution);
     }
 
     // 2. Détermination des points de coupure (Hybride)
     final cutIndices = _findForcedCutIndicesHybrid(
-      cleaned, 
+      cleaned,
       matchedPoints,
-      poiResolutions, 
-      sortedOverrides, 
+      sortedOverrides,
       nearbyExistingSegments
     );
     final sortedCuts = cutIndices.toList()..sort();
@@ -198,7 +206,7 @@ class SegmentationEngine {
 
       final slice = cleaned.sublist(start, end + 1);
       final matchedSlice = matchedPoints.sublist(start, end + 1);
-      
+
       final built = _buildSegmentForSliceHybrid(
         slice,
         matchedSlice,
@@ -217,6 +225,14 @@ class SegmentationEngine {
       totalGain += built.sliceElevationGainMeters;
       totalLoss += built.sliceElevationLossMeters;
 
+      for (final wr in wptResolutions) {
+        if (wr.pointIndex >= start &&
+            wr.pointIndex <= end &&
+            !built.segment.waypointUuids.contains(wr.waypointUuid)) {
+          built.segment.waypointUuids.add(wr.waypointUuid);
+        }
+      }
+
       traceEntries.add(TraceSegmentEntry.create(
         segmentUuid: built.segment.localUuid,
         orderIndex: i,
@@ -225,10 +241,6 @@ class SegmentationEngine {
         exitedAt: slice.last.time,
       ));
     }
-
-    final poisToUpsert = poiResolutions.map((r) => r.poi).toList();
-    final newPoisCount = poiResolutions.where((r) => !r.reusedExisting).length;
-    final reusedPoisCount = poiResolutions.length - newPoisCount;
 
     final trace = Trace()
       ..localUuid = _uuid.v4()
@@ -251,11 +263,8 @@ class SegmentationEngine {
     return SegmentationResult(
       trace: trace,
       segmentsToUpsert: segmentsToUpsert,
-      poisToUpsert: poisToUpsert,
       newSegmentsCount: newSegmentsCount,
       reusedSegmentsCount: reusedSegmentsCount,
-      newPoisCount: newPoisCount,
-      reusedPoisCount: reusedPoisCount,
     );
   }
 
@@ -297,7 +306,6 @@ class SegmentationEngine {
   Set<int> _findForcedCutIndicesHybrid(
     List<GpxTrackPoint> points,
     List<MatchedPoint> matchedPoints,
-    List<_PoiResolution> poiResolutions,
     List<ModeOverride> sortedOverrides,
     List<Segment> nearbyExistingSegments,
   ) {
@@ -497,10 +505,11 @@ class SegmentationEngine {
   }
 
   /// Index du point le plus proche de (lat, lon), si a moins de
-  /// maxDistanceMeters. Cout O(n) par POI : acceptable pour les tailles
-  /// de fichiers GPX de randonnee habituelles (quelques milliers de
-  /// points, quelques dizaines de waypoints) ; a optimiser avec un index
-  /// spatial dedie si des imports massifs (multi-jours) le justifient.
+  /// maxDistanceMeters. Cout O(n) par waypoint : acceptable pour les
+  /// tailles de fichiers GPX de randonnee habituelles (quelques milliers
+  /// de points, quelques dizaines de waypoints) ; a optimiser avec un
+  /// index spatial dedie si des imports massifs (multi-jours) le
+  /// justifient.
   int? _nearestPointIndex(
     List<GpxTrackPoint> points,
     double lat,
@@ -708,102 +717,46 @@ class SegmentationEngine {
   }
 
   // -----------------------------------------------------------------
-  // Points d'interet
+  // Rattachement des waypoints GPX aux segments
   // -----------------------------------------------------------------
 
-  _PoiResolution _resolvePoi(
+  /// Retrouve, pour un `<wpt>` GPX donne, le [Waypoint] local deja indexe
+  /// qui lui correspond (voir GpxScannerService, indexation rapide) ainsi
+  /// que l'index du point de trace le plus proche, qui determine a quel
+  /// segment issu du decoupage ce waypoint sera rattache. Retourne `null`
+  /// si aucun Waypoint local ne correspond (indexation pas encore faite)
+  /// ou si le point est trop loin de la trace : dans ce cas, ce `<wpt>`
+  /// n'est simplement pas rattache, sans creer de doublon.
+  _WaypointResolution? _resolveWaypointForAttachment(
     GpxWaypoint wpt,
-    List<PointOfInterest> nearbyExistingPois,
-    List<_PoiResolution> alreadyResolvedInThisImport,
-    String ownerUuid,
+    List<GpxTrackPoint> cleaned,
+    List<Waypoint> nearbyExistingWaypoints,
   ) {
-    for (final existing in nearbyExistingPois) {
+    Waypoint? match;
+    var bestDist = double.infinity;
+    for (final existing in nearbyExistingWaypoints) {
       final d = GeoUtils.haversineMeters(
         wpt.latitude,
         wpt.longitude,
         existing.latitude,
         existing.longitude,
       );
-      if (d <= config.poiDedupBufferMeters) {
-        existing.timesReferenced += 1;
-        existing.updatedAt = DateTime.now();
-        return _PoiResolution(poi: existing, reusedExisting: true);
+      if (d <= config.waypointAttachBufferMeters && d < bestDist) {
+        bestDist = d;
+        match = existing;
       }
     }
-    // Dedoublonnage egalement au sein du meme fichier (deux waypoints
-    // tres proches l'un de l'autre dans le meme import).
-    for (final resolved in alreadyResolvedInThisImport) {
-      final d = GeoUtils.haversineMeters(
-        wpt.latitude,
-        wpt.longitude,
-        resolved.poi.latitude,
-        resolved.poi.longitude,
-      );
-      if (d <= config.poiDedupBufferMeters) {
-        resolved.poi.timesReferenced += 1;
-        return _PoiResolution(poi: resolved.poi, reusedExisting: true);
-      }
-    }
+    if (match == null) return null;
 
-    final poi = PointOfInterest()
-      ..localUuid = _uuid.v4()
-      ..name = wpt.name ?? "Point d'interet"
-      ..description = wpt.description
-      ..type = _classifyPoiType(wpt.rawType, wpt.name)
-      ..location = PointGPS.create(
-        latitude: wpt.latitude,
-        longitude: wpt.longitude,
-        altitude: wpt.elevation,
-        timestamp: DateTime.now(),
-      )
-      ..latitude = wpt.latitude
-      ..longitude = wpt.longitude
-      ..geohashPrefix = GeoUtils.geohash(wpt.latitude, wpt.longitude)
-      ..timesReferenced = 1
-      ..authorUuid = ownerUuid
-      ..syncStatus = SyncStatus.pending
-      ..createdAt = DateTime.now()
-      ..updatedAt = DateTime.now();
+    final pointIndex = _nearestPointIndex(
+      cleaned,
+      wpt.latitude,
+      wpt.longitude,
+      config.waypointAttachBufferMeters,
+    );
+    if (pointIndex == null) return null;
 
-    return _PoiResolution(poi: poi, reusedExisting: false);
-  }
-
-  /// Classification best-effort a partir du champ type (ou, a defaut, du
-  /// nom) du waypoint GPX. Mapping volontairement simple par mots-cles
-  /// francais/anglais ; a affiner avec des exemples reels (exports
-  /// Garmin/OsmAnd/IGN Rando notamment) avant mise en production.
-  POIType _classifyPoiType(String? rawType, String? name) {
-    final haystack = TextNormalizer.normalize('${rawType ?? ''} ${name ?? ''}');
-    if (haystack.contains('sommet') ||
-        haystack.contains('summit') ||
-        haystack.contains('peak')) {
-      return POIType.summit;
-    }
-    if (haystack.contains('vue') ||
-        haystack.contains('viewpoint') ||
-        haystack.contains('panorama')) {
-      return POIType.viewpoint;
-    }
-    if (haystack.contains('eau') ||
-        haystack.contains('source') ||
-        haystack.contains('water')) {
-      return POIType.waterSource;
-    }
-    if (haystack.contains('camp') || haystack.contains('bivouac')) {
-      return POIType.campsite;
-    }
-    if (haystack.contains('refuge') ||
-        haystack.contains('abri') ||
-        haystack.contains('shelter')) {
-      return POIType.shelter;
-    }
-    if (haystack.contains('parking')) {
-      return POIType.parking;
-    }
-    if (haystack.contains('danger') || haystack.contains('risque')) {
-      return POIType.danger;
-    }
-    return POIType.other;
+    return _WaypointResolution(waypointUuid: match.localUuid, pointIndex: pointIndex);
   }
 
   String _formatDate(DateTime date) {
@@ -813,10 +766,10 @@ class SegmentationEngine {
   }
 }
 
-class _PoiResolution {
-  _PoiResolution({required this.poi, required this.reusedExisting});
-  final PointOfInterest poi;
-  final bool reusedExisting;
+class _WaypointResolution {
+  _WaypointResolution({required this.waypointUuid, required this.pointIndex});
+  final String waypointUuid;
+  final int pointIndex;
 }
 
 class _BuiltSegment {

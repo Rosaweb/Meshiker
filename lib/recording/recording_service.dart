@@ -113,6 +113,7 @@ class RecordingService {
   Trace? _activeTrace;
   List<({double lat, double lon})> _activePolyline = [];
   List<Waypoint> _traceWaypoints = [];
+  String? _lastKnownRoadmapTraceName;
 
   int _dailyPointsCount = 0;
   double _dailySpeedSum = 0.0;
@@ -258,11 +259,21 @@ class RecordingService {
     });
 
     if (settingsService != null) {
+      _lastKnownRoadmapTraceName = settingsService!.roadmapTraceName;
       settingsService!.addListener(() {
         final enabled = settingsService!.locationEnabled;
         debugPrint('RecordingService: In-app location toggle changed: $enabled');
         if (enabled) {
           startPositionMonitoring();
+        }
+
+        // Dès qu'une trace est chargée/déchargée du Roadmap, on recalcule
+        // tout de suite le prochain waypoint plutôt que d'attendre le
+        // prochain point GPS (qui peut ne jamais arriver en intérieur).
+        final roadmapTraceName = settingsService!.roadmapTraceName;
+        if (roadmapTraceName != _lastKnownRoadmapTraceName) {
+          _lastKnownRoadmapTraceName = roadmapTraceName;
+          unawaited(refreshNavigationStats());
         }
       });
     }
@@ -557,14 +568,20 @@ class RecordingService {
     } else {
       await prefs.setString('nav_wp_uuid', uuid);
     }
-    
-    final pos = currentPosition.value;
-    if (pos != null) {
-      await _updateNavigationStats(pos);
-    }
+
+    await _updateNavigationStats(currentPosition.value);
   }
 
-  Future<void> _updateNavigationStats(geo.Position position) async {
+  /// Recalcule les outils de navigation (prochain waypoint, destination) à
+  /// partir de la trace actuellement chargée dans le Roadmap, sans attendre
+  /// un nouveau point GPS. À appeler dès qu'une trace est chargée/déchargée
+  /// du Roadmap : tant qu'aucune position n'est encore connue, les distances
+  /// par défaut sont calculées depuis le DÉBUT de la trace (cf.
+  /// _updateNavigationStats), pour que "Prochain Waypoint" affiche tout de
+  /// suite le premier waypoint plutôt que de rester vide en attendant un fix.
+  Future<void> refreshNavigationStats() => _updateNavigationStats(currentPosition.value);
+
+  Future<void> _updateNavigationStats(geo.Position? position) async {
     final prefs = await SharedPreferences.getInstance();
     final roadmapTrace = prefs.getString('roadmap_trace_name');
     final destUuid = prefs.getString('nav_wp_uuid');
@@ -597,7 +614,7 @@ class RecordingService {
       if (destUuid != null) {
         final dest = await isarService.isar.waypoints.filter().localUuidEqualTo(destUuid).findFirst();
         destinationWaypoint.value = dest;
-        distanceToDestinationMeters.value = dest != null
+        distanceToDestinationMeters.value = (dest != null && position != null)
             ? geo.Geolocator.distanceBetween(position.latitude, position.longitude, dest.latitude, dest.longitude)
             : 0;
       } else {
@@ -607,12 +624,18 @@ class RecordingService {
       return;
     }
 
-    final snap = GeoUtils.snapToPolyline(
-      position.latitude,
-      position.longitude,
-      _activePolyline,
-      50.0
-    );
+    // Tant qu'aucune position GPS n'est encore connue (pas de fix depuis le
+    // démarrage, permission en attente...), on se comporte comme si la
+    // position était hors de la marge de 50m : les distances par défaut sont
+    // calculées depuis le DÉBUT de la trace (voir doneDist plus bas).
+    final snap = position != null
+        ? GeoUtils.snapToPolyline(
+            position.latitude,
+            position.longitude,
+            _activePolyline,
+            50.0
+          )
+        : null;
 
     final totalDist = GeoUtils.polylineLengthMeters(_activePolyline);
     // Tant que la position GPS n'est pas détectée sur la trace (hors de la
@@ -655,7 +678,9 @@ class RecordingService {
         destinationWaypoint.value = dest;
         distanceToDestinationMeters.value = destSnap != null
             ? (GeoUtils.distanceToSnapMeters(_activePolyline, destSnap) - doneDist).abs()
-            : geo.Geolocator.distanceBetween(position.latitude, position.longitude, dest.latitude, dest.longitude);
+            : (position != null
+                ? geo.Geolocator.distanceBetween(position.latitude, position.longitude, dest.latitude, dest.longitude)
+                : 0);
       } else {
         destinationWaypoint.value = null;
         distanceToDestinationMeters.value = 0;
@@ -856,17 +881,14 @@ class RecordingService {
       minLon: minLon,
       maxLon: maxLon,
     );
-    final nearbyPois = await isarService.poisInViewport(
-      minLat: minLat,
-      maxLat: maxLat,
-      minLon: minLon,
-      maxLon: maxLon,
-    );
 
     final result = await engine.segment(
       gpx: parsed,
       nearbyExistingSegments: nearbySegments,
-      nearbyExistingPois: nearbyPois,
+      // Un enregistrement live ne produit jamais de <wpt> (voir `parsed`
+      // ci-dessus, waypoints: const []) : rien a resoudre, inutile
+      // d'interroger Isar pour ca.
+      nearbyExistingWaypoints: const [],
       ownerUuid: ownerUuid,
       traceNameOverride: traceName,
       activityType: activityType,

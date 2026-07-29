@@ -333,10 +333,19 @@ class IsarService {
     });
   }
 
-  Future<void> deleteWaypoints(List<int> ids) async {
+  /// Supprime les waypoints [ids] et retourne leurs [Waypoint.localUuid],
+  /// pour que l'appelant puisse aussi les retirer de l'index de recherche
+  /// (voir LocalSearchEngine.removeWaypoint).
+  Future<List<String>> deleteWaypoints(List<int> ids) async {
+    final localUuids = <String>[];
     await isar.writeTxn(() async {
+      final existing = await isar.waypoints.getAll(ids);
+      for (final wp in existing) {
+        if (wp != null) localUuids.add(wp.localUuid);
+      }
       await isar.waypoints.deleteAll(ids);
     });
+    return localUuids;
   }
 
   Future<void> moveWaypointsToGpx(List<int> ids, String? gpxName, {int? folderId}) async {

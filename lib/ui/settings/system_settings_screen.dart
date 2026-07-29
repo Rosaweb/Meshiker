@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 import '../../utils/settings_service.dart';
 import '../../utils/tile_cache_service.dart';
 import '../../utils/photo_scanner_service.dart';
@@ -222,7 +223,20 @@ class SystemSettingsScreen extends StatelessWidget {
                       // Déclencher un scan immédiat après la sélection
                       if (context.mounted) {
                          final scanner = context.read<GpxScannerService>();
-                         scanner.scanFolder(selectedDirectory);
+                         final result = await scanner.scanFolder(selectedDirectory);
+                         if (context.mounted && result == GpxScanResult.permissionDenied) {
+                           ScaffoldMessenger.of(context).showSnackBar(
+                             SnackBar(
+                               content: const Text(
+                                   'Accès au stockage refusé : autorisez "Tous les fichiers" pour Meshiker dans les paramètres Android.'),
+                               duration: const Duration(seconds: 5),
+                               action: SnackBarAction(
+                                 label: 'PARAMÈTRES',
+                                 onPressed: () => ph.openAppSettings(),
+                               ),
+                             ),
+                           );
+                         }
                       }
                     }
                   },

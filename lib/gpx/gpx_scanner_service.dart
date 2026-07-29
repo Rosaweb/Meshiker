@@ -15,6 +15,12 @@ import 'gpx_models.dart';
 import 'gpx_parser.dart';
 import 'kml_parser.dart';
 
+/// Résultat d'un [GpxScannerService.scanFolder], pour que l'écran appelant
+/// puisse informer l'utilisateur d'un échec silencieux (dossier
+/// introuvable, permission refusée) plutôt que de laisser croire que
+/// l'absence de traces trouvées signifie "dossier vide".
+enum GpxScanResult { ok, directoryNotFound, permissionDenied }
+
 class GpxScannerService extends ChangeNotifier {
   final IsarService isarService;
   final GpxImportService importService;
@@ -29,33 +35,42 @@ class GpxScannerService extends ChangeNotifier {
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
-  Future<void> scanFolder(String path) async {
-    if (_isScanning) return;
+  Future<GpxScanResult> scanFolder(String path) async {
+    if (_isScanning) return GpxScanResult.ok;
     _isScanning = true;
     notifyListeners();
-    
+
     try {
       final normalizedPath = p.canonicalize(path);
       debugPrint('GpxScannerService: Starting scan in $normalizedPath');
       final dir = Directory(normalizedPath);
       if (!await dir.exists()) {
         debugPrint('GpxScannerService: Directory does not exist');
-        _isScanning = false;
-        notifyListeners();
-        return;
+        return GpxScanResult.directoryNotFound;
       }
 
-      // Demander la permission de lecture si nécessaire (Android)
+      // Accès en lecture au stockage (Android). Le sélecteur de dossier
+      // (SAF) ne suffit pas : dart:io lit ensuite le chemin brut, ce qui
+      // exige la permission "Tous les fichiers" côté OS. Sans ce contrôle
+      // explicite, un refus (ou une révocation automatique par l'OS après
+      // une période d'inactivité) fait échouer le scan silencieusement --
+      // aucun fichier trouvé, sans qu'aucune erreur ne remonte à
+      // l'utilisateur.
       if (Platform.isAndroid) {
-        final status = await ph.Permission.manageExternalStorage.status;
-        if (!status.isGranted) {
-           debugPrint('GpxScannerService: Requesting manageExternalStorage permission');
-           await ph.Permission.manageExternalStorage.request();
+        var granted = (await ph.Permission.manageExternalStorage.status).isGranted;
+        if (!granted) {
+          debugPrint('GpxScannerService: Requesting manageExternalStorage permission');
+          granted = (await ph.Permission.manageExternalStorage.request()).isGranted;
         }
-        
-        final storageStatus = await ph.Permission.storage.status;
-        if (!storageStatus.isGranted) {
-           await ph.Permission.storage.request();
+        if (!granted) {
+          // Repli pour les appareils/versions où la permission spéciale
+          // n'est pas proposée (l'OS l'ignore silencieusement au-delà de
+          // l'API 32, cf. maxSdkVersion dans AndroidManifest.xml).
+          granted = (await ph.Permission.storage.request()).isGranted;
+        }
+        if (!granted) {
+          debugPrint('GpxScannerService: Storage permission denied, aborting scan');
+          return GpxScanResult.permissionDenied;
         }
       }
 
@@ -65,9 +80,10 @@ class GpxScannerService extends ChangeNotifier {
       // On l'attend ici pour que isScanning (et donc le chargement affiché)
       // couvre toute la durée du traitement, pas seulement l'indexation rapide.
       await _processPendingSegmentations();
-
+      return GpxScanResult.ok;
     } catch (e) {
       debugPrint('GpxScannerService: Scan error: $e');
+      return GpxScanResult.permissionDenied;
     } finally {
       _isScanning = false;
       notifyListeners();
@@ -216,6 +232,7 @@ class GpxScannerService extends ChangeNotifier {
                 ..associatedGpxName = associatedName
                 ..updatedAt = DateTime.now();
               await isarService.isar.waypoints.put(wp);
+              importService.searchEngine.indexWaypoint(wp);
             }
           }
         });
