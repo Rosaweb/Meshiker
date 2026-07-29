@@ -397,6 +397,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
         builder: (context) => WaypointEditScreen(
           waypoint: wp,
           isarService: context.read<IsarService>(),
+          locateOrigin: WaypointLocateOrigin.trackManager,
         ),
       ).then((_) {
         if (context.mounted) context.read<MapViewModel>().refreshNow();

@@ -14,6 +14,11 @@ enum MapStartupMode { lastPosition, customPoint }
 
 enum DisplayMode { gpx, mesh }
 
+/// Écran d'où "Localiser sur la carte" a été déclenché depuis la fenêtre
+/// contextuelle d'un waypoint : détermine quel écran le bouton "Retour"
+/// flottant de la carte doit rouvrir derrière la fiche du waypoint.
+enum WaypointLocateOrigin { map, trackManager, roadmap }
+
 class AppSettings {
   final double barOpacity;
   final UnitSystem unitSystem;
@@ -88,6 +93,22 @@ class SettingsService extends ChangeNotifier {
   double? _customMapZoom;
   bool _pickingStartupCenter = false;
 
+  // "Localiser sur la carte" depuis la fenêtre contextuelle d'un waypoint :
+  // uuid du waypoint concerné tant que le bouton "Retour" flottant est
+  // affiché sur la carte, null sinon.
+  String? _locatingWaypointUuid;
+  WaypointLocateOrigin _locatingWaypointOrigin = WaypointLocateOrigin.map;
+
+  // "Localiser sur la carte" depuis la fiche d'une trace GPX : même
+  // principe, mais processus volontairement distinct de "Naviguer"
+  // (roadmapTraceName) pour ne jamais perturber une trace de navigation
+  // déjà en cours pendant qu'on prévisualise une autre trace. On retient
+  // si la trace était déjà affichée (activeGpxNames) avant le déclenchement
+  // pour savoir si on doit la retirer à la fermeture du bouton "Retour".
+  String? _locatingTraceUuid;
+  String? _locatingTraceName;
+  bool _locatingTraceWasAlreadyActive = false;
+
   double get barOpacity => _barOpacity;
   double get mainMenuOpacity => _mainMenuOpacity;
   UnitSystem get unitSystem => _unitSystem;
@@ -133,6 +154,9 @@ class SettingsService extends ChangeNotifier {
 
   MapStartupMode get mapStartupMode => _mapStartupMode;
   bool get pickingStartupCenter => _pickingStartupCenter;
+  String? get locatingWaypointUuid => _locatingWaypointUuid;
+  WaypointLocateOrigin get locatingWaypointOrigin => _locatingWaypointOrigin;
+  String? get locatingTraceUuid => _locatingTraceUuid;
 
   ({double lat, double lon, double zoom})? get lastMapPosition =>
       (_lastMapLat != null && _lastMapLon != null && _lastMapZoom != null)
@@ -513,6 +537,56 @@ class SettingsService extends ChangeNotifier {
 
   void cancelPickStartupCenter() {
     _pickingStartupCenter = false;
+    notifyListeners();
+  }
+
+  /// Démarre le mode "Localiser sur la carte" pour le waypoint [uuid] :
+  /// affiche le bouton "Retour" flottant sur MapScreen. [origin] indique
+  /// quel écran doit être rouvert derrière la fenêtre contextuelle quand
+  /// on presse ce bouton (Track Manager, Roadmap, ou rien de plus si on
+  /// venait déjà directement de la carte).
+  void startLocateWaypoint(String uuid, {WaypointLocateOrigin origin = WaypointLocateOrigin.map}) {
+    _locatingWaypointUuid = uuid;
+    _locatingWaypointOrigin = origin;
+    notifyListeners();
+  }
+
+  /// Referme le bouton "Retour", que ce soit parce qu'on l'a pressé (pour
+  /// rouvrir la fenêtre contextuelle) ou parce que l'utilisateur a fait
+  /// autre chose qu'un zoom/déplacement sur la carte.
+  void dismissLocateWaypointBackButton() {
+    _locatingWaypointUuid = null;
+    notifyListeners();
+  }
+
+  /// Démarre le mode "Localiser sur la carte" pour la trace [traceName]
+  /// (uuid [traceUuid]) : affiche le bouton "Retour" flottant sur MapScreen,
+  /// et ajoute temporairement la trace à [activeGpxNames] si elle n'y était
+  /// pas déjà, pour qu'elle apparaisse sur la carte. Mutuellement exclusif
+  /// avec le mode "Localiser" d'un waypoint.
+  Future<void> startLocateTrace(String traceUuid, String traceName) async {
+    _locatingTraceWasAlreadyActive = _activeGpxNames.contains(traceName);
+    if (!_locatingTraceWasAlreadyActive) {
+      _activeGpxNames.add(traceName);
+      await _prefs.setStringList('active_gpx_list', _activeGpxNames);
+    }
+    _locatingTraceUuid = traceUuid;
+    _locatingTraceName = traceName;
+    _locatingWaypointUuid = null;
+    notifyListeners();
+  }
+
+  /// Referme le bouton "Retour" d'une trace localisée, et retire la trace
+  /// de [activeGpxNames] si elle n'y était affichée que temporairement pour
+  /// cette prévisualisation.
+  Future<void> dismissLocateTraceBackButton() async {
+    if (_locatingTraceUuid == null) return;
+    if (!_locatingTraceWasAlreadyActive && _locatingTraceName != null) {
+      _activeGpxNames.remove(_locatingTraceName);
+      await _prefs.setStringList('active_gpx_list', _activeGpxNames);
+    }
+    _locatingTraceUuid = null;
+    _locatingTraceName = null;
     notifyListeners();
   }
 }

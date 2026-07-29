@@ -39,6 +39,19 @@ class MapViewModel {
   final ValueNotifier<({double lat, double lon, double zoom})?> liveCamera =
       ValueNotifier(null);
 
+  /// Demande ponctuelle de recentrage (ex: "Localiser sur la carte" depuis
+  /// la fenêtre contextuelle d'un waypoint). MapScreen l'écoute, exécute le
+  /// déplacement puis remet la valeur à null.
+  final ValueNotifier<({double lat, double lon})?> centerRequest =
+      ValueNotifier(null);
+
+  /// Demande ponctuelle de cadrage sur une zone (ex: "Localiser sur la
+  /// carte" depuis la fiche d'une trace GPX, qui doit cadrer toute
+  /// l'étendue de la trace plutôt qu'un simple point). MapScreen l'écoute,
+  /// exécute le cadrage puis remet la valeur à null.
+  final ValueNotifier<({double minLat, double maxLat, double minLon, double maxLon})?>
+      centerBoundsRequest = ValueNotifier(null);
+
   Timer? _debounce;
 
   ({double minLat, double maxLat, double minLon, double maxLon})?
@@ -182,5 +195,7 @@ class MapViewModel {
     pois.dispose();
     isRefreshingCommunityData.dispose();
     liveCamera.dispose();
+    centerRequest.dispose();
+    centerBoundsRequest.dispose();
   }
 }

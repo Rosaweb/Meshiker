@@ -2,17 +2,24 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:isar_community/isar.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/isar_service.dart';
+import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
 import '../../search/local_search_engine.dart';
+import '../../utils/settings_service.dart';
 
 class WaypointEditScreen extends StatefulWidget {
   final Waypoint? waypoint;
   final double? latitude;
   final double? longitude;
   final IsarService isarService;
+  /// Écran d'où cette fenêtre contextuelle a été ouverte (carte, Track
+  /// Manager, Roadmap). Transmis à "Localiser sur la carte" pour que le
+  /// bouton "Retour" de la carte sache où rouvrir cette fiche.
+  final WaypointLocateOrigin locateOrigin;
 
   const WaypointEditScreen({
     super.key,
@@ -20,6 +27,7 @@ class WaypointEditScreen extends StatefulWidget {
     this.latitude,
     this.longitude,
     required this.isarService,
+    this.locateOrigin = WaypointLocateOrigin.map,
   });
 
   @override
@@ -114,6 +122,56 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
     }
   }
 
+  /// Un waypoint est "nouveau" tant qu'il n'a jamais été enregistré dans
+  /// Isar (création par appui long sur la carte, ou pré-rempli depuis un
+  /// POI OSM) : dans ce cas on propose ANNULER. Dès qu'il s'agit d'un
+  /// waypoint déjà persisté (édité depuis le Waypoint Manager ou depuis un
+  /// marqueur existant sur la carte), ANNULER n'a pas de sens et on
+  /// propose SUPPRIMER à la place.
+  bool get _isNew => widget.waypoint == null || widget.waypoint!.id == Isar.autoIncrement;
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Supprimer', style: TextStyle(color: Colors.white)),
+        content: const Text('Voulez-vous vraiment supprimer ce waypoint ?',
+            style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ANNULER'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && widget.waypoint != null) {
+      await widget.isarService.deleteWaypoints([widget.waypoint!.id]);
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  /// Ferme la fenêtre contextuelle et centre l'écran principal (carte) sur
+  /// ce waypoint. Un bouton "Retour" flottant s'affiche sur la carte pour
+  /// revenir ici ; disponible uniquement pour un waypoint déjà enregistré
+  /// (un waypoint en cours de création n'a pas d'existence persistée à
+  /// laquelle revenir).
+  void _locateOnMap() {
+    final wp = widget.waypoint;
+    if (wp == null) return;
+    context.read<SettingsService>().startLocateWaypoint(
+        wp.localUuid,
+        origin: widget.locateOrigin);
+    context.read<MapViewModel>().centerRequest.value =
+        (lat: wp.latitude, lon: wp.longitude);
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -188,22 +246,40 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      const Text('COULEUR DU POINT', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: _pickColor,
-                        child: Container(
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: _currentColor,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white24),
+                      Row(
+                        children: [
+                          const Text('COULEUR DU POINT', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: _pickColor,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: _currentColor,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: Colors.white24),
+                              ),
+                            ),
                           ),
-                          child: const Center(
-                            child: Icon(Icons.palette, color: Colors.white, size: 20),
+                        ],
+                      ),
+                      if (!_isNew) ...[
+                        const SizedBox(height: 16),
+                        InkWell(
+                          onTap: _locateOnMap,
+                          child: const Row(
+                            children: [
+                              Icon(Icons.location_searching, color: Colors.greenAccent, size: 18),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text('Localiser sur la carte', style: TextStyle(color: Colors.white)),
+                              ),
+                              Icon(Icons.chevron_right, color: Colors.white24),
+                            ],
                           ),
                         ),
-                      ),
+                      ],
                       const SizedBox(height: 24),
                       Row(
                         children: [
@@ -228,10 +304,16 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('ANNULER', style: TextStyle(color: Colors.white54)),
-                  ),
+                  if (_isNew)
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('ANNULER', style: TextStyle(color: Colors.white54)),
+                    )
+                  else
+                    TextButton(
+                      onPressed: _confirmDelete,
+                      child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+                    ),
                   const SizedBox(width: 12),
                   ElevatedButton(
                     onPressed: _save,

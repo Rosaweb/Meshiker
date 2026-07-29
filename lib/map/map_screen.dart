@@ -35,7 +35,9 @@ import 'map_style.dart';
 import 'map_view_model.dart';
 import 'planning_controller.dart';
 import 'vector_tile_source.dart';
-import '../ui/settings/maps_settings_screen.dart';
+import '../ui/tracks/roadmap_screen.dart';
+import '../ui/tracks/track_edit_screen.dart';
+import '../ui/tracks/track_manager_screen.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({
@@ -112,6 +114,92 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     // Écoute de la position pour le mode suivi
     widget.recordingService.currentPosition.addListener(_onLocationUpdate);
+    // Requêtes de recentrage ponctuelles (ex: "Localiser sur la carte"
+    // depuis la fenêtre contextuelle d'un waypoint).
+    widget.viewModel.centerRequest.addListener(_onCenterRequest);
+    // Idem, mais cadré sur une étendue (ex: "Localiser sur la carte" depuis
+    // la fiche d'une trace GPX).
+    widget.viewModel.centerBoundsRequest.addListener(_onCenterBoundsRequest);
+  }
+
+  void _onCenterRequest() {
+    final req = widget.viewModel.centerRequest.value;
+    if (req == null) return;
+    setState(() => _followUser = false);
+    _mapController.move(LatLng(req.lat, req.lon), 17);
+    widget.viewModel.centerRequest.value = null;
+  }
+
+  void _onCenterBoundsRequest() {
+    final b = widget.viewModel.centerBoundsRequest.value;
+    if (b == null) return;
+    setState(() => _followUser = false);
+    _mapController.fitCamera(CameraFit.bounds(
+      bounds: LatLngBounds(LatLng(b.minLat, b.minLon), LatLng(b.maxLat, b.maxLon)),
+      padding: const EdgeInsets.all(40),
+    ));
+    widget.viewModel.centerBoundsRequest.value = null;
+  }
+
+  /// À appeler au début de toute action de la carte qui n'est pas un simple
+  /// zoom/déplacement, pour faire disparaître le bouton "Retour" du mode
+  /// "Localiser sur la carte" (cf. WaypointEditScreen et TrackEditScreen)
+  /// s'il est affiché.
+  void _dismissLocateBackButton() {
+    if (widget.settingsService.locatingWaypointUuid != null) {
+      widget.settingsService.dismissLocateWaypointBackButton();
+    }
+    if (widget.settingsService.locatingTraceUuid != null) {
+      widget.settingsService.dismissLocateTraceBackButton();
+    }
+  }
+
+  Future<void> _returnToWaypointPopup() async {
+    final uuid = widget.settingsService.locatingWaypointUuid;
+    final origin = widget.settingsService.locatingWaypointOrigin;
+    widget.settingsService.dismissLocateWaypointBackButton();
+    if (uuid == null) return;
+    final wp = await widget.isarService.waypointByUuid(uuid);
+    if (wp == null || !mounted) return;
+
+    // Rouvre d'abord l'écran d'où "Localiser sur la carte" avait été
+    // déclenché (Track Manager, Roadmap), pour que fermer la fiche du
+    // waypoint révèle cet écran plutôt que la carte nue — symétrique au
+    // Navigator.popUntil(isFirst) fait à l'aller.
+    switch (origin) {
+      case WaypointLocateOrigin.trackManager:
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const TrackManagerScreen()));
+      case WaypointLocateOrigin.roadmap:
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const RoadmapScreen()));
+      case WaypointLocateOrigin.map:
+        break;
+    }
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.7),
+      builder: (context) => WaypointEditScreen(
+        waypoint: wp,
+        isarService: widget.isarService,
+        locateOrigin: origin,
+      ),
+    ).then((_) => widget.viewModel.refreshNow());
+  }
+
+  /// Symétrique de [_returnToWaypointPopup] pour une trace GPX localisée
+  /// depuis sa fiche : il n'y a qu'un seul point d'entrée (TrackEditScreen),
+  /// donc pas de switch sur une origine, juste une repousse directe.
+  Future<void> _returnToTracePopup() async {
+    final uuid = widget.settingsService.locatingTraceUuid;
+    await widget.settingsService.dismissLocateTraceBackButton();
+    if (uuid == null || !mounted) return;
+    final trace = await widget.isarService.traceByUuid(uuid);
+    if (trace == null || !mounted) return;
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => TrackEditScreen(trace: trace)));
   }
 
   void _onLocationUpdate() {
@@ -146,6 +234,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     widget.recordingService.currentPosition.removeListener(_onLocationUpdate);
+    widget.viewModel.centerRequest.removeListener(_onCenterRequest);
+    widget.viewModel.centerBoundsRequest.removeListener(_onCenterBoundsRequest);
     _colorMode.dispose();
     _selectedSegmentUuids.dispose();
     _compassSubscription?.cancel();
@@ -203,6 +293,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _onTap(TapPosition tapPosition, LatLng point) {
+    _dismissLocateBackButton();
     if (_planningActive) {
       widget.planningController?.addTapPoint(point.latitude, point.longitude);
       return;
@@ -626,6 +717,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   void _toggleMenu() {
+    _dismissLocateBackButton();
     setState(() {
       _menuExpanded = !_menuExpanded;
       if (_menuExpanded) {
@@ -653,6 +745,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 initialZoom: widget.initialZoom,
                 onTap: _onTap,
                 onLongPress: (tapPosition, point) {
+                  _dismissLocateBackButton();
                   showDialog(
                     context: context,
                     barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -714,6 +807,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 _OsmPoisLayer(
                   viewModel: widget.viewModel,
                   isarService: widget.isarService,
+                  settings: widget.settingsService,
                 ),
                 if (widget.planningController != null)
                   _PlanningLayer(controller: widget.planningController!),
@@ -738,6 +832,37 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ],
             ),
+            if (widget.settingsService.locatingWaypointUuid != null ||
+                widget.settingsService.locatingTraceUuid != null)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 12,
+                child: Material(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(24),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () => widget.settingsService.locatingTraceUuid != null
+                        ? _returnToTracePopup()
+                        : _returnToWaypointPopup(),
+                    child: const Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.arrow_back, color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                          Text('Retour',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (_tileLoadError && widget.vectorTileSource?.theme == null)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 8,
@@ -863,11 +988,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             showAllGpx: widget.settingsService.showAllGpx,
                             showMesh: widget.settingsService.showMesh,
                             onToggleRotation: () {
+                              _dismissLocateBackButton();
                               setState(
                                   () => _dynamicRotation = !_dynamicRotation);
                               if (!_dynamicRotation) _mapController.rotate(0);
                             },
                             onRecenter: () {
+                              // Recentrer reste une manipulation de la carte
+                              // (déplacement) : ne dissipe pas le bouton
+                              // "Retour" du mode localisation de waypoint.
                               final pos =
                                   widget.recordingService.currentPosition.value;
                               setState(() => _followUser = true);
@@ -881,6 +1010,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               }
                             },
                             onToggleLocation: () {
+                              _dismissLocateBackButton();
                               final newStatus =
                                   !widget.settingsService.locationEnabled;
                               widget.settingsService
@@ -893,9 +1023,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               }
                             },
                             onCycleMap: () {
+                              _dismissLocateBackButton();
                               widget.settingsService.cycleMap();
                             },
                             onZoomIn: () {
+                              // Zoom : manipulation de la carte, cf. onRecenter.
                               _mapController.move(_mapController.camera.center,
                                   _mapController.camera.zoom + 1);
                             },
@@ -904,6 +1036,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   _mapController.camera.zoom - 1);
                             },
                             onValidatePoint: () {
+                              _dismissLocateBackButton();
                               final center = _mapController.camera.center;
                               if (widget.settingsService.measurePoint1 ==
                                   null) {
@@ -915,21 +1048,40 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               }
                             },
                             onCancelMeasure: () {
+                              _dismissLocateBackButton();
                               widget.settingsService.clearMeasurement();
                             },
-                            onToggleWaypoints: () => widget.settingsService
-                                .setShowAllWaypoints(
-                                    !widget.settingsService.showAllWaypoints),
-                            onToggleGpx: () => widget.settingsService
-                                .setShowAllGpx(
-                                    !widget.settingsService.showAllGpx),
-                            onToggleCompass: () {},
-                            onResegmentMesh: _resegmentTraces,
-                            onCreateTrace: _createTraceFromMesh,
-                            onClearSelection: () =>
-                                _selectedSegmentUuids.value = {},
-                            onDeleteSelected: _deleteSelectedSegments,
-                            onToggleRecording: _handleToggleRecording,
+                            onToggleWaypoints: () {
+                              _dismissLocateBackButton();
+                              widget.settingsService.setShowAllWaypoints(
+                                  !widget.settingsService.showAllWaypoints);
+                            },
+                            onToggleGpx: () {
+                              _dismissLocateBackButton();
+                              widget.settingsService.setShowAllGpx(
+                                  !widget.settingsService.showAllGpx);
+                            },
+                            onToggleCompass: _dismissLocateBackButton,
+                            onResegmentMesh: () {
+                              _dismissLocateBackButton();
+                              _resegmentTraces();
+                            },
+                            onCreateTrace: () {
+                              _dismissLocateBackButton();
+                              _createTraceFromMesh();
+                            },
+                            onClearSelection: () {
+                              _dismissLocateBackButton();
+                              _selectedSegmentUuids.value = {};
+                            },
+                            onDeleteSelected: () {
+                              _dismissLocateBackButton();
+                              _deleteSelectedSegments();
+                            },
+                            onToggleRecording: () {
+                              _dismissLocateBackButton();
+                              _handleToggleRecording();
+                            },
                             isRecording: widget.recordingService.isActive,
                           ),
                         ),
@@ -1014,12 +1166,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildDynamicTileLayer() {
-    final favIds = widget.settingsService.favoriteMapIds;
-    final currentId = favIds.isNotEmpty
-        ? favIds[widget.settingsService.currentMapIndex % favIds.length]
-        : 'osm_standard';
-    final source = availableSources.firstWhere((s) => s.id == currentId,
-        orElse: () => availableSources.first);
+    final source = MapStyle.resolveTileSource(widget.settingsService);
 
     return TileLayer(
       urlTemplate: source.url,
@@ -1531,6 +1678,7 @@ class _WaypointsLayer extends StatelessWidget {
                 height: settings.waypointIconSize,
                 child: GestureDetector(
                   onTap: () {
+                    settings.dismissLocateWaypointBackButton();
                     if (settings.waypointSelectionMode) {
                       settings.setNavigationWaypoint(wp.localUuid);
                       recordingService.setDestination(wp.localUuid);
@@ -1563,10 +1711,15 @@ class _WaypointsLayer extends StatelessWidget {
 }
 
 class _OsmPoisLayer extends StatelessWidget {
-  const _OsmPoisLayer({required this.viewModel, required this.isarService});
+  const _OsmPoisLayer({
+    required this.viewModel,
+    required this.isarService,
+    required this.settings,
+  });
 
   final MapViewModel viewModel;
   final IsarService isarService;
+  final SettingsService settings;
 
   @override
   Widget build(BuildContext context) {
@@ -1583,6 +1736,7 @@ class _OsmPoisLayer extends StatelessWidget {
                 height: 24,
                 child: GestureDetector(
                   onTap: () {
+                    settings.dismissLocateWaypointBackButton();
                     final wp = wp_model.Waypoint()
                       ..name = poi.name
                       ..latitude = poi.location.latitude
