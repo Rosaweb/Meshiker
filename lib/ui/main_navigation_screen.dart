@@ -349,8 +349,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                         if (index == mapIndex) return const SizedBox.shrink();
 
                         final offset = index - scroll;
-                        if (offset <= -1.0 || offset >= 1.0)
+                        if (offset <= -1.0 || offset >= 1.0) {
                           return const SizedBox.shrink();
+                        }
 
                         return Positioned.fill(
                           left: offset * screenWidth,
@@ -669,11 +670,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       ValueListenableBuilder<Waypoint?>(
           valueListenable: wpNotifier,
           builder: (context, wp, _) {
-            if (wp == null)
+            if (wp == null) {
               return (isNext
                   ? const Text('Aucun point',
                       style: TextStyle(color: Colors.white38))
                   : const SizedBox.shrink());
+            }
             return ValueListenableBuilder<double>(
               valueListenable: distNotifier,
               builder: (context, dist, _) {

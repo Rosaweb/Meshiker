@@ -35,6 +35,7 @@ import 'map_style.dart';
 import 'map_view_model.dart';
 import 'planning_controller.dart';
 import 'vector_tile_source.dart';
+import '../ui/settings/maps_settings_screen.dart';
 import '../ui/tracks/roadmap_screen.dart';
 import '../ui/tracks/track_edit_screen.dart';
 import '../ui/tracks/track_manager_screen.dart';
@@ -684,8 +685,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     buffer.writeln('  <trk><name>$name</name><trkseg>');
     for (final p in points) {
       buffer.writeln('    <trkpt lat="${p.latitude}" lon="${p.longitude}">');
-      if (p.elevation != null)
+      if (p.elevation != null) {
         buffer.writeln('      <ele>${p.elevation}</ele>');
+      }
       buffer.writeln('    </trkpt>');
     }
     buffer.writeln('  </trkseg></trk>');
@@ -1184,7 +1186,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// rend une zone téléchargée ("Créer une carte") réellement consultable
   /// hors connexion.
   TileProvider _buildTileProvider(String sourceId) {
-    const headers = {'User-Agent': 'Meshiker/1.0'};
+    final headers = {'User-Agent': 'Meshiker/1.0'};
     final completedMaps = widget.isarService.isar.offlineMaps
         .filter()
         .sourceIdEqualTo(sourceId)
