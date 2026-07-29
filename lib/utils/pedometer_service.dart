@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:pedometer/pedometer.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PedometerProfile {
@@ -41,10 +43,14 @@ class PedometerService extends ChangeNotifier {
   int _lastEventSteps = 0;
   String _status = '?';
   bool _isActive = false;
-  
+  bool _permissionDenied = false;
+  bool _sensorUnavailable = false;
+
   int get steps => _steps;
   String get status => _status;
   bool get isActive => _isActive;
+  bool get permissionDenied => _permissionDenied;
+  bool get sensorUnavailable => _sensorUnavailable;
 
   final Map<String, PedometerProfile> _profiles = {
     'steep_uphill': PedometerProfile(id: 'steep_uphill', minSlope: 0.15, maxSlope: 1.0, metersPerStep: 0.5),
@@ -76,20 +82,58 @@ class PedometerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void togglePedometer() {
+  /// Le capteur podomètre (TYPE_STEP_COUNTER) exige la permission runtime
+  /// ACTIVITY_RECOGNITION sur Android 10+ : sans cette demande explicite,
+  /// le flux de pas ne délivre jamais aucun événement (aucune erreur
+  /// visible), ce qui donnait l'impression d'un podomètre actif ("carte
+  /// verte") mais bloqué à 0 pas.
+  Future<void> togglePedometer() async {
     _isActive = !_isActive;
+    _permissionDenied = false;
+    _sensorUnavailable = false;
     if (_isActive) {
+      if (Platform.isAndroid) {
+        var granted = (await ph.Permission.activityRecognition.status).isGranted;
+        if (!granted) {
+          granted = (await ph.Permission.activityRecognition.request()).isGranted;
+        }
+        if (!granted) {
+          _isActive = false;
+          _permissionDenied = true;
+          notifyListeners();
+          return;
+        }
+      }
       _initPedometer();
     }
     notifyListeners();
   }
 
+  /// Sur un appareil (ou émulateur) sans capteur de pas matériel, le plugin
+  /// `pedometer` lève une PlatformException CÔTÉ ANDROID -- mais son
+  /// `_androidStream()` interne écoute le stream brut avec un `.listen()`
+  /// SANS `onError`, donc cette exception ne remonte jamais comme une
+  /// simple erreur de stream : c'est une erreur asynchrone non rattrapée
+  /// dans la Zone courante, qu'aucun try/catch classique ne peut intercepter
+  /// ici. On isole l'appel dans sa propre Zone (runZonedGuarded) pour que
+  /// cette erreur reste locale au podomètre au lieu de remonter jusqu'au
+  /// gestionnaire d'erreurs global de l'app (qui traite toute erreur de
+  /// Zone non rattrapée comme fatale, voir main.dart) et de faire planter
+  /// tout l'écran.
   void _initPedometer() {
-    _pedestrianStatusStream = Pedometer.pedestrianStatusStream;
-    _pedestrianStatusStream.listen(_onPedestrianStatus).onError(_onPedestrianStatusError);
+    runZonedGuarded(() {
+      _pedestrianStatusStream = Pedometer.pedestrianStatusStream;
+      _pedestrianStatusStream.listen(_onPedestrianStatus).onError(_onPedestrianStatusError);
 
-    _stepCountStream = Pedometer.stepCountStream;
-    _stepCountStream.listen(_onStepCount).onError(_onStepCountError);
+      _stepCountStream = Pedometer.stepCountStream;
+      _stepCountStream.listen(_onStepCount).onError(_onStepCountError);
+    }, (error, stack) {
+      debugPrint('PedometerService: capteur indisponible: $error');
+      _isActive = false;
+      _sensorUnavailable = true;
+      _status = 'Capteur indisponible';
+      notifyListeners();
+    });
   }
 
   void _onStepCount(StepCount event) {

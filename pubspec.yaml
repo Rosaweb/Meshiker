@@ -44,6 +44,7 @@ dependencies:
 
   path: any
   collection: any
+  open_meteo: ^3.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

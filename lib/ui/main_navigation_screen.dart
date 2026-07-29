@@ -11,7 +11,10 @@ import '../database/isar_service.dart';
 import '../recording/recording_service.dart';
 import '../search/local_search_engine.dart';
 import '../utils/settings_service.dart';
+import '../utils/geo_utils.dart';
 import '../utils/pedometer_service.dart';
+import '../utils/weather_service.dart';
+import 'weather_screen.dart';
 import 'settings/maps_settings_screen.dart';
 import 'settings/display_settings_screen.dart';
 import 'settings/account_settings_screen.dart';
@@ -29,6 +32,7 @@ class MainNavigationScreen extends StatefulWidget {
   final RecordingService recordingService;
   final SettingsService settingsService;
   final PedometerService pedometerService;
+  final WeatherService weatherService;
   final String ownerUuid;
 
   const MainNavigationScreen({
@@ -39,6 +43,7 @@ class MainNavigationScreen extends StatefulWidget {
     required this.recordingService,
     required this.settingsService,
     required this.pedometerService,
+    required this.weatherService,
     required this.ownerUuid,
   });
 
@@ -556,8 +561,57 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             }),
             const Divider(color: Colors.white24, height: 40),
           ],
+          if (settings.locationEnabled) _buildCoordinatesSection(),
         ],
       ),
+    );
+  }
+
+  Widget _buildCoordinatesSection() {
+    return ValueListenableBuilder(
+      valueListenable: widget.recordingService.currentPosition,
+      builder: (context, pos, _) {
+        if (pos == null) {
+          return const Text('En attente de position GPS...',
+              style: TextStyle(color: Colors.white38, fontSize: 12));
+        }
+        final utm = GeoUtils.latLonToUtm(pos.latitude, pos.longitude);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('POSITION',
+                style: TextStyle(
+                    color: Colors.tealAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _buildCoordinateRow('Lat/Lon',
+                '${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}'),
+            const SizedBox(height: 6),
+            _buildCoordinateRow('UTM',
+                '${utm.zone}${utm.hemisphere} ${utm.easting.round()}E ${utm.northing.round()}N'),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCoordinateRow(String label, String value) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 60,
+          child: Text(label,
+              style: const TextStyle(color: Colors.white38, fontSize: 12)),
+        ),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 
@@ -643,7 +697,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               builder: (context, _) => _buildStatCard('Podomètre',
                   '${widget.pedometerService.steps}', Icons.directions_walk,
                   isActive: widget.pedometerService.isActive,
-                  onTap: () => widget.pedometerService.togglePedometer())),
+                  onTap: () async {
+                    await widget.pedometerService.togglePedometer();
+                    if (!context.mounted) return;
+                    if (widget.pedometerService.permissionDenied) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                'Autorisez "Activité physique" dans les paramètres Android pour utiliser le podomètre.')),
+                      );
+                    } else if (widget.pedometerService.sensorUnavailable) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                'Aucun capteur de pas détecté sur cet appareil.')),
+                      );
+                    }
+                  })),
         if (settings.navShowSatellites)
           ValueListenableBuilder<String>(
               valueListenable: recording.gpsStatus,
@@ -662,6 +732,38 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             Icons.wb_sunny_outlined,
             multiLine: true,
           ),
+        ),
+        AnimatedBuilder(
+          animation: widget.weatherService,
+          builder: (context, _) {
+            final weather = widget.weatherService;
+            final code = weather.next4HoursWeatherCode;
+            final label = !weather.isActive
+                ? 'Météo'
+                : (weather.isLoading
+                    ? 'Chargement...'
+                    : (weather.error ??
+                        (code != null ? weatherCodeLabel(code) : 'Météo')));
+            return _buildStatCard(
+              label,
+              '',
+              code != null ? weatherCodeIcon(code) : Icons.cloud_outlined,
+              isActive: weather.isActive,
+              valueWidget: (weather.isActive && code != null)
+                  ? Icon(weatherCodeIcon(code), color: Colors.white, size: 30)
+                  : null,
+              onTap: () async {
+                final pos = widget.recordingService.currentPosition.value;
+                await weather.toggle(pos?.latitude, pos?.longitude);
+                if (context.mounted && weather.error != null) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(weather.error!)));
+                }
+              },
+              onDoubleTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const WeatherScreen())),
+            );
+          },
         ),
       ],
     );
@@ -758,9 +860,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   }
 
   Widget _buildStatCard(String label, String value, IconData icon,
-      {bool isActive = false, VoidCallback? onTap, bool multiLine = false}) {
+      {bool isActive = false,
+      VoidCallback? onTap,
+      VoidCallback? onDoubleTap,
+      bool multiLine = false,
+      Widget? valueWidget}) {
     return GestureDetector(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
@@ -784,15 +891,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           ]),
           Expanded(
             child: Center(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(value,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: multiLine ? 11 : 16,
-                        fontWeight: FontWeight.bold)),
-              ),
+              child: valueWidget ??
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(value,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: multiLine ? 11 : 16,
+                            fontWeight: FontWeight.bold)),
+                  ),
             ),
           ),
         ]),

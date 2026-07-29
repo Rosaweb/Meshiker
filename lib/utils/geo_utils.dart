@@ -336,4 +336,68 @@ class GeoUtils {
   }
 
   static double _radToDeg(double rad) => rad * 180 / pi;
+
+  // Ellipsoïde WGS84, utilisé par le GPS -- cohérent avec les coordonnées
+  // lat/lon manipulées partout ailleurs dans l'app.
+  static const _utmA = 6378137.0;
+  static const _utmF = 1 / 298.257223563;
+  static const _utmK0 = 0.9996;
+
+  /// Convertit une coordonnée WGS84 (lat/lon) en UTM (zone, hémisphère,
+  /// easting/northing en mètres). Formule Transverse Mercator standard ;
+  /// ne gère pas les exceptions de zones norvégiennes/Svalbard, sans
+  /// incidence pour un usage randonnée.
+  static ({int zone, String hemisphere, double easting, double northing})
+      latLonToUtm(double lat, double lon) {
+    final zone = ((lon + 180) / 6).floor() + 1;
+    final lonOrigin = (zone - 1) * 6 - 180 + 3;
+    final latRad = _degToRad(lat);
+    final lonRad = _degToRad(lon);
+    final lonOriginRad = _degToRad(lonOrigin.toDouble());
+
+    final e2 = _utmF * (2 - _utmF);
+    final ep2 = e2 / (1 - e2);
+
+    final sinLat = sin(latRad);
+    final cosLat = cos(latRad);
+    final tanLat = tan(latRad);
+
+    final n = _utmA / sqrt(1 - e2 * sinLat * sinLat);
+    final t = tanLat * tanLat;
+    final c = ep2 * cosLat * cosLat;
+    final a = cosLat * (lonRad - lonOriginRad);
+
+    final m = _utmA *
+        ((1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256) * latRad -
+            (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * e2 * e2 * e2 / 1024) *
+                sin(2 * latRad) +
+            (15 * e2 * e2 / 256 + 45 * e2 * e2 * e2 / 1024) * sin(4 * latRad) -
+            (35 * e2 * e2 * e2 / 3072) * sin(6 * latRad));
+
+    final easting = _utmK0 *
+            n *
+            (a +
+                (1 - t + c) * pow(a, 3) / 6 +
+                (5 - 18 * t + t * t + 72 * c - 58 * ep2) * pow(a, 5) / 120) +
+        500000.0;
+
+    var northing = _utmK0 *
+        (m +
+            n *
+                tanLat *
+                (a * a / 2 +
+                    (5 - t + 9 * c + 4 * c * c) * pow(a, 4) / 24 +
+                    (61 - 58 * t + t * t + 600 * c - 330 * ep2) *
+                        pow(a, 6) /
+                        720));
+
+    if (lat < 0) northing += 10000000.0;
+
+    return (
+      zone: zone,
+      hemisphere: lat >= 0 ? 'N' : 'S',
+      easting: easting,
+      northing: northing,
+    );
+  }
 }
