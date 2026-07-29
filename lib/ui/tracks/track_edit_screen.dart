@@ -57,12 +57,21 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
 
   Future<void> _save() async {
     final isar = context.read<IsarService>();
-    widget.trace.name = _nameController.text.trim();
+    final oldName = widget.trace.name;
+    final newName = _nameController.text.trim();
+    widget.trace.name = newName;
     widget.trace.description = _descController.text.trim().isEmpty ? null : _descController.text.trim();
     widget.trace.colorHex = _currentColor.toARGB32();
 
     await isar.saveTrace(widget.trace);
-    if (mounted) Navigator.pop(context);
+    final renamedWaypoints = await isar.renameTraceWaypoints(oldName, newName);
+    if (mounted) {
+      final searchEngine = context.read<LocalSearchEngine>();
+      for (final w in renamedWaypoints) {
+        searchEngine.indexWaypoint(w);
+      }
+      Navigator.pop(context);
+    }
   }
 
   @override

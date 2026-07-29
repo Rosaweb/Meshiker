@@ -755,6 +755,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       latitude: point.latitude,
                       longitude: point.longitude,
                       isarService: widget.isarService,
+                      associatedGpxName: widget.settingsService.roadmapTraceName,
                     ),
                   ).then((_) => widget.viewModel.refreshNow());
                 },

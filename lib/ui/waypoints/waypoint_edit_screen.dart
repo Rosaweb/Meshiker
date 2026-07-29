@@ -20,6 +20,11 @@ class WaypointEditScreen extends StatefulWidget {
   /// Manager, Roadmap). Transmis à "Localiser sur la carte" pour que le
   /// bouton "Retour" de la carte sache où rouvrir cette fiche.
   final WaypointLocateOrigin locateOrigin;
+  /// Nom de la trace GPX à laquelle rattacher un waypoint NOUVELLEMENT
+  /// créé (voir [SettingsService.roadmapTraceName]), pour qu'il apparaisse
+  /// dans le Roadmap de cette trace sans attendre un nouveau scan GPX.
+  /// Ignoré si [waypoint] est déjà renseigné (édition).
+  final String? associatedGpxName;
 
   const WaypointEditScreen({
     super.key,
@@ -28,6 +33,7 @@ class WaypointEditScreen extends StatefulWidget {
     this.longitude,
     required this.isarService,
     this.locateOrigin = WaypointLocateOrigin.map,
+    this.associatedGpxName,
   });
 
   @override
@@ -56,7 +62,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
     _currentColor = widget.waypoint?.colorHex != null ? Color(widget.waypoint!.colorHex!) : Colors.green;
     _photoPaths = widget.waypoint?.photoPaths != null ? List.from(widget.waypoint!.photoPaths) : [];
     _headerPhotoIndex = widget.waypoint?.headerPhotoIndex ?? 0;
-    _associatedGpx = widget.waypoint?.associatedGpxName;
+    _associatedGpx = widget.waypoint?.associatedGpxName ?? widget.associatedGpxName;
     
     _loadCategories();
   }

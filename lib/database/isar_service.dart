@@ -166,6 +166,29 @@ class IsarService {
     await isar.writeTxn(() => isar.traces.put(trace));
   }
 
+  /// Répercute un renommage de trace sur les waypoints qui lui sont
+  /// rattachés ([Waypoint.associatedGpxName]) : sans cela, un waypoint
+  /// resterait indexé sous l'ancien nom et disparaîtrait silencieusement du
+  /// Waypoint Manager et du Roadmap de cette trace (tous deux filtrent par
+  /// nom de trace, voir `searchWaypoints`).
+  Future<List<Waypoint>> renameTraceWaypoints(
+      String oldName, String newName) async {
+    if (oldName == newName) return const [];
+    final affected = await isar.waypoints
+        .filter()
+        .associatedGpxNameEqualTo(oldName)
+        .findAll();
+    if (affected.isEmpty) return const [];
+    await isar.writeTxn(() async {
+      for (final w in affected) {
+        w.associatedGpxName = newName;
+        w.updatedAt = DateTime.now();
+        await isar.waypoints.put(w);
+      }
+    });
+    return affected;
+  }
+
   Future<List<Trace>> tracesForOwner(String ownerUuid) {
     return isar.traces.filter().ownerUuidEqualTo(ownerUuid).findAll();
   }
