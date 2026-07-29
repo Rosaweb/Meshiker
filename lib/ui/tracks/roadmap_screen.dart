@@ -151,9 +151,14 @@ class RoadmapScreen extends StatelessWidget {
         entries.add(_RoadmapEntry(wp, 0));
         continue;
       }
-      final snap = GeoUtils.snapToPolyline(wp.latitude, wp.longitude, polyline, 100);
-      if (snap == null) continue;
-      entries.add(_RoadmapEntry(wp, GeoUtils.distanceToSnapMeters(polyline, snap)));
+      // Pas de seuil de distance ici : un waypoint rattaché à cette trace
+      // (associatedGpxName) doit toujours apparaître dans son Roadmap, même
+      // si le map-matching a placé la polyligne loin de lui (POI hors-piste,
+      // ou correspondance OSM imparfaite). Le seuil de 100m de
+      // snapToPolyline sert ailleurs (mode aimant) à détecter une réelle
+      // proximité, pas à filtrer l'appartenance à la trace.
+      final snap = GeoUtils.snapToPolyline(wp.latitude, wp.longitude, polyline, double.infinity);
+      entries.add(_RoadmapEntry(wp, snap == null ? 0 : GeoUtils.distanceToSnapMeters(polyline, snap)));
     }
     entries.sort((a, b) => a.distanceAlongTrack.compareTo(b.distanceAlongTrack));
 

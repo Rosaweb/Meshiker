@@ -173,14 +173,22 @@ class GpxScannerService extends ChangeNotifier {
     final fileName = p.basenameWithoutExtension(file.path);
     debugPrint('GpxScannerService: Processing $normalizedPath');
 
+    GpxParseResult parsed;
     try {
       final content = await file.readAsString();
-      final GpxParseResult parsed = normalizedPath.toLowerCase().endsWith('.kml')
+      parsed = normalizedPath.toLowerCase().endsWith('.kml')
           ? KmlParser.parseString(content)
           : GpxParser.parseString(content);
+    } catch (e, st) {
+      debugPrint('GpxScannerService: Failed to read/parse $normalizedPath: $e\n$st');
+      return;
+    }
+    debugPrint('GpxScannerService: Parsed $normalizedPath -> '
+        '${parsed.trackPoints.length} track points, ${parsed.waypoints.length} waypoints');
 
-      // 1. Création rapide de la trace (sans segmentation lourde)
-      Trace? trace;
+    // 1. Création rapide de la trace (sans segmentation lourde)
+    Trace? trace;
+    try {
       if (parsed.trackPoints.isNotEmpty) {
         final existingTrace = await isarService.isar.traces
             .filter()
@@ -189,7 +197,7 @@ class GpxScannerService extends ChangeNotifier {
 
         if (existingTrace == null) {
           debugPrint('GpxScannerService: Quick indexing new trace: $normalizedPath');
-          
+
           // On crée une trace "fantôme" immédiatement visible
           trace = Trace()
             ..localUuid = const Uuid().v4()
@@ -199,30 +207,42 @@ class GpxScannerService extends ChangeNotifier {
             ..processingStatus = TraceProcessingStatus.pending // Indique qu'il faut segmenter plus tard
             ..totalDistanceMeters = 0 // Sera mis à jour après segmentation
             ..updatedAt = DateTime.now();
-          
+
           await isarService.saveTrace(trace);
         } else {
           trace = existingTrace;
           debugPrint('GpxScannerService: Trace already exists: $normalizedPath');
         }
       }
+    } catch (e, st) {
+      debugPrint('GpxScannerService: Failed to index trace for $normalizedPath: $e\n$st');
+    }
 
-      // 2. Gérer les waypoints immédiatement (toujours rapide)
-      if (parsed.waypoints.isNotEmpty) {
+    // 2. Gérer les waypoints immédiatement (toujours rapide). Etape
+    // indépendante de la création de la trace ci-dessus (try/catch séparé)
+    // pour qu'un échec de segmentation/indexation de la trace n'empêche pas
+    // les waypoints du même fichier d'être importés, et inversement.
+    if (parsed.waypoints.isNotEmpty) {
+      try {
         final associatedName = trace?.name ?? fileName;
-        await isarService.isar.writeTxn(() async {
+        var createdCount = 0;
+        // Variantes *Sync* volontairement : les méthodes async d'Isar
+        // ouvrent leur propre transaction en arrière-plan, ce qui est
+        // rejeté ("Isar does not support nesting transactions") quand
+        // elles sont appelées depuis l'intérieur d'un writeTxn déjà actif.
+        isarService.isar.writeTxnSync(() {
           for (final gpxWp in parsed.waypoints) {
             final wpName = gpxWp.name ?? 'Point sans nom';
-            
+
             // Éviter les doublons par nom et position dans le même GPX
-            final exists = await isarService.isar.waypoints
+            final exists = isarService.isar.waypoints
                 .filter()
                 .nameEqualTo(wpName)
                 .latitudeEqualTo(gpxWp.latitude)
                 .longitudeEqualTo(gpxWp.longitude)
                 .associatedGpxNameEqualTo(associatedName)
-                .findFirst();
-            
+                .findFirstSync();
+
             if (exists == null) {
               final wp = Waypoint()
                 ..localUuid = const Uuid().v4()
@@ -231,14 +251,17 @@ class GpxScannerService extends ChangeNotifier {
                 ..longitude = gpxWp.longitude
                 ..associatedGpxName = associatedName
                 ..updatedAt = DateTime.now();
-              await isarService.isar.waypoints.put(wp);
+              isarService.isar.waypoints.putSync(wp);
               importService.searchEngine.indexWaypoint(wp);
+              createdCount++;
             }
           }
         });
+        debugPrint('GpxScannerService: $normalizedPath -> $createdCount new waypoint(s) '
+            'stored under associatedGpxName="${trace?.name ?? fileName}"');
+      } catch (e, st) {
+        debugPrint('GpxScannerService: Failed to import waypoints for $normalizedPath: $e\n$st');
       }
-    } catch (e) {
-      debugPrint('Error processing GPX $normalizedPath: $e');
     }
   }
 }
