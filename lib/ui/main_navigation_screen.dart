@@ -539,11 +539,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
           _buildLiveStatsGrid(settings),
-          const SizedBox(height: 24),
-          const Divider(color: Colors.white24),
+          const SizedBox(height: 12),
           if (settings.navShowNextWaypoint) ...[
             _buildNavSection(
                 'PROCHAIN WAYPOINT',
@@ -551,64 +550,93 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 widget.recordingService.nextWaypoint,
                 widget.recordingService.distanceToNextWaypointMeters,
                 true),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
           ],
           if (settings.navShowDestination) ...[
             _buildNavSection(
-                'DESTINATION',
+                'POINT D\'ÉTAPE',
                 Colors.blueAccent,
                 widget.recordingService.destinationWaypoint,
                 widget.recordingService.distanceToDestinationMeters,
-                false),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () =>
-                  _pushSettings(const RoadmapScreen(isSelectionMode: true)),
-              icon: const Icon(Icons.navigation),
-              label: const Text('Choisir un point'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white10,
-                  foregroundColor: Colors.white),
-            ),
-            const Divider(color: Colors.white24, height: 40),
+                false,
+                trailing: ElevatedButton.icon(
+                  onPressed: () => _pushSettings(
+                      const RoadmapScreen(isSelectionMode: true)),
+                  icon: const Icon(Icons.navigation),
+                  label: const Text('Choisir un point'),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white10,
+                      foregroundColor: Colors.white),
+                )),
+            const SizedBox(height: 12),
           ],
           if (settings.navShowMeasureTools) ...[
-            const Text('AZIMUT ET DISTANCE',
-                style: TextStyle(
-                    color: Colors.orangeAccent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
+            _buildToolBlock(
+              title: 'AZIMUT ET DISTANCE',
+              color: Colors.orangeAccent,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildMeasureButton(context,
+                      label: 'Depuis ma position GPS',
+                      icon: Icons.gps_fixed, onPressed: () {
+                    widget.settingsService
+                        .setMeasurementMode(MeasurementMode.fromGps);
+                    _targetScroll = settings.reversePanels ? 2.0 : 1.0;
+                    _scrollController.animateTo(_targetScroll,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut);
+                  }),
+                  const SizedBox(height: 8),
+                  _buildMeasureButton(context,
+                      label: 'Entre deux points',
+                      icon: Icons.straighten, onPressed: () {
+                    widget.settingsService
+                        .setMeasurementMode(MeasurementMode.betweenPoints);
+                    _targetScroll = settings.reversePanels ? 2.0 : 1.0;
+                    _scrollController.animateTo(_targetScroll,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut);
+                  }),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
-            _buildMeasureButton(context,
-                label: 'Depuis ma position GPS',
-                icon: Icons.gps_fixed, onPressed: () {
-              widget.settingsService
-                  .setMeasurementMode(MeasurementMode.fromGps);
-              _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-              _scrollController.animateTo(_targetScroll,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut);
-            }),
-            const SizedBox(height: 8),
-            _buildMeasureButton(context,
-                label: 'Entre deux points',
-                icon: Icons.straighten, onPressed: () {
-              widget.settingsService
-                  .setMeasurementMode(MeasurementMode.betweenPoints);
-              _targetScroll = settings.reversePanels ? 2.0 : 1.0;
-              _scrollController.animateTo(_targetScroll,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut);
-            }),
-            const Divider(color: Colors.white24, height: 40),
           ],
-          if (settings.locationEnabled) _buildCoordinatesSection(),
+          if (settings.locationEnabled)
+            _buildToolBlock(
+              title: 'POSITION',
+              color: Colors.tealAccent,
+              child: _buildCoordinatesContent(),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildCoordinatesSection() {
+  Widget _buildToolBlock(
+      {required String title, required Color color, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.2))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: TextStyle(
+                  color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoordinatesContent() {
     return ValueListenableBuilder(
       valueListenable: widget.recordingService.currentPosition,
       builder: (context, pos, _) {
@@ -617,23 +645,50 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               style: TextStyle(color: Colors.white38, fontSize: 12));
         }
         final utm = GeoUtils.latLonToUtm(pos.latitude, pos.longitude);
-        return Column(
+        return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('POSITION',
-                style: TextStyle(
-                    color: Colors.tealAccent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            _buildCoordinateRow('Lat/Lon',
-                '${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}'),
-            const SizedBox(height: 6),
-            _buildCoordinateRow('UTM',
-                '${utm.zone}${utm.hemisphere} ${utm.easting.round()}E ${utm.northing.round()}N'),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildCoordinateRow('Lat/Lon',
+                      '${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}'),
+                  const SizedBox(height: 6),
+                  _buildCoordinateRow('UTM',
+                      '${utm.zone}${utm.hemisphere} ${utm.easting.round()}E ${utm.northing.round()}N'),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () =>
+                  _copyCoordinates(context, pos.latitude, pos.longitude, utm),
+              icon: const Icon(Icons.copy, color: Colors.white70, size: 20),
+              tooltip: 'Copier',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
           ],
         );
       },
+    );
+  }
+
+  void _copyCoordinates(
+      BuildContext context,
+      double lat,
+      double lon,
+      ({int zone, String hemisphere, double easting, double northing}) utm) {
+    final latDms = GeoUtils.toDms(lat, isLatitude: true);
+    final lonDms = GeoUtils.toDms(lon, isLatitude: false);
+    final mapsLink = 'https://www.google.com/maps/place/$latDms+$lonDms';
+    final text = '$mapsLink\n'
+        'Lat/Lon : ${lat.toStringAsFixed(6)}, ${lon.toStringAsFixed(6)}\n'
+        'UTM : ${utm.zone}${utm.hemisphere} ${utm.easting.round()}E ${utm.northing.round()}N';
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Coordonnées copiées dans le presse-papiers')),
     );
   }
 
@@ -661,38 +716,46 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       Color color,
       ValueNotifier<Waypoint?> wpNotifier,
       ValueNotifier<double> distNotifier,
-      bool isNext) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label,
-          style: TextStyle(
-              color: color, fontSize: 12, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 8),
-      ValueListenableBuilder<Waypoint?>(
-          valueListenable: wpNotifier,
-          builder: (context, wp, _) {
-            if (wp == null) {
-              return (isNext
-                  ? const Text('Aucun point',
-                      style: TextStyle(color: Colors.white38))
-                  : const SizedBox.shrink());
-            }
-            return ValueListenableBuilder<double>(
-              valueListenable: distNotifier,
-              builder: (context, dist, _) {
-                final speed =
-                    widget.recordingService.averageSpeedGlobalMps.value;
-                final eta =
-                    (speed > 0.5) ? _formatDuration(dist / speed) : '--:--';
-                return _buildNavigationInfo(
-                    name: wp.name,
-                    type: wp.category.value?.name ?? 'Point',
-                    distance: _formatDistance(dist),
-                    eta: eta,
-                    isNext: isNext);
-              },
-            );
-          }),
-    ]);
+      bool isNext,
+      {Widget? trailing}) {
+    return _buildToolBlock(
+      title: label,
+      color: color,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ValueListenableBuilder<Waypoint?>(
+              valueListenable: wpNotifier,
+              builder: (context, wp, _) {
+                if (wp == null) {
+                  return Text(
+                      isNext ? 'Aucun point' : 'Aucune destination définie',
+                      style: const TextStyle(color: Colors.white38));
+                }
+                return ValueListenableBuilder<double>(
+                  valueListenable: distNotifier,
+                  builder: (context, dist, _) {
+                    final speed =
+                        widget.recordingService.averageSpeedGlobalMps.value;
+                    final eta = (speed > 0.5)
+                        ? _formatDuration(dist / speed)
+                        : '--:--';
+                    return _buildNavigationInfo(
+                        name: wp.name,
+                        type: wp.category.value?.name ?? 'Point',
+                        distance: _formatDistance(dist),
+                        eta: eta,
+                        isNext: isNext);
+                  },
+                );
+              }),
+          if (trailing != null) ...[
+            const SizedBox(height: 12),
+            trailing,
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildLiveStatsGrid(SettingsService settings) {
@@ -701,9 +764,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       crossAxisCount: 3,
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 0.9,
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: 1.25,
       children: [
         if (settings.navShowSpeed)
           AnimatedBuilder(
@@ -854,7 +917,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   Widget _buildSpeedCard() {
     final recording = widget.recordingService;
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
@@ -863,10 +926,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Row(children: [
-            Icon(Icons.speed, color: Colors.greenAccent, size: 14),
+            Icon(Icons.speed, color: Colors.greenAccent, size: 15),
             SizedBox(width: 4),
             Text('Vitesse',
-                style: TextStyle(color: Colors.white38, fontSize: 10))
+                style: TextStyle(color: Colors.white38, fontSize: 11))
           ]),
           Expanded(
             child: FittedBox(
@@ -877,20 +940,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                   Text(_formatSpeed(recording.currentSpeedMps.value),
                       style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 2),
                   Text(
                       'Jour: ${_formatSpeed(recording.averageSpeedDailyMps.value)}',
                       style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w500)),
                   Text(
                       'Gén.: ${_formatSpeed(recording.averageSpeedGlobalMps.value)}',
                       style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w500)),
                 ],
               ),
@@ -911,7 +974,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       onTap: onTap,
       onDoubleTap: onDoubleTap,
       child: Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(12),
@@ -922,13 +985,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           Row(children: [
             Icon(icon,
                 color: isActive ? Colors.greenAccent : Colors.white38,
-                size: 14),
+                size: 15),
             const SizedBox(width: 4),
             Expanded(
                 child: Text(label,
                     style: TextStyle(
                         color: isActive ? Colors.greenAccent : Colors.white38,
-                        fontSize: 10),
+                        fontSize: 11),
                     overflow: TextOverflow.ellipsis))
           ]),
           Expanded(
@@ -940,7 +1003,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: Colors.white,
-                            fontSize: multiLine ? 11 : 16,
+                            fontSize: multiLine ? 12 : 18,
                             fontWeight: FontWeight.bold)),
                   ),
             ),
@@ -982,42 +1045,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       required String distance,
       required String eta,
       required bool isNext}) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-              color: isNext
-                  ? Colors.greenAccent.withValues(alpha: 0.2)
-                  : Colors.blueAccent.withValues(alpha: 0.2))),
-      child: Row(children: [
-        Icon(isNext ? Icons.redo : Icons.flag,
-            color: isNext ? Colors.greenAccent : Colors.blueAccent),
-        const SizedBox(width: 12),
-        Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold)),
-          Text(type,
-              style: const TextStyle(color: Colors.white38, fontSize: 12))
-        ])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(distance,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16)),
-          Text(eta,
-              style: const TextStyle(
-                  color: Colors.orangeAccent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold))
-        ]),
+    return Row(children: [
+      Icon(isNext ? Icons.redo : Icons.flag,
+          color: isNext ? Colors.greenAccent : Colors.blueAccent),
+      const SizedBox(width: 12),
+      Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(name,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold)),
+        Text(type, style: const TextStyle(color: Colors.white38, fontSize: 12))
+      ])),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text(distance,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(eta,
+            style: const TextStyle(
+                color: Colors.orangeAccent,
+                fontSize: 12,
+                fontWeight: FontWeight.bold))
       ]),
-    );
+    ]);
   }
 
   Widget _buildMeasureButton(BuildContext context,

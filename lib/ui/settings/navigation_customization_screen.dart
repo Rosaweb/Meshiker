@@ -35,7 +35,7 @@ class NavigationCustomizationScreen extends StatelessWidget {
                 _buildToggle(context, settings, 'Podomètre', settings.navShowPedometer, 'pedometer'),
                 const Divider(color: Colors.white12, height: 32),
                 _buildToggle(context, settings, 'Prochain waypoint', settings.navShowNextWaypoint, 'nextWaypoint'),
-                _buildToggle(context, settings, 'Point de destination', settings.navShowDestination, 'destination'),
+                _buildToggle(context, settings, 'Point d\'étape', settings.navShowDestination, 'destination'),
                 _buildToggle(context, settings, 'Outils de mesure (Azimut/Dist)', settings.navShowMeasureTools, 'measureTools'),
               ],
             );

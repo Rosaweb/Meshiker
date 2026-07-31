@@ -400,4 +400,19 @@ class GeoUtils {
       northing: northing,
     );
   }
+
+  /// Formate une latitude ou longitude en degrés/minutes/secondes
+  /// (ex: 51°20'57.9"N), format attendu par les liens Google Maps du type
+  /// `google.com/maps/place/lat+lon`.
+  static String toDms(double value, {required bool isLatitude}) {
+    final letter = isLatitude
+        ? (value >= 0 ? 'N' : 'S')
+        : (value >= 0 ? 'E' : 'W');
+    final abs = value.abs();
+    final degrees = abs.floor();
+    final minutesFull = (abs - degrees) * 60;
+    final minutes = minutesFull.floor();
+    final seconds = (minutesFull - minutes) * 60;
+    return '$degrees°$minutes\'${seconds.toStringAsFixed(1)}"$letter';
+  }
 }
