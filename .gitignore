@@ -51,3 +51,6 @@ app.*.map.json
 
 # Local analyze output
 analyze_output.txt
+
+# Secrets locaux (URL/clé Supabase) — voir env.example.json
+env.json

@@ -326,3 +326,109 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ============================================================
+-- Partage de trace GPX par QR code (voir schema.sql pour
+-- trace_shares et le bucket "trace-shares").
+-- ============================================================
+
+-- ---------- Génération de token + réservation du partage ----------
+-- security invoker (pas definer) : le token est généré ici mais
+-- l'INSERT passe par la RLS normale de trace_shares (owner_id =
+-- auth.uid()), pas besoin de privilèges élevés.
+create or replace function public.create_trace_share(
+  p_trace_local_uuid uuid,
+  p_trace_name text,
+  p_expires_in_days integer default 30
+)
+returns table (token text, expires_at timestamptz)
+language plpgsql
+security invoker
+-- gen_random_bytes() vit dans le schéma "extensions" chez Supabase (où
+-- pgcrypto s'installe par défaut), pas dans "public" : il faut l'inclure
+-- explicitement dans le search_path de la fonction.
+set search_path = public, extensions
+as $$
+declare
+  v_token text;
+  v_expires timestamptz;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentification requise pour partager une trace.';
+  end if;
+
+  -- 16 octets aléatoires cryptographiquement sûrs, encodés en base64
+  -- URL-safe (même mécanisme que share_token pour tracking_sessions,
+  -- brief section 3.5) — c'est aussi le nom de l'objet Storage.
+  v_token := replace(replace(replace(
+    encode(gen_random_bytes(16), 'base64'), '+', '-'), '/', '_'), '=', '');
+  v_expires := now() + make_interval(days => p_expires_in_days);
+
+  insert into public.trace_shares (owner_id, trace_local_uuid, trace_name, token, expires_at)
+  values (auth.uid(), p_trace_local_uuid, p_trace_name, v_token, v_expires);
+
+  token := v_token;
+  expires_at := v_expires;
+  return next;
+end;
+$$;
+
+-- ---------- Révocation manuelle ----------
+-- Pas de UI câblée dessus dans l'itération "génération" — prête pour
+-- un futur écran "gérer mes partages".
+create or replace function public.revoke_trace_share(p_token text)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  update public.trace_shares
+  set revoked_at = now()
+  where token = p_token and owner_id = auth.uid();
+end;
+$$;
+
+-- ---------- Nettoyage périodique (pg_cron) ----------
+-- Supprime la ligne storage.objects des partages expirés/révoqués :
+-- suffisant pour BLOQUER toute lecture ultérieure (la route publique
+-- consulte storage.objects pour résoudre l'objet). SECURITY DEFINER
+-- nécessaire : le propriétaire du partage n'a normalement pas le
+-- droit de DELETE sur storage.objects.
+-- LIMITE CONNUE : ne libère pas l'espace de stockage sous-jacent
+-- (l'octet physique reste dans le bucket S3-compatible tant qu'un
+-- appel à l'API Storage remove() — nécessitant une clé service_role,
+-- donc une Edge Function — n'a pas été fait). Acceptable pour un usage
+-- gratuit/faible volume ; à revisiter si le stockage devient un sujet.
+create or replace function public.purge_expired_trace_shares()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from storage.objects
+  where bucket_id = 'trace-shares'
+    and name in (
+      select token || '.gpx' from public.trace_shares
+      where revoked_at is not null or expires_at < now()
+    );
+end;
+$$;
+
+-- Activation directe par SQL (équivalent au toggle Dashboard > Database >
+-- Extensions) : rend ce fichier autonome, sans dépendre d'une étape
+-- manuelle préalable dans le dashboard.
+create extension if not exists pg_cron;
+
+do $$
+begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'purge-expired-trace-shares';
+exception when others then null;
+end $$;
+
+select cron.schedule(
+  'purge-expired-trace-shares',
+  '*/15 * * * *',
+  $$select public.purge_expired_trace_shares();$$
+);

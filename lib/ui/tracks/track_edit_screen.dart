@@ -21,8 +21,9 @@ import 'elevation_profile_data.dart';
 import 'roadmap_screen.dart';
 import 'trace_elevation_profile_screen.dart';
 import 'trace_map_preview.dart';
+import 'trace_share_screen.dart';
 
-enum _TraceMenuAction { navigate, offlineMap, color, move, delete }
+enum _TraceMenuAction { navigate, share, offlineMap, color, move, delete }
 
 class TrackEditScreen extends StatefulWidget {
   final Trace trace;
@@ -185,6 +186,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
             onSelected: _onMenuAction,
             itemBuilder: (context) => [
               _menuItem(_TraceMenuAction.navigate, Icons.navigation, 'Naviguer', color: Colors.greenAccent),
+              _menuItem(_TraceMenuAction.share, Icons.qr_code, 'Partager la trace'),
               _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, 'Créer carte hors-ligne'),
               const PopupMenuDivider(),
               _menuItem(_TraceMenuAction.color, Icons.palette_outlined, 'Couleur de la trace'),
@@ -223,6 +225,9 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
       case _TraceMenuAction.navigate:
         _navigate();
         break;
+      case _TraceMenuAction.share:
+        _shareTrace();
+        break;
       case _TraceMenuAction.offlineMap:
         _createOfflineMap();
         break;
@@ -252,6 +257,13 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const RoadmapScreen()),
+    );
+  }
+
+  void _shareTrace() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => TraceShareScreen(trace: widget.trace)),
     );
   }
 

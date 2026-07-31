@@ -193,3 +193,69 @@ create policy "users manage their own profile"
 create policy "profiles are publicly readable"
   on public.profiles for select
   using (true);
+
+-- ============================================================
+-- Partage de trace GPX par QR code (volet génération uniquement,
+-- voir spec-live-tracking-partage-gpx.md section 3). Le scan/
+-- réception et la config App Links sont un chantier séparé.
+-- ============================================================
+
+create extension if not exists pgcrypto; -- gen_random_bytes() pour le token de partage
+
+-- Pas de FK vers public.traces : une trace n'a pas besoin d'être déjà
+-- synchronisée pour être partageable (SyncEngine n'est pas branché
+-- côté app à ce stade) — trace_local_uuid n'est conservé qu'à titre
+-- indicatif/débogage, jamais utilisé pour contrôler l'accès.
+create table if not exists public.trace_shares (
+  id uuid primary key default uuid_generate_v4(),
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  trace_local_uuid uuid not null,
+  trace_name text not null,
+  -- Généré côté serveur (jamais côté client) dans create_trace_share.
+  -- Sert AUSSI de nom d'objet dans le bucket Storage "trace-shares"
+  -- (chemin `{token}.gpx`) : connaître le token exact équivaut à
+  -- posséder le fichier — même modèle de menace que share_token pour
+  -- tracking_sessions (brief section 6).
+  token text not null unique,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '30 days'),
+  revoked_at timestamptz
+);
+
+create index if not exists trace_shares_owner_idx on public.trace_shares (owner_id);
+
+alter table public.trace_shares enable row level security;
+
+-- Le propriétaire gère (crée/consulte/révoque) ses propres partages.
+-- Pas de policy `to anon` : l'accès public au CONTENU passe par l'URL
+-- publique du bucket Storage (device qui a le token), pas par une
+-- requête sur cette table — voir functions.sql.
+create policy "owners manage their trace shares"
+  on public.trace_shares for all
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id);
+
+-- Bucket public en LECTURE via URL directe uniquement (comportement
+-- natif Supabase pour bucket.public = true) ; la LISTE reste bloquée
+-- faute de policy SELECT sur storage.objects ci-dessous, donc aucune
+-- énumération possible sans connaître un token exact.
+insert into storage.buckets (id, name, public)
+values ('trace-shares', 'trace-shares', true)
+on conflict (id) do nothing;
+
+-- Seule policy sur storage.objects pour ce bucket : INSERT, restreint
+-- à un token déjà réservé par create_trace_share() pour CET
+-- utilisateur. Pas de policy UPDATE/DELETE/SELECT — la révocation ne
+-- passe QUE par purge_expired_trace_shares() (SECURITY DEFINER, voir
+-- functions.sql).
+create policy "trace share owners can upload their gpx object"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'trace-shares'
+    and exists (
+      select 1 from public.trace_shares ts
+      where ts.token || '.gpx' = storage.objects.name
+        and ts.owner_id = auth.uid()
+    )
+  );

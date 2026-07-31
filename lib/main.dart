@@ -13,8 +13,10 @@ import 'utils/pedometer_service.dart';
 import 'utils/weather_service.dart';
 import 'utils/subscription_service.dart';
 import 'utils/tile_cache_service.dart';
+import 'utils/supabase_bootstrap_service.dart';
 import 'gpx/gpx_import_service.dart';
 import 'gpx/gpx_scanner_service.dart';
+import 'sharing/trace_share_service.dart';
 
 void main() async {
   // Capture les erreurs Flutter (UI, etc.)
@@ -49,8 +51,10 @@ void main() async {
       // mettre plusieurs secondes à échouer en zone blanche.
       final subscriptionService = SubscriptionService();
       final tileCacheService = TileCacheService(settingsService: settingsService);
+      final supabaseBootstrap = SupabaseBootstrapService();
       final searchEngine = LocalSearchEngine();
       final importService = GpxImportService(isarService: isarService, searchEngine: searchEngine);
+      final traceShareService = TraceShareService(isarService: isarService, supabaseBootstrap: supabaseBootstrap);
       final mapViewModel = MapViewModel(isarService: isarService);
       final pedometerService = PedometerService();
       final weatherService = WeatherService();
@@ -76,6 +80,7 @@ void main() async {
         } catch (e) {
           debugPrint('RevenueCat init error: $e');
         }
+        await supabaseBootstrap.init();
         await tileCacheService.init();
         await searchEngine.rebuildFromDatabase(isarService);
         await recordingService.init();
@@ -98,6 +103,8 @@ void main() async {
             Provider.value(value: mapViewModel),
             Provider.value(value: recordingService),
             Provider.value(value: importService),
+            Provider.value(value: supabaseBootstrap),
+            Provider.value(value: traceShareService),
             ChangeNotifierProvider.value(value: gpxScanner),
             StreamProvider<ConnectivityResult>(
               create: (_) => Connectivity().onConnectivityChanged.map((results) => results.first),
