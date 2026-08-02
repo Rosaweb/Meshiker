@@ -45,23 +45,18 @@ class TraceShareService {
   /// est public, aucune session Supabase n'est nécessaire pour le lire).
   static const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 
-  Future<TraceShareResult> createShare(Trace trace) async {
-    final ready = await supabaseBootstrap.ensureReady();
-    final client = supabaseBootstrap.clientOrNull;
-    if (!ready || client == null) {
-      throw const TraceShareException(
-        'Partage indisponible : aucune connexion au service de partage. '
-        'Vérifiez votre connexion réseau et réessayez.',
-      );
-    }
-
+  /// Construit le contenu GPX (points + waypoints associés) d'une trace, tel
+  /// qu'exporté par les deux canaux de partage (Supabase et WiFi local) —
+  /// un seul chemin de génération de contenu, qui ne diffère ensuite que par
+  /// le mode de transport.
+  Future<String> buildGpxXml(Trace trace) async {
     final points = await isarService.getTraceTrackPoints(trace);
     if (points.isEmpty) {
       throw const TraceShareException('Cette trace ne contient aucun point à partager.');
     }
 
     final waypoints = await isarService.searchWaypoints(filterGpxName: trace.name);
-    final gpxXml = GpxSerializer.serializeTrace(
+    return GpxSerializer.serializeTrace(
       points: points,
       traceName: trace.name,
       waypoints: waypoints
@@ -73,6 +68,19 @@ class TraceShareService {
               ))
           .toList(),
     );
+  }
+
+  Future<TraceShareResult> createShare(Trace trace) async {
+    final ready = await supabaseBootstrap.ensureReady();
+    final client = supabaseBootstrap.clientOrNull;
+    if (!ready || client == null) {
+      throw const TraceShareException(
+        'Partage indisponible : aucune connexion au service de partage. '
+        'Vérifiez votre connexion réseau et réessayez.',
+      );
+    }
+
+    final gpxXml = await buildGpxXml(trace);
 
     final String token;
     try {
@@ -99,22 +107,34 @@ class TraceShareService {
   }
 
   /// Télécharge et importe la trace correspondant à [tokenOrUrl], qui peut
-  /// être soit un lien complet (`https://meshiker.com/share/gpx/{token}`
-  /// ou tout autre chemin se terminant par le token), soit le token seul.
+  /// être :
+  /// - un lien Supabase complet (`https://meshiker.com/share/gpx/{token}`)
+  ///   ou le token seul ;
+  /// - une URL directe vers un serveur local (partage "réseau wifi", voir
+  ///   `LocalGpxServer`) — reconnue à son host différent de `meshiker.com`,
+  ///   et téléchargée telle quelle sans passer par Supabase Storage.
   Future<Trace> importFromShare(String tokenOrUrl, {required String ownerUuid}) async {
-    if (_supabaseUrl.isEmpty) {
-      throw const TraceShareException(
-        'Import indisponible : configuration Supabase manquante.',
-      );
+    final trimmed = tokenOrUrl.trim();
+    final parsed = Uri.tryParse(trimmed);
+    final isDirectUrl = parsed != null && parsed.hasScheme && parsed.host != 'meshiker.com';
+
+    final Uri uri;
+    if (isDirectUrl) {
+      uri = parsed;
+    } else {
+      if (_supabaseUrl.isEmpty) {
+        throw const TraceShareException(
+          'Import indisponible : configuration Supabase manquante.',
+        );
+      }
+      final token = _extractToken(trimmed);
+      if (token.isEmpty) {
+        throw const TraceShareException('Lien ou code de partage invalide.');
+      }
+      uri = Uri.parse('$_supabaseUrl/storage/v1/object/public/$_bucket/$token.gpx');
     }
 
-    final token = _extractToken(tokenOrUrl);
-    if (token.isEmpty) {
-      throw const TraceShareException('Lien ou code de partage invalide.');
-    }
-
-    final uri = Uri.parse('$_supabaseUrl/storage/v1/object/public/$_bucket/$token.gpx');
-    debugPrint('TraceShareService: téléchargement depuis $uri (token="$token")');
+    debugPrint('TraceShareService: téléchargement depuis $uri');
     final http.Response response;
     try {
       response = await http.get(uri);

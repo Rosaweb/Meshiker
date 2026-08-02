@@ -22,11 +22,16 @@
     <!-- Permissions pour la localisation -->
     <uses-feature android:name="android.hardware.location.gps" />
 
+    <!-- Requis pour le partage GPX via WiFi local (serveur HTTP en clair vers une IP
+         locale dynamique) : Android bloque le trafic HTTP non chiffré par défaut depuis
+         l'API 28. Une config réseau scopée par domaine n'est pas praticable ici car l'IP
+         locale change à chaque réseau WiFi. -->
     <application
         android:label="Meshiker"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
+        android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
