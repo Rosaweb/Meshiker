@@ -16,6 +16,9 @@
     <!-- Permissions pour le podomètre -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
+    <!-- Permission pour le scan de QR code (réception d'un partage) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <!-- Permissions pour la localisation -->
     <uses-feature android:name="android.hardware.location.gps" />
 

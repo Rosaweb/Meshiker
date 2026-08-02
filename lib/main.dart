@@ -54,7 +54,12 @@ void main() async {
       final supabaseBootstrap = SupabaseBootstrapService();
       final searchEngine = LocalSearchEngine();
       final importService = GpxImportService(isarService: isarService, searchEngine: searchEngine);
-      final traceShareService = TraceShareService(isarService: isarService, supabaseBootstrap: supabaseBootstrap);
+      final traceShareService = TraceShareService(
+        isarService: isarService,
+        supabaseBootstrap: supabaseBootstrap,
+        gpxImportService: importService,
+        settingsService: settingsService,
+      );
       final mapViewModel = MapViewModel(isarService: isarService);
       final pedometerService = PedometerService();
       final weatherService = WeatherService();

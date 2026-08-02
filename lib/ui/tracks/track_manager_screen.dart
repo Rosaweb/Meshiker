@@ -9,6 +9,7 @@ import '../../models/enums.dart';
 import '../../utils/settings_service.dart';
 import '../../recording/recording_service.dart';
 import 'track_edit_screen.dart';
+import 'import_share_screen.dart';
 import '../../gpx/gpx_scanner_service.dart';
 
 enum TrackSortOption {
@@ -154,6 +155,14 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
               settings.setActiveGpxList(allTracks.map((t) => t.name).toList());
             },
             tooltip: 'Tout activer',
+          ),
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ImportShareScreen()),
+            ),
+            tooltip: 'Importer un partage',
           ),
         ],
       ),

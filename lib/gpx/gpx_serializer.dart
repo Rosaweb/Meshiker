@@ -16,6 +16,7 @@ class GpxSerializer {
   static String serializeTrace({
     required List<GpxTrackPoint> points,
     required String traceName,
+    List<GpxWaypoint> waypoints = const [],
   }) {
     final builder = XmlBuilder();
     builder.processing('xml', 'version="1.0" encoding="UTF-8"');
@@ -27,6 +28,9 @@ class GpxSerializer {
       builder.element('metadata', nest: () {
         builder.element('name', nest: traceName);
       });
+      for (final wp in waypoints) {
+        _writeWaypoint(builder, wp);
+      }
       builder.element('trk', nest: () {
         builder.element('name', nest: traceName);
         for (final segment in _splitSegments(points)) {
@@ -39,6 +43,23 @@ class GpxSerializer {
       });
     });
     return builder.buildDocument().toXmlString(pretty: true);
+  }
+
+  static void _writeWaypoint(XmlBuilder builder, GpxWaypoint waypoint) {
+    builder.element('wpt', attributes: {
+      'lat': waypoint.latitude.toString(),
+      'lon': waypoint.longitude.toString(),
+    }, nest: () {
+      if (waypoint.elevation != null) {
+        builder.element('ele', nest: waypoint.elevation.toString());
+      }
+      if (waypoint.name != null) {
+        builder.element('name', nest: waypoint.name!);
+      }
+      if (waypoint.description != null) {
+        builder.element('desc', nest: waypoint.description!);
+      }
+    });
   }
 
   static void _writeTrackPoint(XmlBuilder builder, GpxTrackPoint point) {

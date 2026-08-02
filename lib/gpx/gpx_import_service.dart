@@ -1,9 +1,11 @@
 import 'dart:io';
 
 import 'package:isar_community/isar.dart';
+import 'package:uuid/uuid.dart';
 import '../database/isar_service.dart';
 import '../models/enums.dart';
 import '../models/trace.dart';
+import '../models/waypoint.dart';
 import '../search/local_search_engine.dart';
 import 'gpx_models.dart';
 import 'gpx_parser.dart';
@@ -141,7 +143,56 @@ class GpxImportService {
       searchEngine: searchEngine,
     );
 
+    if (parsed.waypoints.isNotEmpty) {
+      await _persistWaypoints(parsed.waypoints, associatedGpxName: result.trace.name);
+    }
+
     return result;
+  }
+
+  /// Persiste les waypoints d'un GPX/KML importé, rattachés à la trace via
+  /// [Waypoint.associatedGpxName] (même convention que
+  /// GpxScannerService._processFile, dédoublonnage identique par
+  /// nom+latitude+longitude+associatedGpxName — appeler cette méthode deux
+  /// fois pour le même fichier est donc sans effet la seconde fois).
+  Future<void> _persistWaypoints(
+    List<GpxWaypoint> waypoints, {
+    required String associatedGpxName,
+  }) async {
+    // indexWaypoint() lit waypoint.category.value, un IsarLink dont le
+    // chargement est synchrone -- interdit à l'intérieur d'une transaction
+    // asynchrone active ("Isar does not support nesting transactions").
+    // On collecte donc les waypoints créés pour les indexer APRÈS la fin
+    // de la transaction, comme le fait déjà SegmentationPersistence.persist
+    // pour indexTrace().
+    final created = <Waypoint>[];
+    await isarService.isar.writeTxn(() async {
+      for (final gpxWp in waypoints) {
+        final wpName = gpxWp.name ?? 'Point sans nom';
+        final exists = await isarService.isar.waypoints
+            .filter()
+            .nameEqualTo(wpName)
+            .latitudeEqualTo(gpxWp.latitude)
+            .longitudeEqualTo(gpxWp.longitude)
+            .associatedGpxNameEqualTo(associatedGpxName)
+            .findFirst();
+        if (exists == null) {
+          final wp = Waypoint()
+            ..localUuid = const Uuid().v4()
+            ..name = wpName
+            ..description = gpxWp.description
+            ..latitude = gpxWp.latitude
+            ..longitude = gpxWp.longitude
+            ..associatedGpxName = associatedGpxName
+            ..updatedAt = DateTime.now();
+          await isarService.isar.waypoints.put(wp);
+          created.add(wp);
+        }
+      }
+    });
+    for (final wp in created) {
+      searchEngine.indexWaypoint(wp);
+    }
   }
 
   /// Refait le découpage de TOUTES les traces existantes.
