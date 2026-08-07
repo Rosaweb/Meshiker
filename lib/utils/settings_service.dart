@@ -93,6 +93,11 @@ class SettingsService extends ChangeNotifier {
   double? _customMapZoom;
   bool _pickingStartupCenter = false;
 
+  // Fond de carte utilisé pour générer les aperçus de traces GPX (Track
+  // Manager, écran de partage, etc). `null` = suit le fond de carte actif
+  // de la carte principale (comportement historique).
+  String? _tracePreviewMapSourceId;
+
   // "Localiser sur la carte" depuis la fenêtre contextuelle d'un waypoint :
   // uuid du waypoint concerné tant que le bouton "Retour" flottant est
   // affiché sur la carte, null sinon.
@@ -153,6 +158,7 @@ class SettingsService extends ChangeNotifier {
   ({double lat, double lon})? get measurePoint2 => _measurePoint2;
 
   MapStartupMode get mapStartupMode => _mapStartupMode;
+  String? get tracePreviewMapSourceId => _tracePreviewMapSourceId;
   bool get pickingStartupCenter => _pickingStartupCenter;
   String? get locatingWaypointUuid => _locatingWaypointUuid;
   WaypointLocateOrigin get locatingWaypointOrigin => _locatingWaypointOrigin;
@@ -219,6 +225,7 @@ class SettingsService extends ChangeNotifier {
 
     _mapStartupMode =
         MapStartupMode.values[_prefs.getInt('map_startup_mode') ?? 0];
+    _tracePreviewMapSourceId = _prefs.getString('trace_preview_map_source_id');
     _lastMapLat = _prefs.getDouble('last_map_lat');
     _lastMapLon = _prefs.getDouble('last_map_lon');
     _lastMapZoom = _prefs.getDouble('last_map_zoom');
@@ -501,6 +508,18 @@ class SettingsService extends ChangeNotifier {
   Future<void> setMapStartupMode(MapStartupMode mode) async {
     _mapStartupMode = mode;
     await _prefs.setInt('map_startup_mode', mode.index);
+    notifyListeners();
+  }
+
+  /// [sourceId] doit être un id de [availableSources], ou `null` pour
+  /// revenir au comportement par défaut (suivre le fond de carte actif).
+  Future<void> setTracePreviewMapSourceId(String? sourceId) async {
+    _tracePreviewMapSourceId = sourceId;
+    if (sourceId == null) {
+      await _prefs.remove('trace_preview_map_source_id');
+    } else {
+      await _prefs.setString('trace_preview_map_source_id', sourceId);
+    }
     notifyListeners();
   }
 

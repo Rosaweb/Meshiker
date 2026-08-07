@@ -72,7 +72,7 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
               );
             }
 
-            final source = MapStyle.resolveTileSource(settings);
+            final source = MapStyle.resolveTracePreviewSource(settings);
             final latLngPoints =
                 points!.map((p) => LatLng(p.lat, p.lon)).toList();
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/settings_service.dart';
+import 'maps_settings_screen.dart';
 import 'navigation_customization_screen.dart';
 
 class DisplaySettingsScreen extends StatelessWidget {
@@ -158,6 +159,36 @@ class DisplaySettingsScreen extends StatelessWidget {
                     settings.startPickStartupCenter();
                     Navigator.pop(context);
                   },
+                ),
+
+                const Divider(color: Colors.white12, height: 24),
+                const Text('APERÇU DES TRACES GPX', style: headerStyle),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Fond de carte des aperçus', style: labelStyle),
+                    ),
+                    DropdownButton<String?>(
+                      value: settings.tracePreviewMapSourceId,
+                      dropdownColor: Colors.grey[900],
+                      style: valueStyle,
+                      underline: const SizedBox(),
+                      onChanged: (id) => settings.setTracePreviewMapSourceId(id),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Fond de carte actif'),
+                        ),
+                        ...availableSources.map(
+                          (source) => DropdownMenuItem<String?>(
+                            value: source.id,
+                            child: Text(source.name),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
 
                 const Divider(color: Colors.white12, height: 24),

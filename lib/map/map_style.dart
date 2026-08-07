@@ -118,4 +118,15 @@ class MapStyle {
     return availableSources.firstWhere((s) => s.id == currentId,
         orElse: () => availableSources.first);
   }
+
+  /// Fond de carte à utiliser pour les aperçus de traces GPX. Si
+  /// l'utilisateur en a choisi un fixe (Paramètres d'affichage), on l'utilise
+  /// tel quel ; sinon on retombe sur [resolveTileSource] (fond de carte
+  /// actif de la carte principale), comportement historique.
+  static MapSourceInfo resolveTracePreviewSource(SettingsService settings) {
+    final fixedId = settings.tracePreviewMapSourceId;
+    if (fixedId == null) return resolveTileSource(settings);
+    return availableSources.firstWhere((s) => s.id == fixedId,
+        orElse: () => resolveTileSource(settings));
+  }
 }
