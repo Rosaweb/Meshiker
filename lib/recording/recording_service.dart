@@ -676,11 +676,22 @@ class RecordingService {
       if (dest != null) {
         final destSnap = GeoUtils.snapToPolyline(dest.latitude, dest.longitude, _activePolyline, 100);
         destinationWaypoint.value = dest;
-        distanceToDestinationMeters.value = destSnap != null
-            ? (GeoUtils.distanceToSnapMeters(_activePolyline, destSnap) - doneDist).abs()
-            : (position != null
-                ? geo.Geolocator.distanceBetween(position.latitude, position.longitude, dest.latitude, dest.longitude)
-                : 0);
+        if (destSnap != null) {
+          distanceToDestinationMeters.value =
+              (GeoUtils.distanceToSnapMeters(_activePolyline, destSnap) - doneDist).abs();
+        } else if (snap != null && position != null) {
+          // Le point d'étape est hors trace (ex: POI à proximité) : distance
+          // directe depuis la position, mais seulement si cette position a
+          // été détectée SUR la trace (snap != null) — sinon (pas de fix,
+          // hors marge...) on retombe sur le DÉBUT de la trace, comme pour
+          // "prochain waypoint" et la destination par défaut ci-dessous.
+          distanceToDestinationMeters.value =
+              geo.Geolocator.distanceBetween(position.latitude, position.longitude, dest.latitude, dest.longitude);
+        } else {
+          final startPoint = _activePolyline.first;
+          distanceToDestinationMeters.value =
+              geo.Geolocator.distanceBetween(startPoint.lat, startPoint.lon, dest.latitude, dest.longitude);
+        }
       } else {
         destinationWaypoint.value = null;
         distanceToDestinationMeters.value = 0;
