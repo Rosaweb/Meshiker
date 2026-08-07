@@ -252,6 +252,9 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     await settings.setNavigationWaypoint(null);
     await recording.setDestination(null);
     await settings.setRoadmapTraceName(widget.trace.name);
+    if (!settings.activeGpxNames.contains(widget.trace.name)) {
+      await settings.toggleActiveGpx(widget.trace.name);
+    }
     if (!mounted) return;
     Navigator.pop(context);
     Navigator.push(
