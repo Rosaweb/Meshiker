@@ -148,13 +148,27 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
               onPressed: () => _refreshFolder(),
               tooltip: 'Scanner le dossier GPX/KML',
             ),
-          IconButton(
-            icon: const Icon(Icons.done_all),
-            onPressed: () async {
-              final allTracks = await isar.isar.traces.where().findAll();
-              settings.setActiveGpxList(allTracks.map((t) => t.name).toList());
+          StreamBuilder<List<Trace>>(
+            stream: isar.isar.traces.where().watch(fireImmediately: true),
+            builder: (context, snapshot) {
+              final allTracks = snapshot.data ?? [];
+              final allNames = allTracks.map((t) => t.name).toSet();
+              final isAllSelected =
+                  allNames.isNotEmpty && allNames.every((n) => settings.activeGpxNames.contains(n));
+              return IconButton(
+                icon: Icon(Icons.done_all, color: isAllSelected ? Colors.greenAccent : null),
+                onPressed: allTracks.isEmpty
+                    ? null
+                    : () {
+                        if (isAllSelected) {
+                          settings.clearActiveGpx();
+                        } else {
+                          settings.setActiveGpxList(allNames.toList());
+                        }
+                      },
+                tooltip: isAllSelected ? 'Tout désactiver' : 'Tout activer',
+              );
             },
-            tooltip: 'Tout activer',
           ),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
