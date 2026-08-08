@@ -16,6 +16,7 @@ import '../../search/local_search_engine.dart';
 import '../../utils/offline_map_download_service.dart';
 import '../../utils/settings_service.dart';
 import '../settings/maps_settings_screen.dart';
+import '../waypoints/waypoint_manager_screen.dart';
 import 'elevation_chart_painter.dart';
 import 'elevation_profile_data.dart';
 import 'roadmap_screen.dart';
@@ -23,7 +24,7 @@ import 'trace_elevation_profile_screen.dart';
 import 'trace_map_preview.dart';
 import 'trace_share_screen.dart';
 
-enum _TraceMenuAction { navigate, share, offlineMap, color, move, delete }
+enum _TraceMenuAction { navigate, waypoints, share, offlineMap, color, move, delete }
 
 class TrackEditScreen extends StatefulWidget {
   final Trace trace;
@@ -186,6 +187,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
             onSelected: _onMenuAction,
             itemBuilder: (context) => [
               _menuItem(_TraceMenuAction.navigate, Icons.navigation, 'Naviguer', color: Colors.greenAccent),
+              _menuItem(_TraceMenuAction.waypoints, Icons.location_on_outlined, 'Voir les waypoints'),
               _menuItem(_TraceMenuAction.share, Icons.qr_code, 'Partager la trace'),
               _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, 'Créer carte hors-ligne'),
               const PopupMenuDivider(),
@@ -225,6 +227,9 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
       case _TraceMenuAction.navigate:
         _navigate();
         break;
+      case _TraceMenuAction.waypoints:
+        _viewWaypoints();
+        break;
       case _TraceMenuAction.share:
         _shareTrace();
         break;
@@ -260,6 +265,13 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const RoadmapScreen()),
+    );
+  }
+
+  void _viewWaypoints() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => WaypointManagerScreen(filterGpxName: widget.trace.name)),
     );
   }
 

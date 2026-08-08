@@ -36,12 +36,41 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   // Groupe (dossier personnel ou trace GPX) dans lequel l'utilisateur est
   // "entré" via un double-clic, pour n'afficher que son contenu.
   int? _drillFolderId;
+  String? _drillFolderName;
   String? _drillGpxName;
 
   @override
   void initState() {
     super.initState();
     _loadCategories();
+    // Entrée directe depuis la fiche d'une trace : on "entre" immédiatement
+    // dans le groupe GPX correspondant, comme si l'utilisateur avait
+    // double-cliqué dessus depuis le waypoint manager.
+    _drillGpxName = widget.filterGpxName;
+  }
+
+  /// Vrai si l'écran a été ouvert directement sur un groupe (lien depuis la
+  /// fiche d'une trace) plutôt que par navigation interne au waypoint
+  /// manager : dans ce cas la flèche de retour ramène directement à l'écran
+  /// d'origine plutôt que de "sortir" du groupe.
+  bool get _isDirectEntry => widget.filterGpxName != null;
+
+  String? get _currentBreadcrumb => _drillFolderName ?? _drillGpxName;
+
+  void _handleBackPressed() {
+    if (_isDirectEntry) {
+      Navigator.pop(context);
+      return;
+    }
+    if (_drillFolderId != null || _drillGpxName != null) {
+      setState(() {
+        _drillFolderId = null;
+        _drillFolderName = null;
+        _drillGpxName = null;
+      });
+      return;
+    }
+    Navigator.pop(context);
   }
 
   Future<void> _loadCategories() async {
@@ -67,18 +96,46 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
     final isar = context.watch<IsarService>();
     final settings = context.watch<SettingsService>();
 
-    return Scaffold(
+    return PopScope(
+      // Le bouton/geste retour du système doit avoir le même comportement
+      // "précédent" que la flèche de l'AppBar (cf. _handleBackPressed).
+      canPop: _isDirectEntry || (_drillFolderId == null && _drillGpxName == null),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          setState(() {
+            _drillFolderId = null;
+            _drillFolderName = null;
+            _drillGpxName = null;
+          });
+        }
+      },
+      child: Scaffold(
       backgroundColor: widget.isTransparent ? Colors.transparent : Colors.black,
       appBar: AppBar(
-        title: const Text('Waypoint Manager'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Waypoint Manager'),
+            if (_currentBreadcrumb != null)
+              Text(
+                '/ ${_currentBreadcrumb!}',
+                style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.normal),
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
         backgroundColor: widget.isTransparent ? Colors.transparent : Colors.black,
         foregroundColor: Colors.white,
-        leading: _isMultiSelectMode 
+        leading: _isMultiSelectMode
           ? IconButton(
               icon: const Icon(Icons.close),
               onPressed: () => setState(() => _selectedIds.clear()),
             )
-          : null,
+          : IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _handleBackPressed,
+            ),
         actions: [
           if (!_isMultiSelectMode) ...[
             IconButton(
@@ -134,6 +191,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -219,10 +277,6 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   }
 
   Widget _buildDynamicList(List<Waypoint> waypoints, List<WaypointFolder> folders, SettingsService settings) {
-    if (widget.filterGpxName != null) {
-      return _buildFlatList(waypoints, settings);
-    }
-
     final Map<int, List<Waypoint>> customGroups = {};
     final Map<String, List<Waypoint>> gpxGroups = {};
     final List<Waypoint> noFolder = [];
@@ -231,7 +285,11 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
       if (w.folder.value != null) {
         customGroups.putIfAbsent(w.folder.value!.id, () => []).add(w);
       } else if (w.associatedGpxName != null) {
-        if (settings.showGpxWaypoints) {
+        // Le filtre "afficher les waypoints de trace" ne s'applique pas
+        // quand on arrive directement sur le groupe via un lien depuis la
+        // fiche de la trace (widget.filterGpxName) : l'utilisateur l'a
+        // demandé explicitement.
+        if (settings.showGpxWaypoints || widget.filterGpxName != null) {
            gpxGroups.putIfAbsent(w.associatedGpxName!, () => []).add(w);
         }
       } else {
@@ -241,54 +299,46 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
 
     final sortedGpxNames = gpxGroups.keys.toList()..sort();
 
-    // Si on a "double-cliqué" sur un dossier/une trace, on n'affiche que son contenu.
+    // Si on a "double-cliqué" sur un dossier/une trace (ou qu'on y est entré
+    // directement via un lien), on n'affiche que son contenu.
     if (_drillFolderId != null) {
       final folder = folders.where((f) => f.id == _drillFolderId).firstOrNull;
       if (folder == null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() => _drillFolderId = null);
+          if (mounted) setState(() { _drillFolderId = null; _drillFolderName = null; });
         });
       } else {
         final items = customGroups[folder.id] ?? [];
-        return Column(
-          children: [
-            _buildBreadcrumbBar(folder.name, () => setState(() => _drillFolderId = null)),
-            Expanded(
-              child: items.isEmpty
-                ? const Center(child: Text('Dossier vide', style: TextStyle(color: Colors.white24)))
-                : ListView(
-                    children: items.map((w) => _WaypointTile(
-                      waypoint: w,
-                      isSelected: _selectedIds.contains(w.id),
-                      onTap: () => _handleTap(w, settings),
-                      onLongPress: () => _toggleSelection(w.id),
-                    )).toList(),
-                  ),
-            ),
-          ],
-        );
+        return items.isEmpty
+          ? const Center(child: Text('Dossier vide', style: TextStyle(color: Colors.white24)))
+          : ListView(
+              children: items.map((w) => _WaypointTile(
+                waypoint: w,
+                isSelected: _selectedIds.contains(w.id),
+                onTap: () => _handleTap(w, settings),
+                onLongPress: () => _toggleSelection(w.id),
+              )).toList(),
+            );
       }
     } else if (_drillGpxName != null) {
       if (!sortedGpxNames.contains(_drillGpxName)) {
+        if (_isDirectEntry) {
+          // Lien direct depuis une trace sans (ou plus) aucun waypoint : on
+          // affiche une liste vide plutôt que de retomber sur le manager.
+          return const Center(child: Text('Aucun waypoint pour cette trace', style: TextStyle(color: Colors.white24)));
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() => _drillGpxName = null);
         });
       } else {
         final items = gpxGroups[_drillGpxName] ?? [];
-        return Column(
-          children: [
-            _buildBreadcrumbBar(_drillGpxName!, () => setState(() => _drillGpxName = null)),
-            Expanded(
-              child: ListView(
-                children: items.map((w) => _WaypointTile(
-                  waypoint: w,
-                  isSelected: _selectedIds.contains(w.id),
-                  onTap: () => _handleTap(w, settings),
-                  onLongPress: () => _toggleSelection(w.id),
-                )).toList(),
-              ),
-            ),
-          ],
+        return ListView(
+          children: items.map((w) => _WaypointTile(
+            waypoint: w,
+            isSelected: _selectedIds.contains(w.id),
+            onTap: () => _handleTap(w, settings),
+            onLongPress: () => _toggleSelection(w.id),
+          )).toList(),
         );
       }
     }
@@ -299,7 +349,10 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
         for (var folder in folders)
           GestureDetector(
             // Double-clic : "entre" dans le dossier pour n'afficher que son contenu.
-            onDoubleTap: () => setState(() => _drillFolderId = folder.id),
+            onDoubleTap: () => setState(() {
+              _drillFolderId = folder.id;
+              _drillFolderName = folder.name;
+            }),
             child: ExpansionTile(
               initiallyExpanded: false,
               leading: const Icon(Icons.folder, color: Colors.blueAccent, size: 20),
@@ -343,43 +396,6 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           )),
         ],
       ],
-    );
-  }
-
-  Widget _buildBreadcrumbBar(String label, VoidCallback onBack) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.05),
-      child: InkWell(
-        onTap: onBack,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Row(
-            children: [
-              const Icon(Icons.arrow_back, color: Colors.white70),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFlatList(List<Waypoint> list, SettingsService settings) {
-    return ListView.builder(
-      itemCount: list.length,
-      itemBuilder: (context, index) => _WaypointTile(
-        waypoint: list[index], 
-        isSelected: _selectedIds.contains(list[index].id),
-        onTap: () => _handleTap(list[index], settings),
-        onLongPress: () => _toggleSelection(list[index].id),
-      ),
     );
   }
 
