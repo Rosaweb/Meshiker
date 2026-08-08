@@ -6,7 +6,6 @@ import '../../utils/offline_map_download_service.dart';
 import '../../utils/settings_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/offline_map/offline_map.dart';
-import '../tracks/roadmap_screen.dart';
 
 class MapSourceInfo {
   final String id;
@@ -245,38 +244,60 @@ class _OfflineMapsTab extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final map = maps[index];
                   final sizeMb = (map.sizeBytes / (1024 * 1024)).toStringAsFixed(1);
+                  final description = map.description;
 
                   return ListTile(
                     leading: const Icon(Icons.map, color: Colors.greenAccent),
-                    title: Text(map.name, style: const TextStyle(color: Colors.white)),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('$sizeMb MB', style: const TextStyle(color: Colors.white38)),
-                          if (map.isDownloading)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: LinearProgressIndicator(
-                                      value: map.downloadProgress,
-                                      backgroundColor: Colors.white10,
-                                      valueColor: const AlwaysStoppedAnimation(Colors.greenAccent),
-                                    ),
+                    title: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            map.name,
+                            style: const TextStyle(color: Colors.white),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        Text(
+                          '  •  $sizeMb MB',
+                          style: const TextStyle(color: Colors.white38),
+                        ),
+                      ],
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (description != null && description.isNotEmpty)
+                          Text(
+                            description,
+                            style: const TextStyle(color: Colors.white38),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        if (map.isDownloading)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: LinearProgressIndicator(
+                                    value: map.downloadProgress,
+                                    backgroundColor: Colors.white10,
+                                    valueColor: const AlwaysStoppedAnimation(Colors.greenAccent),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    '${(map.downloadProgress * 100).round()}%',
-                                    style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  '${(map.downloadProgress * 100).round()}%',
+                                  style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                              ],
                             ),
-                          if (map.isError)
-                            const Text('Erreur. Appuyez pour reprendre.', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
-                        ],
-                      ),
+                          ),
+                        if (map.isError)
+                          const Text('Erreur. Appuyez pour reprendre.', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                      ],
+                    ),
                     onTap: () {
                       if (map.isError && !map.isDownloading) {
                         OfflineMapDownloadService(isarService: isar).download(
@@ -284,25 +305,9 @@ class _OfflineMapsTab extends StatelessWidget {
                             headers: const {'User-Agent': 'Meshiker/1.0'});
                         return;
                       }
-                      // Carte créée depuis le menu d'une trace GPX (cf.
-                      // TrackEditScreen) : la retrouver dans la liste
-                      // rouvre directement le Roadmap de cette trace.
-                      final traceName = map.linkedTraceName;
-                      if (!map.isDownloading && traceName != null) {
-                        settings.setRoadmapTraceName(traceName);
-                        Navigator.pop(context);
-                        Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => const RoadmapScreen()));
-                      }
+                      if (map.isDownloading) return;
+                      _showMapDetailsDialog(context, isar, map);
                     },
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.white38),
-                      onPressed: () async {
-                        await OfflineMapDownloadService(isarService: isar)
-                            .deleteFiles(map.localUuid);
-                        await isar.deleteOfflineMap(map.id);
-                      },
-                    ),
                   );
                 },
               );
@@ -310,6 +315,64 @@ class _OfflineMapsTab extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  void _showMapDetailsDialog(BuildContext context, IsarService isar, OfflineMap map) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.grey[900],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        map.name,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white70),
+                      onPressed: () => Navigator.pop(dialogContext),
+                      tooltip: 'Fermer',
+                    ),
+                  ],
+                ),
+                if (map.description != null && map.description!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    map.description!,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      await OfflineMapDownloadService(isarService: isar)
+                          .deleteFiles(map.localUuid);
+                      await isar.deleteOfflineMap(map.id);
+                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    },
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    label: const Text('Supprimer', style: TextStyle(color: Colors.redAccent)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
