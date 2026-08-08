@@ -766,7 +766,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       crossAxisCount: 3,
       mainAxisSpacing: 8,
       crossAxisSpacing: 8,
-      childAspectRatio: 1.25,
+      // Les blocs s'étirent en hauteur quand le texte est grossi
+      // (cf. SettingsService.fontScale) pour éviter tout débordement.
+      childAspectRatio: 1.25 / settings.fontScale,
       children: [
         if (settings.navShowSpeed)
           AnimatedBuilder(

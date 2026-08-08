@@ -192,8 +192,46 @@ class DisplaySettingsScreen extends StatelessWidget {
                 ),
 
                 const Divider(color: Colors.white12, height: 24),
+                const Text('ACCESSIBILITÉ', style: headerStyle),
+                const SizedBox(height: 4),
+                RadioListTile<FontScaleLevel>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: Colors.greenAccent,
+                  title: const Text('Taille du texte normale (par défaut)', style: labelStyle),
+                  value: FontScaleLevel.normal,
+                  groupValue: settings.fontScaleLevel,
+                  onChanged: (level) {
+                    if (level != null) settings.setFontScaleLevel(level);
+                  },
+                ),
+                RadioListTile<FontScaleLevel>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: Colors.greenAccent,
+                  title: const Text('Grand', style: labelStyle),
+                  value: FontScaleLevel.large,
+                  groupValue: settings.fontScaleLevel,
+                  onChanged: (level) {
+                    if (level != null) settings.setFontScaleLevel(level);
+                  },
+                ),
+                RadioListTile<FontScaleLevel>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: Colors.greenAccent,
+                  title: const Text('Très grand', style: labelStyle),
+                  value: FontScaleLevel.extraLarge,
+                  groupValue: settings.fontScaleLevel,
+                  onChanged: (level) {
+                    if (level != null) settings.setFontScaleLevel(level);
+                  },
+                ),
+
+                const Divider(color: Colors.white12, height: 24),
                 ListTile(
-                  title: const Text('Personnaliser le volet de navigation', style: labelStyle),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('PERSONNALISER LE VOLET DE NAVIGATION', style: headerStyle),
                   trailing: const Icon(Icons.chevron_right, color: Colors.white24),
                   onTap: () {
                     final bool isReversed = settings.reversePanels;

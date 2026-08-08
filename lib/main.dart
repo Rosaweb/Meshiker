@@ -194,6 +194,17 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
         useMaterial3: true,
       ),
+      builder: (context, child) {
+        // Grossissement du texte pour l'accessibilité (cf. SettingsService.fontScale),
+        // appliqué globalement via MediaQuery plutôt qu'écran par écran.
+        final fontScale = context.watch<SettingsService>().fontScale;
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(fontScale),
+          ),
+          child: child!,
+        );
+      },
       home: MainNavigationScreen(
         isarService: isarService,
         settingsService: settingsService,

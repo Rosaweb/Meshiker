@@ -19,6 +19,11 @@ enum DisplayMode { gpx, mesh }
 /// flottant de la carte doit rouvrir derrière la fiche du waypoint.
 enum WaypointLocateOrigin { map, trackManager, roadmap }
 
+/// Niveau de grossissement du texte appliqué à toute l'application
+/// (accessibilité). `normal` est la taille par défaut (la plus petite) ;
+/// `large`/`extraLarge` sont les deux niveaux de grossissement.
+enum FontScaleLevel { normal, large, extraLarge }
+
 class AppSettings {
   final double barOpacity;
   final UnitSystem unitSystem;
@@ -48,6 +53,7 @@ class SettingsService extends ChangeNotifier {
   bool _showGpxWaypoints = true;
   bool _locationEnabled = true;
   double _waypointIconSize = 30.0;
+  FontScaleLevel _fontScaleLevel = FontScaleLevel.normal;
 
   // Visibilité des éléments du volet de navigation
   bool _navShowSpeed = true;
@@ -127,6 +133,17 @@ class SettingsService extends ChangeNotifier {
   bool get showGpxWaypoints => _showGpxWaypoints;
   bool get locationEnabled => _locationEnabled;
   double get waypointIconSize => _waypointIconSize;
+  FontScaleLevel get fontScaleLevel => _fontScaleLevel;
+  double get fontScale {
+    switch (_fontScaleLevel) {
+      case FontScaleLevel.normal:
+        return 1.0;
+      case FontScaleLevel.large:
+        return 1.15;
+      case FontScaleLevel.extraLarge:
+        return 1.3;
+    }
+  }
 
   bool get navShowSpeed => _navShowSpeed;
   bool get navShowDailyDist => _navShowDailyDist;
@@ -193,6 +210,7 @@ class SettingsService extends ChangeNotifier {
     _showGpxWaypoints = _prefs.getBool('show_gpx_waypoints') ?? true;
     _locationEnabled = _prefs.getBool('location_enabled') ?? true;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
+    _fontScaleLevel = FontScaleLevel.values[_prefs.getInt('font_scale_level') ?? 0];
     
     _navShowSpeed = _prefs.getBool('nav_show_speed') ?? true;
     _navShowDailyDist = _prefs.getBool('nav_show_daily_dist') ?? true;
@@ -377,6 +395,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setWaypointIconSize(double value) async {
     _waypointIconSize = value;
     await _prefs.setDouble('waypoint_icon_size', value);
+    notifyListeners();
+  }
+
+  Future<void> setFontScaleLevel(FontScaleLevel level) async {
+    _fontScaleLevel = level;
+    await _prefs.setInt('font_scale_level', level.index);
     notifyListeners();
   }
 
