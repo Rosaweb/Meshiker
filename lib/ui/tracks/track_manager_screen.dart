@@ -127,7 +127,21 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Track Manager'),
+        title: Row(
+          children: [
+            const Text('Track Manager'),
+            StreamBuilder<List<Trace>>(
+              stream: isar.isar.traces.where().watch(fireImmediately: true),
+              builder: (context, snapshot) {
+                final count = snapshot.data?.length ?? 0;
+                return Text(
+                  ' ($count)',
+                  style: const TextStyle(color: Colors.white38, fontSize: 16),
+                );
+              },
+            ),
+          ],
+        ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
@@ -148,28 +162,6 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
               onPressed: () => _refreshFolder(),
               tooltip: 'Scanner le dossier GPX/KML',
             ),
-          StreamBuilder<List<Trace>>(
-            stream: isar.isar.traces.where().watch(fireImmediately: true),
-            builder: (context, snapshot) {
-              final allTracks = snapshot.data ?? [];
-              final allNames = allTracks.map((t) => t.name).toSet();
-              final isAllSelected =
-                  allNames.isNotEmpty && allNames.every((n) => settings.activeGpxNames.contains(n));
-              return IconButton(
-                icon: Icon(Icons.done_all, color: isAllSelected ? Colors.greenAccent : null),
-                onPressed: allTracks.isEmpty
-                    ? null
-                    : () {
-                        if (isAllSelected) {
-                          settings.clearActiveGpx();
-                        } else {
-                          settings.setActiveGpxList(allNames.toList());
-                        }
-                      },
-                tooltip: isAllSelected ? 'Tout désactiver' : 'Tout activer',
-              );
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
             onPressed: () => Navigator.push(
@@ -182,7 +174,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
       ),
       body: Column(
         children: [
-          _buildSearchAndSort(),
+          _buildSearchAndSort(isar, settings),
           Expanded(
             child: StreamBuilder<List<Trace>>(
               stream: isar.isar.traces.where().watch(fireImmediately: true),
@@ -217,7 +209,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
     );
   }
 
-  Widget _buildSearchAndSort() {
+  Widget _buildSearchAndSort(IsarService isar, SettingsService settings) {
     return Container(
       padding: const EdgeInsets.all(12),
       color: Colors.white.withValues(alpha: 0.05),
@@ -239,7 +231,8 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
             children: [
               const Text('Trier par :', style: TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(width: 12),
-              Expanded(
+              SizedBox(
+                width: 160,
                 child: DropdownButton<TrackSortOption>(
                   value: _sortOption,
                   isExpanded: true,
@@ -258,6 +251,29 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
                   ],
                   onChanged: (v) => setState(() => _sortOption = v!),
                 ),
+              ),
+              const Spacer(),
+              StreamBuilder<List<Trace>>(
+                stream: isar.isar.traces.where().watch(fireImmediately: true),
+                builder: (context, snapshot) {
+                  final allTracks = snapshot.data ?? [];
+                  final allNames = allTracks.map((t) => t.name).toSet();
+                  final isAllSelected =
+                      allNames.isNotEmpty && allNames.every((n) => settings.activeGpxNames.contains(n));
+                  return IconButton(
+                    icon: Icon(Icons.done_all, color: isAllSelected ? Colors.greenAccent : Colors.white70),
+                    onPressed: allTracks.isEmpty
+                        ? null
+                        : () {
+                            if (isAllSelected) {
+                              settings.clearActiveGpx();
+                            } else {
+                              settings.setActiveGpxList(allNames.toList());
+                            }
+                          },
+                    tooltip: isAllSelected ? 'Tout désactiver' : 'Tout activer',
+                  );
+                },
               ),
             ],
           ),
