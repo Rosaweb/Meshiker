@@ -25,6 +25,11 @@ enum WaypointLocateOrigin { map, trackManager, roadmap }
 /// `large`/`extraLarge` sont les deux niveaux de grossissement.
 enum FontScaleLevel { normal, large, extraLarge }
 
+/// Langue de l'application. `system` suit la langue de l'appareil (parmi
+/// celles supportées, cf. AppLocalizations.supportedLocales) ; les autres
+/// valeurs forcent une langue quel que soit le réglage système.
+enum AppLanguage { system, fr, en }
+
 class AppSettings {
   final double barOpacity;
   final UnitSystem unitSystem;
@@ -62,6 +67,7 @@ class SettingsService extends ChangeNotifier {
   bool _showOsmPois = false;
   Set<String> _enabledOsmPoiCategoryIds = kOsmPoiCategories.map((c) => c.id).toSet();
   bool _useWaypointCategoryIcons = true;
+  AppLanguage _appLanguage = AppLanguage.system;
 
   // Visibilité des éléments du volet de navigation
   bool _navShowSpeed = true;
@@ -147,6 +153,20 @@ class SettingsService extends ChangeNotifier {
   bool get showOsmPois => _showOsmPois;
   Set<String> get enabledOsmPoiCategoryIds => _enabledOsmPoiCategoryIds;
   bool get useWaypointCategoryIcons => _useWaypointCategoryIcons;
+  AppLanguage get appLanguage => _appLanguage;
+
+  /// Locale à passer à `MaterialApp.locale` : `null` laisse Flutter résoudre
+  /// la langue du système parmi les locales supportées.
+  Locale? get locale {
+    switch (_appLanguage) {
+      case AppLanguage.system:
+        return null;
+      case AppLanguage.fr:
+        return const Locale('fr');
+      case AppLanguage.en:
+        return const Locale('en');
+    }
+  }
   double get fontScale {
     switch (_fontScaleLevel) {
       case FontScaleLevel.normal:
@@ -232,6 +252,7 @@ class SettingsService extends ChangeNotifier {
         ? enabledOsmCats.toSet()
         : kOsmPoiCategories.map((c) => c.id).toSet();
     _useWaypointCategoryIcons = _prefs.getBool('use_waypoint_category_icons') ?? true;
+    _appLanguage = AppLanguage.values[_prefs.getInt('app_language') ?? 0];
 
     _navShowSpeed = _prefs.getBool('nav_show_speed') ?? true;
     _navShowDailyDist = _prefs.getBool('nav_show_daily_dist') ?? true;
@@ -448,6 +469,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setUseWaypointCategoryIcons(bool value) async {
     _useWaypointCategoryIcons = value;
     await _prefs.setBool('use_waypoint_category_icons', value);
+    notifyListeners();
+  }
+
+  Future<void> setAppLanguage(AppLanguage language) async {
+    _appLanguage = language;
+    await _prefs.setInt('app_language', language.index);
     notifyListeners();
   }
 

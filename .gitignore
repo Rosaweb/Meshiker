@@ -49,6 +49,9 @@ app.*.map.json
 # Generated code (build_runner)
 *.g.dart
 
+# Generated code (flutter gen-l10n, cf. l10n.yaml)
+/lib/l10n/generated/
+
 # Local analyze output
 analyze_output.txt
 

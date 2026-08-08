@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'database/isar_service.dart';
+import 'l10n/generated/app_localizations.dart';
 import 'map/map_view_model.dart';
 import 'recording/recording_service.dart';
 import 'search/local_search_engine.dart';
@@ -195,9 +196,16 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // `locale: null` (réglage "Système") laisse Flutter résoudre la langue
+    // de l'appareil parmi AppLocalizations.supportedLocales.
+    final locale = context.watch<SettingsService>().locale;
+
     return MaterialApp(
       title: 'Meshiker',
       debugShowCheckedModeBanner: false,
+      locale: locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green, brightness: Brightness.dark),
         scaffoldBackgroundColor: Colors.black,

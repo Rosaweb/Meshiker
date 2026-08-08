@@ -1,0 +1,7 @@
+{
+  "@@locale": "fr",
+  "appTitle": "Meshiker",
+  "@appTitle": {
+    "description": "Nom de l'application, affiché dans le titre de la fenêtre/tâche."
+  }
+}

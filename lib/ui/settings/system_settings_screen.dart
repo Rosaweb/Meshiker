@@ -27,6 +27,10 @@ class SystemSettingsScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                const Text('LANGUE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                _buildLanguageSection(context, settings),
+                const SizedBox(height: 32),
                 const Text('UNITÉS DE MESURE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildUnitsSection(context, settings),
@@ -50,6 +54,52 @@ class SystemSettingsScreen extends StatelessWidget {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageSection(BuildContext context, SettingsService settings) {
+    const labelStyle = TextStyle(color: Colors.white, fontSize: 14);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          RadioListTile<AppLanguage>(
+            dense: true,
+            activeColor: Colors.greenAccent,
+            title: const Text('Système (par défaut)', style: labelStyle),
+            value: AppLanguage.system,
+            groupValue: settings.appLanguage,
+            onChanged: (lang) {
+              if (lang != null) settings.setAppLanguage(lang);
+            },
+          ),
+          RadioListTile<AppLanguage>(
+            dense: true,
+            activeColor: Colors.greenAccent,
+            title: const Text('Français', style: labelStyle),
+            value: AppLanguage.fr,
+            groupValue: settings.appLanguage,
+            onChanged: (lang) {
+              if (lang != null) settings.setAppLanguage(lang);
+            },
+          ),
+          RadioListTile<AppLanguage>(
+            dense: true,
+            activeColor: Colors.greenAccent,
+            title: const Text('English', style: labelStyle),
+            value: AppLanguage.en,
+            groupValue: settings.appLanguage,
+            onChanged: (lang) {
+              if (lang != null) settings.setAppLanguage(lang);
+            },
+          ),
+        ],
       ),
     );
   }

@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
   isar_community: ^3.3.2
   isar_community_flutter_libs: ^3.3.2
@@ -22,7 +24,7 @@ dependencies:
   latlong2: ^0.9.1               # Limite imposée par vector_map_tiles
   # -----------------------------------------------
   uuid: ^4.6.0
-  intl: ^0.20.3
+  intl: 0.20.2 # Version imposée par flutter_localizations (SDK 3.44.7)
   xml: ^7.0.1
   mbtiles: ^0.4.2
   vector_map_tiles: ^8.0.0
@@ -59,3 +61,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  generate: true
