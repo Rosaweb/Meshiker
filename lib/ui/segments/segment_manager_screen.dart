@@ -46,6 +46,29 @@ class _SegmentManagerScreenState extends State<SegmentManagerScreen> {
         title: const Text('Mesh Manager'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(24),
+          child: StreamBuilder<List<Segment>>(
+            stream: isar.isar.segments.where().watch(fireImmediately: true),
+            builder: (context, snapshot) {
+              final segments = snapshot.data ?? [];
+              final totalMeters = segments.fold<double>(0, (sum, s) => sum + s.distanceMeters);
+              final totalDistance = settings.unitSystem == UnitSystem.metric
+                  ? '${(totalMeters / 1000).toStringAsFixed(1)} km'
+                  : '${(totalMeters * 0.000621371).toStringAsFixed(1)} mi';
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                  child: Text(
+                    '${segments.length} segment${segments.length > 1 ? 's' : ''} · $totalDistance',
+                    style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ),
       body: StreamBuilder<List<Segment>>(
         stream: isar.isar.segments.where().watch(fireImmediately: true),
