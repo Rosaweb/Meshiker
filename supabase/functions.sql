@@ -357,6 +357,14 @@ begin
     raise exception 'Authentification requise pour partager une trace.';
   end if;
 
+  -- Partage nominatif = fonctionnalité "sociale" (spec-authentification-
+  -- paywall.md section 7) : un utilisateur anonyme peut légitimement être
+  -- premium (achat avant conversion de compte), mais doit d'abord se créer
+  -- un compte permanent avant de pouvoir partager une trace.
+  if coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
+    raise exception 'Un compte permanent est requis pour partager une trace (voir Paramètres > Compte).';
+  end if;
+
   -- 16 octets aléatoires cryptographiquement sûrs, encodés en base64
   -- URL-safe (même mécanisme que share_token pour tracking_sessions,
   -- brief section 3.5) — c'est aussi le nom de l'objet Storage.

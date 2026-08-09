@@ -23,6 +23,14 @@ create table if not exists public.profiles (
   total_distance_meters bigint not null default 0,
   total_segments_contributed integer not null default 0,
   trust_level double precision not null default 0.5,
+  -- Statut premium RevenueCat, synchronisé par le webhook Edge Function
+  -- `revenuecat-webhook` (voir functions.sql) sur app_user_id = profiles.id
+  -- (garanti être cet UUID Supabase grâce à Purchases.logIn() côté client,
+  -- cf. spec-authentification-paywall.md). Un utilisateur anonyme peut
+  -- légitimement être premium (achat avant conversion de compte) : ne pas
+  -- confondre avec la distinction is_anonymous du JWT, qui gate uniquement
+  -- les fonctionnalités sociales (voir create_trace_share dans functions.sql).
+  is_premium boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

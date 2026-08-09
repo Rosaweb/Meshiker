@@ -11,6 +11,7 @@ import 'ui/main_navigation_screen.dart';
 import 'utils/settings_service.dart';
 import 'utils/pedometer_service.dart';
 import 'utils/weather_service.dart';
+import 'utils/auth_service.dart';
 import 'utils/subscription_service.dart';
 import 'utils/tile_cache_service.dart';
 import 'utils/supabase_bootstrap_service.dart';
@@ -52,6 +53,7 @@ void main() async {
       final subscriptionService = SubscriptionService();
       final tileCacheService = TileCacheService(settingsService: settingsService);
       final supabaseBootstrap = SupabaseBootstrapService();
+      final authService = AuthService(isarService: isarService);
       final searchEngine = LocalSearchEngine();
       final importService = GpxImportService(isarService: isarService, searchEngine: searchEngine);
       final traceShareService = TraceShareService(
@@ -80,12 +82,19 @@ void main() async {
       // Tâches subsidiaires : lancées sans attendre, jamais prioritaires
       // sur l'affichage de l'interface.
       unawaited(() async {
+        // Supabase (auth anonyme incluse) DOIT être prêt avant de
+        // configurer RevenueCat, pour lui passer directement le bon
+        // app_user_id dès la première configuration plutôt que de
+        // démarrer sur un ID anonyme RevenueCat déconnecté (cf.
+        // AuthService/SubscriptionService.init, piège documenté dans
+        // spec-authentification-paywall.md section 9).
+        await supabaseBootstrap.init();
+        await authService.init();
         try {
-          await subscriptionService.init();
+          await subscriptionService.init(appUserId: authService.currentUser?.id);
         } catch (e) {
           debugPrint('RevenueCat init error: $e');
         }
-        await supabaseBootstrap.init();
         await tileCacheService.init();
         await searchEngine.rebuildFromDatabase(isarService);
         await recordingService.init();
@@ -102,6 +111,7 @@ void main() async {
             ChangeNotifierProvider.value(value: pedometerService),
             ChangeNotifierProvider.value(value: weatherService),
             ChangeNotifierProvider.value(value: subscriptionService),
+            ChangeNotifierProvider.value(value: authService),
             ChangeNotifierProvider.value(value: tileCacheService),
             Provider.value(value: isarService),
             Provider.value(value: searchEngine),

@@ -22,12 +22,23 @@ class SubscriptionService extends ChangeNotifier {
   static const _apiKey = 'test_juekxUQmWXJYnKTwtOPKWBKKyeG';
 
   /// Initialise le SDK RevenueCat de manière ultra-sécurisée.
-  Future<void> init() async {
+  ///
+  /// [appUserId] doit être l'id utilisateur Supabase (anonyme ou non) déjà
+  /// connu au moment de l'appel, pour que RevenueCat s'identifie dès la
+  /// première configuration plutôt que de démarrer sur un ID anonyme
+  /// `$RCAnonymousID:...` qu'il faudrait relier après coup via
+  /// `Purchases.logIn()`. Appeler `configure()` avant que cet id soit
+  /// définitif risquerait de transférer un achat existant lié au compte
+  /// Google Play vers un mauvais ID anonyme (webhook `TRANSFER` inattendu).
+  Future<void> init({String? appUserId}) async {
     try {
       await Purchases.setLogLevel(LogLevel.debug);
 
       PurchasesConfiguration configuration = PurchasesConfiguration(_apiKey);
-      
+      if (appUserId != null) {
+        configuration.appUserID = appUserId;
+      }
+
       // Tentative de configuration
       await Purchases.configure(configuration);
       _sdkAvailable = true;
