@@ -98,7 +98,7 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
                       TileLayer(
                         urlTemplate: source.url,
                         subdomains: const ['a', 'b', 'c'],
-                        userAgentPackageName: 'com.example.meshiker',
+                        userAgentPackageName: 'com.meshiker.app',
                       ),
                       PolylineLayer(
                         polylines: [
