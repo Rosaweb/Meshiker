@@ -51,6 +51,7 @@ class SettingsService extends ChangeNotifier {
   bool _showAllGpx = true;
   DisplayMode _displayMode = DisplayMode.gpx;
   bool _showGpxWaypoints = true;
+  bool _flattenWaypointFolders = false;
   bool _locationEnabled = true;
   double _waypointIconSize = 30.0;
   FontScaleLevel _fontScaleLevel = FontScaleLevel.normal;
@@ -131,6 +132,7 @@ class SettingsService extends ChangeNotifier {
   bool get showAllGpx => _showAllGpx;
   bool get showMesh => _displayMode == DisplayMode.mesh;
   bool get showGpxWaypoints => _showGpxWaypoints;
+  bool get flattenWaypointFolders => _flattenWaypointFolders;
   bool get locationEnabled => _locationEnabled;
   double get waypointIconSize => _waypointIconSize;
   FontScaleLevel get fontScaleLevel => _fontScaleLevel;
@@ -208,6 +210,7 @@ class SettingsService extends ChangeNotifier {
     // On force le mode GPX au démarrage (ne pas charger depuis les préférences)
     _displayMode = DisplayMode.gpx;
     _showGpxWaypoints = _prefs.getBool('show_gpx_waypoints') ?? true;
+    _flattenWaypointFolders = _prefs.getBool('flatten_waypoint_folders') ?? false;
     _locationEnabled = _prefs.getBool('location_enabled') ?? true;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
     _fontScaleLevel = FontScaleLevel.values[_prefs.getInt('font_scale_level') ?? 0];
@@ -367,6 +370,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setShowGpxWaypoints(bool value) async {
     _showGpxWaypoints = value;
     await _prefs.setBool('show_gpx_waypoints', value);
+    notifyListeners();
+  }
+
+  Future<void> setFlattenWaypointFolders(bool value) async {
+    _flattenWaypointFolders = value;
+    await _prefs.setBool('flatten_waypoint_folders', value);
     notifyListeners();
   }
 

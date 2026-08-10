@@ -42,6 +42,13 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                   activeThumbColor: Colors.greenAccent,
                   onChanged: (v) => settings.setShowGpxWaypoints(v),
                 ),
+                SwitchListTile(
+                  title: const Text('Afficher tous les waypoints sans dossiers', style: TextStyle(color: Colors.white, fontSize: 14)),
+                  subtitle: const Text('Liste à plat de tous les waypoints, y compris ceux rangés dans un dossier', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                  value: settings.flattenWaypointFolders,
+                  activeThumbColor: Colors.greenAccent,
+                  onChanged: (v) => settings.setFlattenWaypointFolders(v),
+                ),
               ],
             ),
           ),
@@ -60,13 +67,15 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                 final categories = snapshot.data!;
 
                 return ReorderableListView(
+                  buildDefaultDragHandles: false,
                   onReorder: (oldIndex, newIndex) async {
+                    if (newIndex > categories.length) newIndex = categories.length;
                     setState(() {
                       if (newIndex > oldIndex) newIndex -= 1;
                       final item = categories.removeAt(oldIndex);
                       categories.insert(newIndex, item);
                     });
-                    
+
                     await isar.isar.writeTxn(() async {
                       for (int i = 0; i < categories.length; i++) {
                         categories[i].updatedAt = DateTime.now().add(Duration(milliseconds: i));
@@ -75,28 +84,35 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                     });
                   },
                   children: [
-                    for (final cat in categories)
+                    for (int i = 0; i < categories.length; i++)
                       ListTile(
-                        key: ValueKey(cat.id),
+                        key: ValueKey(categories[i].id),
                         leading: CircleAvatar(
-                          backgroundColor: Color(cat.colorHex).withValues(alpha: 0.2),
-                          child: Icon(_getIconData(cat.iconName), color: Color(cat.colorHex), size: 20),
+                          backgroundColor: Color(categories[i].colorHex).withValues(alpha: 0.2),
+                          child: Icon(_getIconData(categories[i].iconName), color: Color(categories[i].colorHex), size: 20),
                         ),
-                        title: Text(cat.name, style: const TextStyle(color: Colors.white)),
-                        trailing: const Icon(Icons.drag_handle, color: Colors.white24),
-                        onTap: () => _editCategory(cat),
+                        title: Text(categories[i].name, style: const TextStyle(color: Colors.white)),
+                        trailing: ReorderableDragStartListener(
+                          index: i,
+                          child: const Icon(Icons.drag_handle, color: Colors.white24),
+                        ),
+                        onTap: () => _editCategory(categories[i]),
                       ),
+                    ListTile(
+                      key: const ValueKey('new_waypoint_type'),
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.greenAccent.withValues(alpha: 0.2),
+                        child: const Icon(Icons.add, color: Colors.greenAccent, size: 20),
+                      ),
+                      title: const Text('Nouveau type', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                      onTap: () => _editCategory(null),
+                    ),
                   ],
                 );
               },
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _editCategory(null),
-        backgroundColor: Colors.greenAccent,
-        child: const Icon(Icons.add, color: Colors.black),
       ),
     );
   }
@@ -115,6 +131,35 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
     }
   }
 
+  void _confirmDeleteCategory(WaypointCategory category) {
+    final isar = context.read<IsarService>();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Supprimer le type', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Voulez-vous vraiment supprimer le type "${category.name}" ? Les waypoints associés perdront ce type.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+          TextButton(
+            onPressed: () async {
+              await isar.isar.writeTxn(() => isar.isar.waypointCategorys.delete(category.id));
+              if (mounted) {
+                setState(() {});
+                Navigator.pop(context); // Ferme la confirmation
+                Navigator.pop(context); // Ferme la fenêtre d'édition du type
+              }
+            },
+            child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _editCategory(WaypointCategory? category) {
     final isar = context.read<IsarService>();
     final nameController = TextEditingController(text: category?.name);
@@ -126,7 +171,18 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: Text(category == null ? 'Nouveau Type' : 'Modifier Type', style: const TextStyle(color: Colors.white)),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(category == null ? 'Nouveau Type' : 'Modifier Type', style: const TextStyle(color: Colors.white)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white70),
+                onPressed: () => Navigator.pop(context),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -162,11 +218,15 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+            if (category != null)
+              TextButton(
+                onPressed: () => _confirmDeleteCategory(category),
+                child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+              ),
             TextButton(
               onPressed: () async {
                 if (nameController.text.isEmpty) return;
-                
+
                 final cat = category ?? WaypointCategory();
                 cat.name = nameController.text;
                 cat.colorHex = selectedColor;
@@ -174,13 +234,13 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                 if (category == null) {
                    cat.localUuid = DateTime.now().millisecondsSinceEpoch.toString();
                 }
-                
+
                 await isar.isar.writeTxn(() => isar.isar.waypointCategorys.put(cat));
                 if (mounted) {
                   setState(() {});
                   Navigator.pop(context);
                 }
-              }, 
+              },
               child: const Text('ENREGISTRER', style: TextStyle(color: Colors.greenAccent))
             ),
           ],

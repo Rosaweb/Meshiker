@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
 import '../../map/map_view_model.dart';
@@ -156,9 +157,9 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
             color: Colors.white.withValues(alpha: 0.05),
-            child: _isMultiSelectMode 
-              ? _buildSelectionActions(isar) 
-              : _buildFilters(),
+            child: _isMultiSelectMode
+              ? _buildSelectionActions(isar)
+              : _buildFilters(isar),
           ),
 
           Expanded(
@@ -203,7 +204,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
     }
   }
 
-  Widget _buildFilters() {
+  Widget _buildFilters(IsarService isar) {
     return Column(
       children: [
         TextField(
@@ -239,6 +240,33 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
               onSelected: (v) => setState(() => _sortByDistance = v),
               selectedColor: Colors.greenAccent,
             ),
+            FutureBuilder<List<Waypoint>>(
+              future: isar.searchWaypoints(
+                query: _searchQuery,
+                categoryId: _typeFilter?.id,
+                filterGpxName: widget.filterGpxName,
+              ),
+              builder: (context, snapshot) {
+                final visible = snapshot.data ?? const <Waypoint>[];
+                final visibleIds = visible.map((w) => w.id).toSet();
+                final isAllSelected = visibleIds.isNotEmpty && visibleIds.every((id) => _selectedIds.contains(id));
+                return IconButton(
+                  icon: Icon(Icons.done_all, color: isAllSelected ? Colors.greenAccent : Colors.white70),
+                  onPressed: visibleIds.isEmpty
+                      ? null
+                      : () {
+                          setState(() {
+                            if (isAllSelected) {
+                              _selectedIds.removeAll(visibleIds);
+                            } else {
+                              _selectedIds.addAll(visibleIds);
+                            }
+                          });
+                        },
+                  tooltip: isAllSelected ? 'Tout désélectionner' : 'Tout sélectionner',
+                );
+              },
+            ),
           ],
         ),
       ],
@@ -246,33 +274,107 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   }
 
   Widget _buildSelectionActions(IsarService isar) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              '${_selectedIds.length} SÉLECTIONNÉ(S)',
-              style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '${_selectedIds.length} SÉLECTIONNÉ(S)',
+                  style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                const Text('Actions groupées', style: TextStyle(color: Colors.white38, fontSize: 10)),
+              ],
             ),
-            const SizedBox(height: 8),
-            const Text('Actions groupées', style: TextStyle(color: Colors.white38, fontSize: 10)),
+          ),
+          const VerticalDivider(color: Colors.white10, indent: 20, endIndent: 20),
+          _ActionButton(
+            icon: Icons.folder_open,
+            label: 'DÉPLACER',
+            onTap: () => _showMoveDialog(isar),
+          ),
+          _ActionButton(
+            icon: Icons.palette_outlined,
+            label: 'COULEUR',
+            onTap: () => _showColorDialog(isar),
+          ),
+          _ActionButton(
+            icon: Icons.sell_outlined,
+            label: 'TYPE',
+            onTap: () => _showTypeDialog(isar),
+          ),
+          _ActionButton(
+            icon: Icons.delete_outline,
+            label: 'SUPPRIMER',
+            color: Colors.redAccent,
+            onTap: () => _confirmDelete(isar),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showColorDialog(IsarService isar) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Choisir une couleur', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: BlockPicker(
+            pickerColor: Colors.green,
+            onColorChanged: (color) async {
+              await isar.setColorForWaypoints(_selectedIds.toList(), color.toARGB32());
+              setState(() => _selectedIds.clear());
+              if (mounted) Navigator.pop(context);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTypeDialog(IsarService isar) {
+    WaypointCategory? selected;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text('Attribuer un type', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: DropdownButton<WaypointCategory>(
+              isExpanded: true,
+              hint: const Text('Aucun', style: TextStyle(color: Colors.white70)),
+              value: selected,
+              dropdownColor: Colors.grey[900],
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Aucun', style: TextStyle(color: Colors.white))),
+                ..._allCategories.map((c) => DropdownMenuItem(value: c, child: Text(c.name, style: const TextStyle(color: Colors.white)))),
+              ],
+              onChanged: (v) => setDialogState(() => selected = v),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+            TextButton(
+              onPressed: () async {
+                await isar.setCategoryForWaypoints(_selectedIds.toList(), selected?.id);
+                setState(() => _selectedIds.clear());
+                if (mounted) Navigator.pop(context);
+              },
+              child: const Text('APPLIQUER', style: TextStyle(color: Colors.greenAccent)),
+            ),
           ],
         ),
-        const VerticalDivider(color: Colors.white10, indent: 20, endIndent: 20),
-        _ActionButton(
-          icon: Icons.folder_open,
-          label: 'DÉPLACER',
-          onTap: () => _showMoveDialog(isar),
-        ),
-        _ActionButton(
-          icon: Icons.delete_outline,
-          label: 'SUPPRIMER',
-          color: Colors.redAccent,
-          onTap: () => _confirmDelete(isar),
-        ),
-      ],
+      ),
     );
   }
 
@@ -295,6 +397,27 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
       } else {
         noFolder.add(w);
       }
+    }
+
+    // Affichage à plat : la totalité des waypoints (y compris ceux rangés
+    // dans un dossier ou une trace GPX), mais sans les dossiers eux-mêmes.
+    if (settings.flattenWaypointFolders) {
+      final flatList = [
+        ...customGroups.values.expand((v) => v),
+        ...gpxGroups.values.expand((v) => v),
+        ...noFolder,
+      ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+      return flatList.isEmpty
+          ? const Center(child: Text('Aucun waypoint', style: TextStyle(color: Colors.white24)))
+          : ListView(
+              children: flatList.map((w) => _WaypointTile(
+                waypoint: w,
+                isSelected: _selectedIds.contains(w.id),
+                onTap: () => _handleTap(w, settings),
+                onLongPress: () => _toggleSelection(w.id),
+              )).toList(),
+            );
     }
 
     final sortedGpxNames = gpxGroups.keys.toList()..sort();

@@ -390,6 +390,34 @@ class IsarService {
     });
   }
 
+  Future<void> setColorForWaypoints(List<int> ids, int colorHex) async {
+    await isar.writeTxn(() async {
+      final wps = await isar.waypoints.getAll(ids);
+      for (final wp in wps) {
+        if (wp != null) {
+          wp.colorHex = colorHex;
+          wp.updatedAt = DateTime.now();
+          await isar.waypoints.put(wp);
+        }
+      }
+    });
+  }
+
+  Future<void> setCategoryForWaypoints(List<int> ids, int? categoryId) async {
+    await isar.writeTxn(() async {
+      final wps = await isar.waypoints.getAll(ids);
+      final category = categoryId != null ? await isar.waypointCategorys.get(categoryId) : null;
+      for (final wp in wps) {
+        if (wp != null) {
+          wp.category.value = category;
+          wp.updatedAt = DateTime.now();
+          await isar.waypoints.put(wp);
+          await wp.category.save();
+        }
+      }
+    });
+  }
+
   Future<void> createWaypointFolder(String name) async {
     await isar.writeTxn(() async {
       final folder = WaypointFolder()
