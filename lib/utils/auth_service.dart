@@ -66,9 +66,20 @@ class AuthService extends ChangeNotifier {
   /// typiquement juste après `SupabaseBootstrapService.init()` au démarrage.
   Future<void> init() async {
     await _syncLocalUser();
-    _authSub ??= _client.auth.onAuthStateChange.listen((_) {
-      unawaited(_syncLocalUser().then((_) => notifyListeners()));
-    });
+    _authSub ??= _client.auth.onAuthStateChange.listen(
+      (_) => unawaited(_syncLocalUser().then((_) => notifyListeners())),
+      // gotrue pousse une erreur sur ce stream (notifyException) quand son
+      // rafraîchissement de token automatique en arrière-plan échoue (ex:
+      // coupure réseau passagère, cf. AuthRetryableFetchException) — sans
+      // onError ici, Dart la relance comme erreur non interceptée dans la
+      // zone du `runZonedGuarded` de main.dart, qui la traite comme fatale
+      // et remplace toute l'UI. Contraire au principe "zone blanche" (cf.
+      // SupabaseBootstrapService) : un aléa réseau ne doit jamais faire
+      // planter l'app, gotrue retente de lui-même en interne.
+      onError: (Object error, StackTrace stack) {
+        debugPrint('AuthService: onAuthStateChange error (ignoré): $error');
+      },
+    );
   }
 
   @override
