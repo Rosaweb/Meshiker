@@ -8,6 +8,7 @@ import '../models/segment.dart';
 import '../models/waypoint.dart';
 import '../models/trace.dart';
 import '../sync/sync_engine.dart';
+import '../utils/geo_utils.dart';
 import '../utils/overpass_service.dart';
 
 /// Alimente MapScreen en segments/POI visibles dans le viewport courant.
@@ -125,12 +126,20 @@ class MapViewModel {
     );
     
     // Nouveaux waypoints
-    waypoints.value = await isarService.searchWaypoints(
+    final fetchedWaypoints = await isarService.searchWaypoints(
       minLat: minLat,
       maxLat: maxLat,
       minLon: minLon,
       maxLon: maxLon,
     );
+    // Isar ne charge pas automatiquement les IsarLinks : sans ce chargement,
+    // la fenêtre contextuelle du waypoint (ouverte depuis la carte) ne
+    // pourrait jamais présélectionner son type/dossier actuel.
+    for (final wp in fetchedWaypoints) {
+      await wp.category.load();
+      await wp.folder.load();
+    }
+    waypoints.value = fetchedWaypoints;
 
     // Traces actives
     activeTraces.value = await isarService.tracesByNames(activeGpxNames);
@@ -180,13 +189,32 @@ class MapViewModel {
     }
   }
 
+  /// Distance en dessous de laquelle un POI OSM est considéré comme "le
+  /// même point" qu'un waypoint local déjà enregistré (ex : un waypoint
+  /// créé sur une source ou un refuge déjà répertorié dans OSM).
+  static const double _osmDedupThresholdMeters = 25.0;
+
   Future<void> _reloadOsmPois(double minLat, double minLon, double maxLat, double maxLon) async {
     // On ne fetch que si on est à un niveau de zoom suffisant pour éviter les requêtes trop larges
     // Cette info n'est pas directement ici, on pourrait passer le zoom ou checker la taille de la bbox
-    if ((maxLat - minLat).abs() > 0.5) return; 
+    if ((maxLat - minLat).abs() > 0.5) return;
 
     final fetched = await OverpassService.fetchPois(minLat, minLon, maxLat, maxLon);
-    osmPois.value = fetched;
+
+    // On exclut les POI OSM qui coïncident avec un waypoint local existant :
+    // sinon deux marqueurs se superposent au même endroit et celui du POI
+    // OSM (dessiné par-dessus, voir _OsmPoisLayer dans map_screen.dart)
+    // intercepte les taps destinés au vrai waypoint, ouvrant par erreur la
+    // création d'un doublon au lieu de l'édition du waypoint existant.
+    final localWaypoints = waypoints.value;
+    osmPois.value = fetched.where((poi) {
+      return localWaypoints.every((wp) => GeoUtils.haversineMeters(
+            poi.location.latitude,
+            poi.location.longitude,
+            wp.latitude,
+            wp.longitude,
+          ) > _osmDedupThresholdMeters);
+    }).toList();
   }
 
   void dispose() {
