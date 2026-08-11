@@ -36,7 +36,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 // de navigation (d'autres éléments suivront plus tard).
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Couleur d\'accent', style: labelStyle),
+                  title: const Text('Couleur du thème', style: labelStyle),
                   subtitle: const Text(
                       'Cadres, titres et icônes de l\'écran Outils de navigation',
                       style: TextStyle(color: Colors.white38, fontSize: 11)),
@@ -286,7 +286,7 @@ class DisplaySettingsScreen extends StatelessWidget {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('Couleur d\'accent', style: TextStyle(color: Colors.white)),
+          title: const Text('Couleur du thème', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: ColorPicker(
               pickerColor: selected,
