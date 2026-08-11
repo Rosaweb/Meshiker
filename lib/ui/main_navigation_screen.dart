@@ -546,7 +546,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           if (settings.navShowNextWaypoint) ...[
             _buildNavSection(
                 'PROCHAIN WAYPOINT',
-                Colors.greenAccent,
+                settings.accentColor,
                 widget.recordingService.nextWaypoint,
                 widget.recordingService.distanceToNextWaypointMeters,
                 true),
@@ -555,7 +555,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           if (settings.navShowDestination) ...[
             _buildNavSection(
                 'POINT D\'ÉTAPE',
-                Colors.blueAccent,
+                settings.accentColor,
                 widget.recordingService.destinationWaypoint,
                 widget.recordingService.distanceToDestinationMeters,
                 false,
@@ -573,7 +573,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           if (settings.navShowMeasureTools) ...[
             _buildToolBlock(
               title: 'AZIMUT ET DISTANCE',
-              color: Colors.orangeAccent,
+              color: settings.accentColor,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -606,7 +606,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           if (settings.locationEnabled)
             _buildToolBlock(
               title: 'POSITION',
-              color: Colors.tealAccent,
+              color: settings.accentColor,
               child: _buildCoordinatesContent(),
             ),
         ],
@@ -728,9 +728,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               valueListenable: wpNotifier,
               builder: (context, wp, _) {
                 if (wp == null) {
-                  return Text(
-                      isNext ? 'Aucun point' : 'Aucune destination définie',
-                      style: const TextStyle(color: Colors.white38));
+                  // "Point d'étape" n'affiche rien de plus quand aucune
+                  // destination n'est choisie : le titre du bloc et le
+                  // bouton "Choisir un point" suffisent.
+                  return isNext
+                      ? const Text('Aucun point',
+                          style: TextStyle(color: Colors.white38))
+                      : const SizedBox.shrink();
                 }
                 return ValueListenableBuilder<double>(
                   valueListenable: distNotifier,
@@ -762,6 +766,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     final recording = widget.recordingService;
     return GridView.count(
       shrinkWrap: true,
+      // Sans ça, ce GridView imbriqué est traité comme le scroll "primary"
+      // (pas de controller, axe vertical) et applique automatiquement
+      // l'inset système (barre de navigation Android) en padding bas,
+      // créant une marge bien plus grande que le SizedBox(12) qui sépare
+      // les autres blocs.
+      primary: false,
+      padding: EdgeInsets.zero,
       physics: const NeverScrollableScrollPhysics(),
       crossAxisCount: 3,
       mainAxisSpacing: 8,
@@ -876,11 +887,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           valueListenable: recording.currentPosition,
           builder: (context, pos, _) {
             final available = settings.locationEnabled && pos != null;
+            // Pas de cadre épaissi ici : contrairement au podomètre ou à la
+            // météo, ce bloc n'est pas activé par un tap — il reflète
+            // simplement l'état de la localisation.
             return _buildStatCard(
               'Altitude',
               available ? _formatAltitude(pos.altitude) : '--',
               Icons.terrain,
-              isActive: available,
             );
           },
         ),
@@ -930,20 +943,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   Widget _buildSpeedCard() {
     final recording = widget.recordingService;
+    final accent = widget.settingsService.accentColor;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white10)),
+          border: Border.all(color: accent.withValues(alpha: 0.2))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(children: [
-            Icon(Icons.speed, color: Colors.greenAccent, size: 15),
-            SizedBox(width: 4),
-            Text('Vitesse',
-                style: TextStyle(color: Colors.white38, fontSize: 11))
+          Row(children: [
+            Icon(Icons.speed, color: accent, size: 15),
+            const SizedBox(width: 4),
+            Text('Vitesse', style: TextStyle(color: accent, fontSize: 11))
           ]),
           Expanded(
             child: FittedBox(
@@ -978,12 +991,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 
+  /// [isActive] ne doit servir qu'aux cadres "à activer par un tap" (ex :
+  /// podomètre, météo) : il épaissit juste le cadre pour indiquer l'état
+  /// activé/désactivé. Titre et icône restent toujours en couleur d'accent,
+  /// que le bloc soit actif ou non.
   Widget _buildStatCard(String label, String value, IconData icon,
       {bool isActive = false,
       VoidCallback? onTap,
       VoidCallback? onDoubleTap,
       bool multiLine = false,
       Widget? valueWidget}) {
+    final accent = widget.settingsService.accentColor;
     return GestureDetector(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
@@ -993,19 +1011,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-                color: isActive ? Colors.greenAccent : Colors.white10,
+                color: isActive ? accent : accent.withValues(alpha: 0.2),
                 width: isActive ? 2.0 : 1.0)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Icon(icon,
-                color: isActive ? Colors.greenAccent : Colors.white38,
-                size: 15),
+            Icon(icon, color: accent, size: 15),
             const SizedBox(width: 4),
             Expanded(
                 child: Text(label,
-                    style: TextStyle(
-                        color: isActive ? Colors.greenAccent : Colors.white38,
-                        fontSize: 11),
+                    style: TextStyle(color: accent, fontSize: 11),
                     overflow: TextOverflow.ellipsis))
           ]),
           Expanded(
@@ -1065,7 +1079,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       required bool isNext}) {
     return Row(children: [
       Icon(isNext ? Icons.redo : Icons.flag,
-          color: isNext ? Colors.greenAccent : Colors.blueAccent),
+          color: widget.settingsService.accentColor),
       const SizedBox(width: 12),
       Expanded(
           child:

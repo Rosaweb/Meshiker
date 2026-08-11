@@ -52,13 +52,37 @@ class RoadmapScreen extends StatelessWidget {
         ],
       ),
       body: traceName == null
-          ? const Center(
+          ? Center(
               child: Padding(
-                padding: EdgeInsets.all(24.0),
-                child: Text(
-                  'Aucune trace chargée.\nOuvrez une trace depuis le Track Manager et choisissez « Naviguer ».',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white38),
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Aucune trace chargée.\nOuvrez une trace depuis le',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white38),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TrackManagerScreen()),
+                      ),
+                      child: const Text(
+                        'Track Manager',
+                        style: TextStyle(
+                          color: Colors.greenAccent,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      'et choisissez « Naviguer ».',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white38),
+                    ),
+                  ],
                 ),
               ),
             )

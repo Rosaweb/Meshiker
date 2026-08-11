@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum UnitSystem { metric, imperial }
@@ -52,6 +52,10 @@ class SettingsService extends ChangeNotifier {
   DisplayMode _displayMode = DisplayMode.gpx;
   bool _showGpxWaypoints = true;
   bool _locationEnabled = true;
+  // Couleur d'accent appliquée aux cadres/titres/icônes de l'écran Outils
+  // de navigation (et, à terme, à d'autres éléments des paramètres).
+  // Colors.greenAccent par défaut.
+  int _accentColorHex = 0xFF69F0AE;
   double _waypointIconSize = 30.0;
   FontScaleLevel _fontScaleLevel = FontScaleLevel.normal;
 
@@ -132,6 +136,7 @@ class SettingsService extends ChangeNotifier {
   bool get showMesh => _displayMode == DisplayMode.mesh;
   bool get showGpxWaypoints => _showGpxWaypoints;
   bool get locationEnabled => _locationEnabled;
+  Color get accentColor => Color(_accentColorHex);
   double get waypointIconSize => _waypointIconSize;
   FontScaleLevel get fontScaleLevel => _fontScaleLevel;
   double get fontScale {
@@ -209,6 +214,7 @@ class SettingsService extends ChangeNotifier {
     _displayMode = DisplayMode.gpx;
     _showGpxWaypoints = _prefs.getBool('show_gpx_waypoints') ?? true;
     _locationEnabled = _prefs.getBool('location_enabled') ?? true;
+    _accentColorHex = _prefs.getInt('accent_color') ?? 0xFF69F0AE;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
     _fontScaleLevel = FontScaleLevel.values[_prefs.getInt('font_scale_level') ?? 0];
     
@@ -373,6 +379,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setLocationEnabled(bool value) async {
     _locationEnabled = value;
     await _prefs.setBool('location_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setAccentColor(Color color) async {
+    _accentColorHex = color.toARGB32();
+    await _prefs.setInt('accent_color', _accentColorHex);
     notifyListeners();
   }
 

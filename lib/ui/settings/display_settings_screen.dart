@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:provider/provider.dart';
 import '../../utils/settings_service.dart';
 import 'maps_settings_screen.dart';
@@ -30,6 +31,29 @@ class DisplaySettingsScreen extends StatelessWidget {
               children: [
                 const Text('INTERFACE ET CARTE', style: headerStyle),
                 const SizedBox(height: 12),
+
+                // Couleur d'accent : cadres/titres/icônes de l'écran Outils
+                // de navigation (d'autres éléments suivront plus tard).
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Couleur d\'accent', style: labelStyle),
+                  subtitle: const Text(
+                      'Cadres, titres et icônes de l\'écran Outils de navigation',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  trailing: GestureDetector(
+                    onTap: () => _pickAccentColor(context, settings),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: settings.accentColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24),
+                      ),
+                    ),
+                  ),
+                  onTap: () => _pickAccentColor(context, settings),
+                ),
 
                 // Transparence : volets Paramètres / Outils de navigation
                 Row(
@@ -250,6 +274,39 @@ class DisplaySettingsScreen extends StatelessWidget {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  void _pickAccentColor(BuildContext context, SettingsService settings) {
+    Color selected = settings.accentColor;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text('Couleur d\'accent', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: ColorPicker(
+              pickerColor: selected,
+              onColorChanged: (color) => setDialogState(() => selected = color),
+              enableAlpha: false,
+              displayThumbColor: true,
+              paletteType: PaletteType.hsvWithHue,
+              labelTypes: const [],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+            TextButton(
+              onPressed: () {
+                settings.setAccentColor(selected);
+                Navigator.pop(context);
+              },
+              child: const Text('APPLIQUER', style: TextStyle(color: Colors.greenAccent)),
+            ),
+          ],
         ),
       ),
     );
