@@ -872,6 +872,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             );
           },
         ),
+        ValueListenableBuilder(
+          valueListenable: recording.currentPosition,
+          builder: (context, pos, _) {
+            final available = settings.locationEnabled && pos != null;
+            return _buildStatCard(
+              'Altitude',
+              available ? _formatAltitude(pos.altitude) : '--',
+              Icons.terrain,
+              isActive: available,
+            );
+          },
+        ),
       ],
     );
   }
@@ -1015,6 +1027,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 
+  String _formatAltitude(double meters) =>
+      widget.settingsService.unitSystem == UnitSystem.metric
+          ? '${meters.round()} m'
+          : '${(meters * 3.28084).round()} ft';
   String _formatSpeed(double mps) =>
       widget.settingsService.unitSystem == UnitSystem.metric
           ? (mps * 3.6).toStringAsFixed(1)
