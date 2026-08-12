@@ -8,6 +8,7 @@ import '../models/point_of_interest.dart';
 import '../models/recording_draft.dart';
 import '../models/segment.dart';
 import '../models/trace.dart';
+import '../models/trace_segment_entry.dart';
 import '../models/utilisateur.dart';
 import '../models/waypoint.dart';
 import '../models/offline_map/offline_map.dart';
@@ -561,6 +562,42 @@ class IsarService {
     }
 
     return total;
+  }
+
+  /// Inverse le sens de parcours de [trace] : les segments sont relus dans
+  /// l'ordre inverse et `traveledForward` est basculé sur chacun, pour que
+  /// `getTracePolyline`/`getTraceTrackPoints` reconstituent désormais la
+  /// géométrie en partant de l'ancienne arrivée. Les [Segment] référencés
+  /// ne sont jamais modifiés (neutres et partagés, cf. TraceSegmentEntry) --
+  /// seule cette trace change de sens.
+  ///
+  /// Le dénivelé positif/négatif cumulé de la trace est direction-dépendant
+  /// (une montée devient une descente) et doit donc être échangé ici même :
+  /// contrairement à la géométrie, ces agrégats sont calculés une fois à
+  /// l'import et mis en cache sur [Trace], pas recalculés à la volée. La
+  /// distance totale, elle, ne dépend pas du sens.
+  Future<void> reverseTraceDirection(Trace trace) async {
+    final entries = List<TraceSegmentEntry>.from(trace.segments)
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+
+    trace.segments = [
+      for (var i = 0; i < entries.length; i++)
+        TraceSegmentEntry.create(
+          segmentUuid: entries[entries.length - 1 - i].segmentUuid,
+          orderIndex: i,
+          traveledForward: !entries[entries.length - 1 - i].traveledForward,
+          enteredAt: entries[entries.length - 1 - i].enteredAt,
+          exitedAt: entries[entries.length - 1 - i].exitedAt,
+        ),
+    ];
+
+    final gain = trace.totalElevationGainMeters;
+    trace.totalElevationGainMeters = trace.totalElevationLossMeters;
+    trace.totalElevationLossMeters = gain;
+
+    // La table serveur trace_segments doit refléter le nouvel ordre/sens.
+    trace.syncStatus = SyncStatus.pending;
+    await saveTrace(trace);
   }
 
   /// Reconstitue la géométrie complète d'une trace sous forme de liste de points.
