@@ -39,6 +39,11 @@ void main() async {
       // Initialisation des services strictement nécessaires à la première
       // frame (local, rapide, requis pour construire l'arbre de providers).
       final isarService = await IsarService.open();
+      // Débloque les cartes hors-ligne dont le téléchargement a été
+      // interrompu par un kill de l'app lors d'une session précédente (cf.
+      // IsarService.resetStuckOfflineMapDownloads) avant que l'UI ne
+      // s'affiche, pour qu'elles soient reprenables dès la première frame.
+      await isarService.resetStuckOfflineMapDownloads();
       final settingsService = SettingsService();
       await settingsService.init();
 
