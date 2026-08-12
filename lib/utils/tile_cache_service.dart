@@ -6,18 +6,26 @@ import 'settings_service.dart';
 class TileCacheService extends ChangeNotifier {
   final SettingsService settingsService;
   double _currentSizeMb = 0.0;
-  
+
   double get currentSizeMb => _currentSizeMb;
 
   TileCacheService({required this.settingsService});
+
+  /// Dossier où les tuiles réseau sont mises en cache sur disque (voir
+  /// `_CachedTileImageProvider` dans `map/map_screen.dart`, qui y écrit
+  /// réellement les tuiles téléchargées) -- source unique du chemin pour
+  /// que ce service et le fournisseur de tuiles restent d'accord.
+  static Future<Directory> cacheDirectory() async {
+    final dir = await getTemporaryDirectory();
+    return Directory('${dir.path}/tile_cache');
+  }
 
   Future<void> init() async {
     await _calculateSize();
   }
 
   Future<void> _calculateSize() async {
-    final dir = await getTemporaryDirectory();
-    final cacheDir = Directory('${dir.path}/tile_cache');
+    final cacheDir = await cacheDirectory();
     if (!await cacheDir.exists()) {
       _currentSizeMb = 0.0;
     } else {
@@ -36,8 +44,7 @@ class TileCacheService extends ChangeNotifier {
     await _calculateSize();
     if (_currentSizeMb > settingsService.tileCacheLimitMb) {
       // Logique simple : on vide les fichiers les plus anciens jusqu'à repasser sous la limite
-      final dir = await getTemporaryDirectory();
-      final cacheDir = Directory('${dir.path}/tile_cache');
+      final cacheDir = await cacheDirectory();
       if (await cacheDir.exists()) {
         final files = await cacheDir.list(recursive: true).where((f) => f is File).cast<File>().toList();
         files.sort((a, b) => a.lastAccessedSync().compareTo(b.lastAccessedSync()));
@@ -55,8 +62,7 @@ class TileCacheService extends ChangeNotifier {
   }
 
   Future<void> clearAll() async {
-    final dir = await getTemporaryDirectory();
-    final cacheDir = Directory('${dir.path}/tile_cache');
+    final cacheDir = await cacheDirectory();
     if (await cacheDir.exists()) {
       await cacheDir.delete(recursive: true);
     }

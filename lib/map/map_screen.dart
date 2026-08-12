@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:http/http.dart' as http;
 import 'package:isar_community/isar.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as p;
@@ -1185,7 +1187,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// fond de carte ([sourceId]) quand elles sont disponibles localement, et
   /// ne retombe sur le réseau que pour les tuiles manquantes -- c'est ce qui
   /// rend une zone téléchargée ("Créer une carte") réellement consultable
-  /// hors connexion.
+  /// hors connexion. Les tuiles réseau restantes passent par le cache disque
+  /// de [TileCacheService] (voir [_OfflineAwareTileProvider]).
   TileProvider _buildTileProvider(String sourceId) {
     final headers = {'User-Agent': 'Meshiker/1.0'};
     final completedMaps = widget.isarService.isar.offlineMaps
@@ -1202,10 +1205,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         .map((m) => Directory(m.localPath!))
         .toList();
 
-    if (localDirs.isEmpty) {
-      return NetworkTileProvider(headers: headers);
-    }
-    return _OfflineAwareTileProvider(localDirs: localDirs, headers: headers);
+    return _OfflineAwareTileProvider(
+        localDirs: localDirs, headers: headers, sourceId: sourceId);
   }
 }
 
@@ -1213,10 +1214,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 /// [OfflineMapDownloadService]) avant de retomber sur le réseau, tuile par
 /// tuile -- une même zone peut ainsi être partiellement téléchargée sans
 /// empêcher l'affichage du reste depuis le réseau quand il est disponible.
+/// Les tuiles réseau passent par [_CachedTileImageProvider], qui les
+/// persiste sur disque (contrairement à un [NetworkImage] brut, qui ne
+/// passe que par l'`ImageCache` en mémoire de Flutter -- trop petit et non
+/// persistant pour une carte de la taille d'une randonnée).
 class _OfflineAwareTileProvider extends TileProvider {
-  _OfflineAwareTileProvider({required this.localDirs, super.headers});
+  _OfflineAwareTileProvider({
+    required this.localDirs,
+    required this.sourceId,
+    super.headers,
+  });
 
   final List<Directory> localDirs;
+  final String sourceId;
 
   @override
   ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
@@ -1225,8 +1235,107 @@ class _OfflineAwareTileProvider extends TileProvider {
           dir, coordinates.z, coordinates.x, coordinates.y);
       if (file.existsSync()) return FileImage(file);
     }
-    return NetworkImage(getTileUrl(coordinates, options), headers: headers);
+    return _CachedTileImageProvider(
+      url: getTileUrl(coordinates, options),
+      sourceId: sourceId,
+      z: coordinates.z,
+      x: coordinates.x,
+      y: coordinates.y,
+      headers: headers,
+    );
   }
+}
+
+/// [ImageProvider] pour une tuile réseau qui persiste le résultat sur disque
+/// dans le dossier géré par [TileCacheService] (tmp/tile_cache/sourceId/
+/// z/x/y.tile), et le relit directement si déjà présent -- évite de
+/// retélécharger une tuile déjà vue tant que [TileCacheService.checkAndEvict]
+/// ne l'a pas purgée. Namespacé par [sourceId] : deux fonds de carte peuvent
+/// avoir des tuiles différentes pour les mêmes z/x/y.
+class _CachedTileImageProvider extends ImageProvider<_CachedTileImageProvider> {
+  const _CachedTileImageProvider({
+    required this.url,
+    required this.sourceId,
+    required this.z,
+    required this.x,
+    required this.y,
+    required this.headers,
+  });
+
+  final String url;
+  final String sourceId;
+  final int z;
+  final int x;
+  final int y;
+  final Map<String, String>? headers;
+
+  @override
+  Future<_CachedTileImageProvider> obtainKey(ImageConfiguration configuration) {
+    return SynchronousFuture<_CachedTileImageProvider>(this);
+  }
+
+  @override
+  ImageStreamCompleter loadImage(
+      _CachedTileImageProvider key, ImageDecoderCallback decode) {
+    return MultiFrameImageStreamCompleter(
+      codec: _load(decode),
+      scale: 1.0,
+      debugLabel: url,
+      informationCollector: () => <DiagnosticsNode>[ErrorDescription('Tile: $url')],
+    );
+  }
+
+  Future<File> _cacheFile() async {
+    final cacheDir = await TileCacheService.cacheDirectory();
+    return File('${cacheDir.path}/$sourceId/$z/$x/$y.tile');
+  }
+
+  Future<ui.Codec> _load(ImageDecoderCallback decode) async {
+    final cacheFile = await _cacheFile();
+
+    if (await cacheFile.exists()) {
+      final bytes = await cacheFile.readAsBytes();
+      if (bytes.isNotEmpty) {
+        try {
+          return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+        } catch (_) {
+          // Fichier cache corrompu (écriture interrompue, etc.) : on
+          // l'ignore et retélécharge plutôt que de faire échouer la tuile.
+        }
+      }
+    }
+
+    final response = await http.get(Uri.parse(url), headers: headers);
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Échec du téléchargement de la tuile ($url) : HTTP ${response.statusCode}');
+    }
+    final bytes = response.bodyBytes;
+    unawaited(_writeToCache(cacheFile, bytes));
+    return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+  }
+
+  Future<void> _writeToCache(File cacheFile, Uint8List bytes) async {
+    try {
+      await cacheFile.parent.create(recursive: true);
+      await cacheFile.writeAsBytes(bytes, flush: false);
+    } catch (e) {
+      // Dossier cache supprimé entre-temps, disque plein, etc. -- non
+      // bloquant, la tuile reste affichée, juste pas mise en cache.
+      debugPrint('TileCache: échec écriture cache pour $url: $e');
+    }
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is _CachedTileImageProvider &&
+      other.sourceId == sourceId &&
+      other.z == z &&
+      other.x == x &&
+      other.y == y;
+
+  @override
+  int get hashCode => Object.hash(sourceId, z, x, y);
 }
 
 class _BottomControlBar extends StatelessWidget {
