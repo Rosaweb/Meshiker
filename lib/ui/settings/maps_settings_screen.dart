@@ -245,6 +245,15 @@ class _OfflineMapsTab extends StatelessWidget {
                   final map = maps[index];
                   final sizeMb = (map.sizeBytes / (1024 * 1024)).toStringAsFixed(1);
                   final description = map.description;
+                  // Téléchargement coupé en route (app tuée, perte réseau)
+                  // avant d'atteindre 100% ou d'être marqué en erreur --
+                  // distinct de isError (échec confirmé) et de isDownloading
+                  // (en cours dans CETTE session). Voir
+                  // IsarService.resetStuckOfflineMapDownloads.
+                  final isInterrupted = !map.isDownloading &&
+                      !map.isError &&
+                      map.downloadProgress > 0 &&
+                      map.downloadProgress < 1.0;
 
                   return ListTile(
                     leading: const Icon(Icons.map, color: Colors.greenAccent),
@@ -296,10 +305,12 @@ class _OfflineMapsTab extends StatelessWidget {
                           ),
                         if (map.isError)
                           const Text('Erreur. Appuyez pour reprendre.', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                        if (isInterrupted)
+                          const Text('Téléchargement interrompu. Appuyez pour reprendre.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
                       ],
                     ),
                     onTap: () {
-                      if (map.isError && !map.isDownloading) {
+                      if ((map.isError || isInterrupted) && !map.isDownloading) {
                         OfflineMapDownloadService(isarService: isar).download(
                             map,
                             headers: const {'User-Agent': 'Meshiker/1.0'});

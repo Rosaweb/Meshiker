@@ -433,6 +433,25 @@ class IsarService {
     await isar.writeTxn(() => isar.offlineMaps.put(map));
   }
 
+  /// À appeler une fois au démarrage. `OfflineMap.isDownloading` n'est
+  /// repassé à `false` qu'à la toute fin de
+  /// `OfflineMapDownloadService.download()` -- si l'app est tuée pendant un
+  /// téléchargement, ce flag reste bloqué à `true` pour toujours, et plus
+  /// rien dans l'UI ne peut relancer la carte (ni reprise, ni affichage des
+  /// détails). Ce reset ne touche ni les tuiles déjà écrites sur disque ni
+  /// `downloadProgress` : `download()` les retrouve intactes et ne
+  /// retélécharge que ce qui manque.
+  Future<void> resetStuckOfflineMapDownloads() async {
+    final stuck = await isar.offlineMaps.filter().isDownloadingEqualTo(true).findAll();
+    if (stuck.isEmpty) return;
+    await isar.writeTxn(() async {
+      for (final map in stuck) {
+        map.isDownloading = false;
+        await isar.offlineMaps.put(map);
+      }
+    });
+  }
+
   Future<List<OfflineMap>> allOfflineMaps() {
     return isar.offlineMaps.where().sortByCreatedAtDesc().findAll();
   }
