@@ -480,6 +480,12 @@ class IsarService {
     double? minLon,
     double? maxLon,
     String? filterGpxName, // Ajout du paramètre manquant
+    // Variante liste de filterGpxName, pour la carte (waypoints de toutes
+    // les traces actuellement affichées, pas une seule) -- voir
+    // MapViewModel._reload. Exclut toujours les waypoints indépendants/de
+    // dossier (associatedGpxName == null), contrairement à l'absence totale
+    // de filtre.
+    List<String>? filterGpxNames,
   }) async {
     // Utilisation d'une requête simple et filtrage manuel pour la robustesse
     final all = await isar.waypoints.where().findAll();
@@ -498,7 +504,11 @@ class IsarService {
       if (filterGpxName != null) {
         matches &= w.associatedGpxName == filterGpxName;
       }
-      
+
+      if (filterGpxNames != null) {
+        matches &= w.associatedGpxName != null && filterGpxNames.contains(w.associatedGpxName);
+      }
+
       if (minLat != null && maxLat != null && minLon != null && maxLon != null) {
         matches &= (w.latitude >= minLat && w.latitude <= maxLat && 
                     w.longitude >= minLon && w.longitude <= maxLon);
