@@ -57,6 +57,27 @@ class SettingsService extends ChangeNotifier {
   DisplayMode _displayMode = DisplayMode.gpx;
   bool _showGpxWaypoints = true;
   bool _flattenWaypointFolders = false;
+
+  // Annonces vocales des waypoints en cours de navigation (géofencing local,
+  // sans IA — cf. spec-assistant-vocal-ia.md §2). Deux contextes indépendants :
+  // "waypoint manager" (waypoints affichés sur la carte) et "roadmap" (trace
+  // chargée pour la navigation) — mêmes réglages, activables séparément.
+  bool _waypointAnnouncementsEnabled = false;
+  bool _waypointAnnounceOnApproach = true;
+  bool _waypointAnnounceOnSpot = true;
+  double _waypointAnnounceDistanceMeters = 300.0;
+  bool _waypointAnnounceTitle = true;
+  bool _waypointAnnounceType = true;
+  bool _waypointAnnounceDescription = false;
+
+  bool _roadmapAnnouncementsEnabled = false;
+  bool _roadmapAnnounceOnApproach = true;
+  bool _roadmapAnnounceOnSpot = true;
+  double _roadmapAnnounceDistanceMeters = 300.0;
+  bool _roadmapAnnounceTitle = true;
+  bool _roadmapAnnounceType = true;
+  bool _roadmapAnnounceDescription = false;
+
   bool _locationEnabled = true;
   // Couleur d'accent appliquée aux cadres/titres/icônes de l'écran Outils
   // de navigation (et, à terme, à d'autres éléments des paramètres).
@@ -143,6 +164,20 @@ class SettingsService extends ChangeNotifier {
   bool get showMesh => _displayMode == DisplayMode.mesh;
   bool get showGpxWaypoints => _showGpxWaypoints;
   bool get flattenWaypointFolders => _flattenWaypointFolders;
+  bool get waypointAnnouncementsEnabled => _waypointAnnouncementsEnabled;
+  bool get waypointAnnounceOnApproach => _waypointAnnounceOnApproach;
+  bool get waypointAnnounceOnSpot => _waypointAnnounceOnSpot;
+  double get waypointAnnounceDistanceMeters => _waypointAnnounceDistanceMeters;
+  bool get waypointAnnounceTitle => _waypointAnnounceTitle;
+  bool get waypointAnnounceType => _waypointAnnounceType;
+  bool get waypointAnnounceDescription => _waypointAnnounceDescription;
+  bool get roadmapAnnouncementsEnabled => _roadmapAnnouncementsEnabled;
+  bool get roadmapAnnounceOnApproach => _roadmapAnnounceOnApproach;
+  bool get roadmapAnnounceOnSpot => _roadmapAnnounceOnSpot;
+  double get roadmapAnnounceDistanceMeters => _roadmapAnnounceDistanceMeters;
+  bool get roadmapAnnounceTitle => _roadmapAnnounceTitle;
+  bool get roadmapAnnounceType => _roadmapAnnounceType;
+  bool get roadmapAnnounceDescription => _roadmapAnnounceDescription;
   bool get locationEnabled => _locationEnabled;
   Color get accentColor => Color(_accentColorHex);
   double get waypointIconSize => _waypointIconSize;
@@ -233,6 +268,20 @@ class SettingsService extends ChangeNotifier {
     _displayMode = DisplayMode.gpx;
     _showGpxWaypoints = _prefs.getBool('show_gpx_waypoints') ?? true;
     _flattenWaypointFolders = _prefs.getBool('flatten_waypoint_folders') ?? false;
+    _waypointAnnouncementsEnabled = _prefs.getBool('waypoint_announcements_enabled') ?? false;
+    _waypointAnnounceOnApproach = _prefs.getBool('waypoint_announce_on_approach') ?? true;
+    _waypointAnnounceOnSpot = _prefs.getBool('waypoint_announce_on_spot') ?? true;
+    _waypointAnnounceDistanceMeters = _prefs.getDouble('waypoint_announce_distance_m') ?? 300.0;
+    _waypointAnnounceTitle = _prefs.getBool('waypoint_announce_title') ?? true;
+    _waypointAnnounceType = _prefs.getBool('waypoint_announce_type') ?? true;
+    _waypointAnnounceDescription = _prefs.getBool('waypoint_announce_description') ?? false;
+    _roadmapAnnouncementsEnabled = _prefs.getBool('roadmap_announcements_enabled') ?? false;
+    _roadmapAnnounceOnApproach = _prefs.getBool('roadmap_announce_on_approach') ?? true;
+    _roadmapAnnounceOnSpot = _prefs.getBool('roadmap_announce_on_spot') ?? true;
+    _roadmapAnnounceDistanceMeters = _prefs.getDouble('roadmap_announce_distance_m') ?? 300.0;
+    _roadmapAnnounceTitle = _prefs.getBool('roadmap_announce_title') ?? true;
+    _roadmapAnnounceType = _prefs.getBool('roadmap_announce_type') ?? true;
+    _roadmapAnnounceDescription = _prefs.getBool('roadmap_announce_description') ?? false;
     _locationEnabled = _prefs.getBool('location_enabled') ?? true;
     _accentColorHex = _prefs.getInt('accent_color') ?? 0xFF69F0AE;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
@@ -408,6 +457,94 @@ class SettingsService extends ChangeNotifier {
   Future<void> setFlattenWaypointFolders(bool value) async {
     _flattenWaypointFolders = value;
     await _prefs.setBool('flatten_waypoint_folders', value);
+    notifyListeners();
+  }
+
+  Future<void> setWaypointAnnouncementsEnabled(bool value) async {
+    _waypointAnnouncementsEnabled = value;
+    await _prefs.setBool('waypoint_announcements_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setWaypointAnnounceTrigger(String key, bool value) async {
+    switch (key) {
+      case 'approach':
+        _waypointAnnounceOnApproach = value;
+        await _prefs.setBool('waypoint_announce_on_approach', value);
+        break;
+      case 'onSpot':
+        _waypointAnnounceOnSpot = value;
+        await _prefs.setBool('waypoint_announce_on_spot', value);
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setWaypointAnnounceDistanceMeters(double value) async {
+    _waypointAnnounceDistanceMeters = value;
+    await _prefs.setDouble('waypoint_announce_distance_m', value);
+    notifyListeners();
+  }
+
+  Future<void> setWaypointAnnounceContent(String key, bool value) async {
+    switch (key) {
+      case 'title':
+        _waypointAnnounceTitle = value;
+        await _prefs.setBool('waypoint_announce_title', value);
+        break;
+      case 'type':
+        _waypointAnnounceType = value;
+        await _prefs.setBool('waypoint_announce_type', value);
+        break;
+      case 'description':
+        _waypointAnnounceDescription = value;
+        await _prefs.setBool('waypoint_announce_description', value);
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapAnnouncementsEnabled(bool value) async {
+    _roadmapAnnouncementsEnabled = value;
+    await _prefs.setBool('roadmap_announcements_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapAnnounceTrigger(String key, bool value) async {
+    switch (key) {
+      case 'approach':
+        _roadmapAnnounceOnApproach = value;
+        await _prefs.setBool('roadmap_announce_on_approach', value);
+        break;
+      case 'onSpot':
+        _roadmapAnnounceOnSpot = value;
+        await _prefs.setBool('roadmap_announce_on_spot', value);
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapAnnounceDistanceMeters(double value) async {
+    _roadmapAnnounceDistanceMeters = value;
+    await _prefs.setDouble('roadmap_announce_distance_m', value);
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapAnnounceContent(String key, bool value) async {
+    switch (key) {
+      case 'title':
+        _roadmapAnnounceTitle = value;
+        await _prefs.setBool('roadmap_announce_title', value);
+        break;
+      case 'type':
+        _roadmapAnnounceType = value;
+        await _prefs.setBool('roadmap_announce_type', value);
+        break;
+      case 'description':
+        _roadmapAnnounceDescription = value;
+        await _prefs.setBool('roadmap_announce_description', value);
+        break;
+    }
     notifyListeners();
   }
 

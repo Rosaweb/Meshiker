@@ -17,6 +17,7 @@ dependencies:
   # --- BLOC LOCALISATION (DERNIÈRES VERSIONS) ---
   geolocator: ^14.0.2
   permission_handler: ^12.0.3
+  flutter_tts: ^4.2.5
   # --- BLOC CARTE (VERSIONS STABLES COMPATIBLES) ---
   flutter_map: ^7.0.2             # Limite imposée par vector_map_tiles
   latlong2: ^0.9.1               # Limite imposée par vector_map_tiles

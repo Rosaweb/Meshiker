@@ -16,6 +16,7 @@ import 'utils/tile_cache_service.dart';
 import 'utils/supabase_bootstrap_service.dart';
 import 'gpx/gpx_import_service.dart';
 import 'gpx/gpx_scanner_service.dart';
+import 'navigation/waypoint_announcement_service.dart';
 import 'sharing/trace_share_service.dart';
 
 void main() async {
@@ -73,6 +74,11 @@ void main() async {
         pedometerService: pedometerService,
         settingsService: settingsService,
       );
+      final waypointAnnouncementService = WaypointAnnouncementService(
+        mapViewModel: mapViewModel,
+        recordingService: recordingService,
+        settingsService: settingsService,
+      );
 
       const ownerUuid = 'user-local-123';
 
@@ -94,6 +100,7 @@ void main() async {
         await tileCacheService.init();
         await searchEngine.rebuildFromDatabase(isarService);
         await recordingService.init();
+        await waypointAnnouncementService.init();
 
         if (settingsService.gpxStoragePath != null) {
           unawaited(gpxScanner.scanFolder(settingsService.gpxStoragePath!));
@@ -112,6 +119,7 @@ void main() async {
             Provider.value(value: searchEngine),
             Provider.value(value: mapViewModel),
             Provider.value(value: recordingService),
+            Provider.value(value: waypointAnnouncementService),
             Provider.value(value: importService),
             Provider.value(value: supabaseBootstrap),
             Provider.value(value: traceShareService),

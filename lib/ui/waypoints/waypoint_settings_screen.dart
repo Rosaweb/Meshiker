@@ -4,6 +4,7 @@ import '../../database/isar_service.dart';
 import '../../models/waypoint.dart';
 import '../../utils/settings_service.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'waypoint_announcement_settings_section.dart';
 
 class WaypointSettingsScreen extends StatefulWidget {
   const WaypointSettingsScreen({super.key});
@@ -25,48 +26,82 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.white.withValues(alpha: 0.05),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('OPTIONS D\'AFFICHAGE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('Afficher les waypoints GPX', style: TextStyle(color: Colors.white, fontSize: 14)),
-                  subtitle: const Text('Désactivez pour ne voir que les waypoints indépendants', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                  value: settings.showGpxWaypoints,
-                  activeThumbColor: Colors.greenAccent,
-                  onChanged: (v) => settings.setShowGpxWaypoints(v),
-                ),
-                SwitchListTile(
-                  title: const Text('Afficher tous les waypoints sans dossiers', style: TextStyle(color: Colors.white, fontSize: 14)),
-                  subtitle: const Text('Liste à plat de tous les waypoints, y compris ceux rangés dans un dossier', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                  value: settings.flattenWaypointFolders,
-                  activeThumbColor: Colors.greenAccent,
-                  onChanged: (v) => settings.setFlattenWaypointFolders(v),
-                ),
-              ],
+      // CustomScrollView (plutôt qu'un Column fixe) : la section "ANNONCES
+      // VOCALES" rend le contenu au-dessus de la liste des types trop haut
+      // pour tenir sans défilement sur les petits écrans (bottom overflow).
+      // La ReorderableListView est intégrée en shrinkWrap dans un sliver
+      // plutôt que dans son propre Expanded, pour que tout défile ensemble.
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.white.withValues(alpha: 0.05),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('OPTIONS D\'AFFICHAGE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: const Text('Afficher les waypoints GPX', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    subtitle: const Text('Désactivez pour ne voir que les waypoints indépendants', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    value: settings.showGpxWaypoints,
+                    activeThumbColor: Colors.greenAccent,
+                    onChanged: (v) => settings.setShowGpxWaypoints(v),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Afficher tous les waypoints sans dossiers', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    subtitle: const Text('Liste à plat de tous les waypoints, y compris ceux rangés dans un dossier', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    value: settings.flattenWaypointFolders,
+                    activeThumbColor: Colors.greenAccent,
+                    onChanged: (v) => settings.setFlattenWaypointFolders(v),
+                  ),
+                ],
+              ),
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('GESTION DES TYPES', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+          SliverToBoxAdapter(
+            child: WaypointAnnouncementSettingsSection(
+              enabled: settings.waypointAnnouncementsEnabled,
+              onEnabledChanged: (v) => settings.setWaypointAnnouncementsEnabled(v),
+              onApproach: settings.waypointAnnounceOnApproach,
+              onApproachChanged: (v) => settings.setWaypointAnnounceTrigger('approach', v),
+              onSpot: settings.waypointAnnounceOnSpot,
+              onSpotChanged: (v) => settings.setWaypointAnnounceTrigger('onSpot', v),
+              approachDistanceMeters: settings.waypointAnnounceDistanceMeters,
+              onApproachDistanceChanged: (v) => settings.setWaypointAnnounceDistanceMeters(v),
+              announceTitle: settings.waypointAnnounceTitle,
+              onAnnounceTitleChanged: (v) => settings.setWaypointAnnounceContent('title', v),
+              announceType: settings.waypointAnnounceType,
+              onAnnounceTypeChanged: (v) => settings.setWaypointAnnounceContent('type', v),
+              announceDescription: settings.waypointAnnounceDescription,
+              onAnnounceDescriptionChanged: (v) => settings.setWaypointAnnounceContent('description', v),
             ),
           ),
-          Expanded(
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('GESTION DES TYPES', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
             child: FutureBuilder<List<WaypointCategory>>(
               future: isar.allCategories(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
                 final categories = snapshot.data!;
 
                 return ReorderableListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   buildDefaultDragHandles: false,
                   onReorder: (oldIndex, newIndex) async {
                     if (newIndex > categories.length) newIndex = categories.length;
@@ -112,6 +147,9 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
               },
             ),
           ),
+          // Espace en bas pour que le dernier élément ne soit pas masqué
+          // par le FloatingActionButton "+".
+          const SliverToBoxAdapter(child: SizedBox(height: 96)),
         ],
       ),
     );
