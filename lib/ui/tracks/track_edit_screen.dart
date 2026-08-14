@@ -24,7 +24,7 @@ import 'trace_elevation_profile_screen.dart';
 import 'trace_map_preview.dart';
 import 'trace_share_screen.dart';
 
-enum _TraceMenuAction { navigate, waypoints, share, offlineMap, color, move, delete }
+enum _TraceMenuAction { navigate, waypoints, share, offlineMap, color, reverse, move, delete }
 
 class TrackEditScreen extends StatefulWidget {
   final Trace trace;
@@ -39,7 +39,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
   late TextEditingController _nameController;
   late TextEditingController _descController;
   late Color _currentColor;
-  late final Future<List<GpxTrackPoint>> _pointsFuture;
+  late Future<List<GpxTrackPoint>> _pointsFuture;
 
   @override
   void initState() {
@@ -192,6 +192,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
               _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, 'Créer carte hors-ligne'),
               const PopupMenuDivider(),
               _menuItem(_TraceMenuAction.color, Icons.palette_outlined, 'Couleur de la trace'),
+              _menuItem(_TraceMenuAction.reverse, Icons.swap_horiz, 'Inverser le sens'),
               _menuItem(_TraceMenuAction.move, Icons.drive_file_move_outline, 'Déplacer'),
               _menuItem(_TraceMenuAction.delete, Icons.delete_outline, 'Supprimer', color: Colors.redAccent),
             ],
@@ -238,6 +239,9 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
         break;
       case _TraceMenuAction.color:
         _showColorPicker();
+        break;
+      case _TraceMenuAction.reverse:
+        _confirmReverse();
         break;
       case _TraceMenuAction.move:
         _moveSourceFile();
@@ -538,6 +542,45 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _confirmReverse() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Inverser le sens', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Le départ et l\'arrivée de cette trace seront échangés. Vous pouvez annuler en inversant à nouveau.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('ANNULER'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await _reverseDirection();
+            },
+            child: const Text('INVERSER', style: TextStyle(color: Colors.greenAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _reverseDirection() async {
+    final isar = context.read<IsarService>();
+    await isar.reverseTraceDirection(widget.trace);
+    if (!mounted) return;
+    setState(() {
+      _pointsFuture = isar.getTraceTrackPoints(widget.trace);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sens de la trace inversé.')),
     );
   }
 
