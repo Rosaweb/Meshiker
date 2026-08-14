@@ -266,6 +266,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       minLon: bounds.west,
       maxLon: bounds.east,
       activeGpxNames: widget.settingsService.activeGpxNames,
+      roadmapTraceName: widget.settingsService.roadmapTraceName,
+      showEveryWaypoint: widget.settingsService.showEveryWaypoint,
     );
     if (widget.settingsService.mapCreationStep == MapCreationStep.stretchArea &&
         widget.settingsService.mapOrigin != null) {
@@ -802,7 +804,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     isarService: widget.isarService,
                   ),
                 _PoisLayer(viewModel: widget.viewModel),
-                if (widget.settingsService.showAllWaypoints)
+                if (widget.settingsService.showAllWaypoints ||
+                    widget.settingsService.showEveryWaypoint)
                   _WaypointsLayer(
                     viewModel: widget.viewModel,
                     settings: widget.settingsService,
@@ -990,6 +993,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             expandProgress: _menuExpandController.value,
                             showAllWaypoints:
                                 widget.settingsService.showAllWaypoints,
+                            showEveryWaypoint:
+                                widget.settingsService.showEveryWaypoint,
                             showAllGpx: widget.settingsService.showAllGpx,
                             showMesh: widget.settingsService.showMesh,
                             onToggleRotation: () {
@@ -1058,8 +1063,33 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             },
                             onToggleWaypoints: () {
                               _dismissLocateBackButton();
-                              widget.settingsService.setShowAllWaypoints(
-                                  !widget.settingsService.showAllWaypoints);
+                              // Un appui simple pendant le mode "intégralité"
+                              // (appui long) y met fin et révèle l'affichage
+                              // de départ, sans toucher au réglage on/off
+                              // normal -- ce n'est qu'ensuite qu'un nouvel
+                              // appui simple bascule ce réglage.
+                              if (widget.settingsService.showEveryWaypoint) {
+                                widget.settingsService
+                                    .setShowEveryWaypoint(false);
+                              } else {
+                                widget.settingsService.setShowAllWaypoints(
+                                    !widget.settingsService.showAllWaypoints);
+                              }
+                              widget.viewModel.reloadWaypointDisplay(
+                                roadmapTraceName:
+                                    widget.settingsService.roadmapTraceName,
+                                showEveryWaypoint:
+                                    widget.settingsService.showEveryWaypoint,
+                              );
+                            },
+                            onLongPressWaypoints: () {
+                              _dismissLocateBackButton();
+                              widget.settingsService.setShowEveryWaypoint(true);
+                              widget.viewModel.reloadWaypointDisplay(
+                                roadmapTraceName:
+                                    widget.settingsService.roadmapTraceName,
+                                showEveryWaypoint: true,
+                              );
                             },
                             onToggleGpx: () {
                               _dismissLocateBackButton();
@@ -1355,6 +1385,7 @@ class _BottomControlBar extends StatelessWidget {
   final bool expanded;
   final double expandProgress;
   final bool showAllWaypoints;
+  final bool showEveryWaypoint;
   final bool showAllGpx;
   final bool showMesh;
 
@@ -1368,6 +1399,7 @@ class _BottomControlBar extends StatelessWidget {
   final VoidCallback onCancelMeasure;
 
   final VoidCallback onToggleWaypoints;
+  final VoidCallback onLongPressWaypoints;
   final VoidCallback onToggleGpx;
   final VoidCallback onToggleCompass;
   final VoidCallback onResegmentMesh;
@@ -1393,6 +1425,7 @@ class _BottomControlBar extends StatelessWidget {
     required this.expanded,
     required this.expandProgress,
     required this.showAllWaypoints,
+    required this.showEveryWaypoint,
     required this.showAllGpx,
     required this.showMesh,
     required this.onToggleRotation,
@@ -1404,6 +1437,7 @@ class _BottomControlBar extends StatelessWidget {
     required this.onValidatePoint,
     required this.onCancelMeasure,
     required this.onToggleWaypoints,
+    required this.onLongPressWaypoints,
     required this.onToggleGpx,
     required this.onToggleCompass,
     required this.onResegmentMesh,
@@ -1527,16 +1561,18 @@ class _BottomControlBar extends StatelessWidget {
           child: const Icon(Icons.delete_outline, color: Colors.redAccent)),
       _RoundButton(
         onPressed: onToggleWaypoints,
-        child: Icon(Icons.location_on,
-            color: showAllWaypoints ? Colors.greenAccent : Colors.white38),
+        onLongPress: onLongPressWaypoints,
+        child: _WaypointToggleIcon(
+            active: showAllWaypoints, showEverything: showEveryWaypoint),
       ),
     ];
 
     final List<Widget> gpxExpandedButtons = [
       _RoundButton(
         onPressed: onToggleWaypoints,
-        child: Icon(Icons.location_on,
-            color: showAllWaypoints ? Colors.greenAccent : Colors.white38),
+        onLongPress: onLongPressWaypoints,
+        child: _WaypointToggleIcon(
+            active: showAllWaypoints, showEverything: showEveryWaypoint),
       ),
       _RoundButton(
         onPressed: onToggleGpx,
@@ -2278,12 +2314,14 @@ class _MeasurementInfo extends StatelessWidget {
 class _RoundButton extends StatelessWidget {
   final Widget child;
   final VoidCallback onPressed;
-  const _RoundButton({required this.child, required this.onPressed});
+  final VoidCallback? onLongPress;
+  const _RoundButton({required this.child, required this.onPressed, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onPressed,
+      onLongPress: onLongPress,
       child: Container(
         width: 44,
         height: 44,
@@ -2294,6 +2332,34 @@ class _RoundButton extends StatelessWidget {
         ),
         child: Center(child: child),
       ),
+    );
+  }
+}
+
+/// Icône du bouton d'affichage des waypoints : distingue visuellement les
+/// trois modes (masqué / affiché selon le contexte / intégralité via appui
+/// long) -- voir "Affichage des waypoints" dans l'écran d'Aide. En mode
+/// "intégralité", un liseret vert extérieur encercle le pictogramme.
+class _WaypointToggleIcon extends StatelessWidget {
+  final bool active;
+  final bool showEverything;
+  const _WaypointToggleIcon({required this.active, required this.showEverything});
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(
+      Icons.location_on,
+      color: (active || showEverything) ? Colors.greenAccent : Colors.white38,
+      size: showEverything ? 20 : 24,
+    );
+    if (!showEverything) return icon;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(BorderSide(color: Colors.greenAccent, width: 2)),
+      ),
+      child: icon,
     );
   }
 }

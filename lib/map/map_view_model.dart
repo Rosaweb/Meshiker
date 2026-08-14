@@ -8,6 +8,7 @@ import '../models/segment.dart';
 import '../models/waypoint.dart';
 import '../models/trace.dart';
 import '../sync/sync_engine.dart';
+import '../utils/geo_utils.dart';
 import '../utils/overpass_service.dart';
 
 /// Alimente MapScreen en segments/POI visibles dans le viewport courant.
@@ -57,6 +58,8 @@ class MapViewModel {
   ({double minLat, double maxLat, double minLon, double maxLon})?
       _lastBounds;
   List<String> _lastActiveGpxNames = const [];
+  String? _lastRoadmapTraceName;
+  bool _lastShowEveryWaypoint = false;
 
   /// A appeler quand le viewport de la carte change (deplacement, zoom).
   /// Debounce volontairement les appels rapproches (l'utilisateur qui
@@ -69,10 +72,14 @@ class MapViewModel {
     required double minLon,
     required double maxLon,
     List<String> activeGpxNames = const [],
+    String? roadmapTraceName,
+    bool showEveryWaypoint = false,
     Duration debounce = const Duration(milliseconds: 300),
   }) {
     _lastBounds = (minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon);
     _lastActiveGpxNames = activeGpxNames;
+    _lastRoadmapTraceName = roadmapTraceName;
+    _lastShowEveryWaypoint = showEveryWaypoint;
     _debounce?.cancel();
     _debounce = Timer(debounce, () {
       unawaited(_reload(
@@ -81,6 +88,8 @@ class MapViewModel {
         minLon: minLon,
         maxLon: maxLon,
         activeGpxNames: activeGpxNames,
+        roadmapTraceName: roadmapTraceName,
+        showEveryWaypoint: showEveryWaypoint,
       ));
     });
   }
@@ -99,6 +108,32 @@ class MapViewModel {
       minLon: b.minLon,
       maxLon: b.maxLon,
       activeGpxNames: _lastActiveGpxNames,
+      roadmapTraceName: _lastRoadmapTraceName,
+      showEveryWaypoint: _lastShowEveryWaypoint,
+    );
+  }
+
+  /// Rechargement immédiat dédié au bouton d'affichage des waypoints (tap
+  /// / appui long) : contrairement à [refreshNow], les nouvelles valeurs
+  /// sont fournies explicitement plutôt que rejouées depuis le dernier
+  /// [onViewportChanged] connu, qui serait sinon périmé tant que la carte
+  /// n'a pas rebougé.
+  Future<void> reloadWaypointDisplay({
+    required String? roadmapTraceName,
+    required bool showEveryWaypoint,
+  }) async {
+    _lastRoadmapTraceName = roadmapTraceName;
+    _lastShowEveryWaypoint = showEveryWaypoint;
+    final b = _lastBounds;
+    if (b == null) return;
+    await _reload(
+      minLat: b.minLat,
+      maxLat: b.maxLat,
+      minLon: b.minLon,
+      maxLon: b.maxLon,
+      activeGpxNames: _lastActiveGpxNames,
+      roadmapTraceName: roadmapTraceName,
+      showEveryWaypoint: showEveryWaypoint,
     );
   }
 
@@ -108,6 +143,8 @@ class MapViewModel {
     required double minLon,
     required double maxLon,
     List<String> activeGpxNames = const [],
+    String? roadmapTraceName,
+    bool showEveryWaypoint = false,
   }) async {
     // 1. Local d'abord, toujours : c'est ce qui garantit l'usage en zone
     // blanche.
@@ -124,13 +161,53 @@ class MapViewModel {
       maxLon: maxLon,
     );
     
-    // Nouveaux waypoints
-    waypoints.value = await isarService.searchWaypoints(
-      minLat: minLat,
-      maxLat: maxLat,
-      minLon: minLon,
-      maxLon: maxLon,
-    );
+    // Waypoints -- portée dépendante du contexte (voir doc utilisateur
+    // "Affichage des waypoints" / HelpScreen) :
+    // - appui long actif (showEveryWaypoint) : tout, sans filtre de trace ;
+    // - une trace est chargée en navigation ET toujours affichée : ses
+    //   seuls waypoints ;
+    // - sinon : les waypoints de toutes les traces actuellement affichées
+    //   (aucune si aucune trace n'est affichée).
+    final effectiveRoadmapTrace =
+        (roadmapTraceName != null && activeGpxNames.contains(roadmapTraceName))
+            ? roadmapTraceName
+            : null;
+
+    final List<Waypoint> fetchedWaypoints;
+    if (showEveryWaypoint) {
+      fetchedWaypoints = await isarService.searchWaypoints(
+        minLat: minLat,
+        maxLat: maxLat,
+        minLon: minLon,
+        maxLon: maxLon,
+      );
+    } else if (effectiveRoadmapTrace != null) {
+      fetchedWaypoints = await isarService.searchWaypoints(
+        minLat: minLat,
+        maxLat: maxLat,
+        minLon: minLon,
+        maxLon: maxLon,
+        filterGpxName: effectiveRoadmapTrace,
+      );
+    } else if (activeGpxNames.isNotEmpty) {
+      fetchedWaypoints = await isarService.searchWaypoints(
+        minLat: minLat,
+        maxLat: maxLat,
+        minLon: minLon,
+        maxLon: maxLon,
+        filterGpxNames: activeGpxNames,
+      );
+    } else {
+      fetchedWaypoints = const [];
+    }
+    // Isar ne charge pas automatiquement les IsarLinks : sans ce chargement,
+    // la fenêtre contextuelle du waypoint (ouverte depuis la carte) ne
+    // pourrait jamais présélectionner son type/dossier actuel.
+    for (final wp in fetchedWaypoints) {
+      await wp.category.load();
+      await wp.folder.load();
+    }
+    waypoints.value = fetchedWaypoints;
 
     // Traces actives
     activeTraces.value = await isarService.tracesByNames(activeGpxNames);
@@ -180,13 +257,32 @@ class MapViewModel {
     }
   }
 
+  /// Distance en dessous de laquelle un POI OSM est considéré comme "le
+  /// même point" qu'un waypoint local déjà enregistré (ex : un waypoint
+  /// créé sur une source ou un refuge déjà répertorié dans OSM).
+  static const double _osmDedupThresholdMeters = 25.0;
+
   Future<void> _reloadOsmPois(double minLat, double minLon, double maxLat, double maxLon) async {
     // On ne fetch que si on est à un niveau de zoom suffisant pour éviter les requêtes trop larges
     // Cette info n'est pas directement ici, on pourrait passer le zoom ou checker la taille de la bbox
-    if ((maxLat - minLat).abs() > 0.5) return; 
+    if ((maxLat - minLat).abs() > 0.5) return;
 
     final fetched = await OverpassService.fetchPois(minLat, minLon, maxLat, maxLon);
-    osmPois.value = fetched;
+
+    // On exclut les POI OSM qui coïncident avec un waypoint local existant :
+    // sinon deux marqueurs se superposent au même endroit et celui du POI
+    // OSM (dessiné par-dessus, voir _OsmPoisLayer dans map_screen.dart)
+    // intercepte les taps destinés au vrai waypoint, ouvrant par erreur la
+    // création d'un doublon au lieu de l'édition du waypoint existant.
+    final localWaypoints = waypoints.value;
+    osmPois.value = fetched.where((poi) {
+      return localWaypoints.every((wp) => GeoUtils.haversineMeters(
+            poi.location.latitude,
+            poi.location.longitude,
+            wp.latitude,
+            wp.longitude,
+          ) > _osmDedupThresholdMeters);
+    }).toList();
   }
 
   void dispose() {

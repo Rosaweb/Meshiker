@@ -9,6 +9,7 @@ import '../../utils/geo_utils.dart';
 import '../../utils/settings_service.dart';
 import '../../recording/recording_service.dart';
 import '../waypoints/waypoint_edit_screen.dart';
+import 'roadmap_settings_screen.dart';
 import 'track_manager_screen.dart';
 
 /// Affiche les waypoints de la trace GPX unique actuellement chargée dans le
@@ -47,6 +48,14 @@ class RoadmapScreen extends StatelessWidget {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const TrackManagerScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Paramètres du Roadmap',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RoadmapSettingsScreen()),
             ),
           ),
         ],

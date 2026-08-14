@@ -48,9 +48,15 @@ class SettingsService extends ChangeNotifier {
   bool _showScale = true;
   bool _reversePanels = false;
   bool _showAllWaypoints = true;
+  // Volontairement jamais persisté ni initialisé à true au démarrage :
+  // "afficher l'intégralité des waypoints" (appui long sur le bouton, cf.
+  // showAllWaypoints/roadmapTraceName pour le mode normal) est une
+  // consultation ponctuelle, pas une préférence durable.
+  bool _showEveryWaypoint = false;
   bool _showAllGpx = true;
   DisplayMode _displayMode = DisplayMode.gpx;
   bool _showGpxWaypoints = true;
+  bool _flattenWaypointFolders = false;
   bool _locationEnabled = true;
   // Couleur d'accent appliquée aux cadres/titres/icônes de l'écran Outils
   // de navigation (et, à terme, à d'autres éléments des paramètres).
@@ -131,10 +137,12 @@ class SettingsService extends ChangeNotifier {
   bool get showScale => _showScale;
   bool get reversePanels => _reversePanels;
   bool get showAllWaypoints => _showAllWaypoints;
+  bool get showEveryWaypoint => _showEveryWaypoint;
   DisplayMode get displayMode => _displayMode;
   bool get showAllGpx => _showAllGpx;
   bool get showMesh => _displayMode == DisplayMode.mesh;
   bool get showGpxWaypoints => _showGpxWaypoints;
+  bool get flattenWaypointFolders => _flattenWaypointFolders;
   bool get locationEnabled => _locationEnabled;
   Color get accentColor => Color(_accentColorHex);
   double get waypointIconSize => _waypointIconSize;
@@ -169,6 +177,17 @@ class SettingsService extends ChangeNotifier {
   String? get navigationWaypointUuid => _navigationWaypointUuid;
   bool get waypointSelectionMode => _waypointSelectionMode;
   String? get roadmapTraceName => _roadmapTraceName;
+
+  /// Vrai si une trace est chargée pour la navigation (Roadmap) ET reste
+  /// affichée sur la carte. `roadmapTraceName` n'est jamais remis à `null`
+  /// après un `setRoadmapTraceName` (pas de "quitter la navigation"
+  /// explicite dans l'app) : si l'utilisateur désactive ensuite l'affichage
+  /// de cette trace depuis le Track Manager, elle reste techniquement
+  /// "chargée" mais ne doit plus compter comme telle pour l'affichage des
+  /// waypoints (cf. logique d'affichage des waypoints).
+  bool get hasActiveRoadmapTrace =>
+      _roadmapTraceName != null && _activeGpxNames.contains(_roadmapTraceName);
+
   final MapCreationStep _mapCreationStepProp = MapCreationStep.none;
   MapCreationStep get mapCreationStep => _mapCreationStep;
   ({double lat, double lon})? get mapOrigin => _mapOrigin;
@@ -213,6 +232,7 @@ class SettingsService extends ChangeNotifier {
     // On force le mode GPX au démarrage (ne pas charger depuis les préférences)
     _displayMode = DisplayMode.gpx;
     _showGpxWaypoints = _prefs.getBool('show_gpx_waypoints') ?? true;
+    _flattenWaypointFolders = _prefs.getBool('flatten_waypoint_folders') ?? false;
     _locationEnabled = _prefs.getBool('location_enabled') ?? true;
     _accentColorHex = _prefs.getInt('accent_color') ?? 0xFF69F0AE;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
@@ -358,6 +378,15 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Mode "appui long" du bouton d'affichage des waypoints : montre
+  /// l'intégralité des waypoints (toutes traces et dossiers confondus),
+  /// sans persistance -- un appui simple suivant y met fin.
+  void setShowEveryWaypoint(bool value) {
+    if (_showEveryWaypoint == value) return;
+    _showEveryWaypoint = value;
+    notifyListeners();
+  }
+
   Future<void> setDisplayMode(DisplayMode mode) async {
     _displayMode = mode;
     await _prefs.setInt('display_mode', mode.index);
@@ -373,6 +402,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setShowGpxWaypoints(bool value) async {
     _showGpxWaypoints = value;
     await _prefs.setBool('show_gpx_waypoints', value);
+    notifyListeners();
+  }
+
+  Future<void> setFlattenWaypointFolders(bool value) async {
+    _flattenWaypointFolders = value;
+    await _prefs.setBool('flatten_waypoint_folders', value);
     notifyListeners();
   }
 
