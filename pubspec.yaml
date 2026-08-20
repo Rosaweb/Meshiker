@@ -51,6 +51,8 @@ dependencies:
   mobile_scanner: ^7.4.0
   shelf: ^1.4.2
   shelf_router: ^1.1.4
+  web_socket_channel: ^3.0.3
+  flutter_sound: ^9.30.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -19,6 +19,9 @@
     <!-- Permission pour le scan de QR code (réception d'un partage) -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Permission pour le micro de l'assistant IA conversationnel -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- Permissions pour la localisation -->
     <uses-feature android:name="android.hardware.location.gps" />
 
