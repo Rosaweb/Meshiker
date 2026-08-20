@@ -101,6 +101,7 @@ class SettingsService extends ChangeNotifier {
   String? _recordingSubPath; // Nouveau : dossier d'enregistrement par défaut
   double _tileCacheLimitMb = 500.0;
   bool _wifiOnlyDownload = true;
+  bool _aiAssistantDisabled = false;
   List<String> _favoriteMapIds = ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
 
   // État de navigation
@@ -207,6 +208,11 @@ class SettingsService extends ChangeNotifier {
   String? get recordingSubPath => _recordingSubPath;
   double get tileCacheLimitMb => _tileCacheLimitMb;
   bool get wifiOnlyDownload => _wifiOnlyDownload;
+  /// Masque les points d'entrée de l'assistant IA conversationnel (page
+  /// Aide, volet Navigation) — sans effet sur les annonces vocales de
+  /// waypoints, fonctionnalité déterministe indépendante (voir
+  /// `waypoint_announcement_settings_section.dart`).
+  bool get aiAssistantDisabled => _aiAssistantDisabled;
   List<String> get favoriteMapIds => _favoriteMapIds;
   List<String> get activeGpxNames => _activeGpxNames;
   String? get navigationWaypointUuid => _navigationWaypointUuid;
@@ -302,6 +308,7 @@ class SettingsService extends ChangeNotifier {
     _recordingSubPath = _prefs.getString('recording_sub_path');
     _tileCacheLimitMb = _prefs.getDouble('tile_cache_limit_mb') ?? 500.0;
     _wifiOnlyDownload = _prefs.getBool('wifi_only_download') ?? true;
+    _aiAssistantDisabled = _prefs.getBool('ai_assistant_disabled') ?? false;
     _favoriteMapIds = _prefs.getStringList('favorite_maps') ?? ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
     
     _activeGpxNames = _prefs.getStringList('active_gpx_list') ?? [];
@@ -657,6 +664,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setWifiOnlyDownload(bool value) async {
     _wifiOnlyDownload = value;
     await _prefs.setBool('wifi_only_download', value);
+    notifyListeners();
+  }
+
+  Future<void> setAiAssistantDisabled(bool value) async {
+    _aiAssistantDisabled = value;
+    await _prefs.setBool('ai_assistant_disabled', value);
     notifyListeners();
   }
 

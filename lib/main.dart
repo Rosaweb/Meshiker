@@ -20,6 +20,7 @@ import 'gpx/gpx_import_service.dart';
 import 'gpx/gpx_scanner_service.dart';
 import 'navigation/waypoint_announcement_service.dart';
 import 'sharing/trace_share_service.dart';
+import 'assistant/assistant_service.dart';
 
 void main() async {
   // Capture les erreurs Flutter (UI, etc.)
@@ -61,6 +62,7 @@ void main() async {
       final tileCacheService = TileCacheService(settingsService: settingsService);
       final supabaseBootstrap = SupabaseBootstrapService();
       final authService = AuthService(isarService: isarService);
+      final assistantService = AssistantService(supabaseBootstrap: supabaseBootstrap);
       final searchEngine = LocalSearchEngine();
       final importService = GpxImportService(isarService: isarService, searchEngine: searchEngine);
       final traceShareService = TraceShareService(
@@ -101,7 +103,17 @@ void main() async {
         // AuthService/SubscriptionService.init, piège documenté dans
         // spec-authentification-paywall.md section 9).
         await supabaseBootstrap.init();
-        await authService.init();
+        try {
+          // supabaseBootstrap.init() est déjà non-fatal par conception (cf.
+          // son propre commentaire), mais AuthService.init() accède
+          // directement à Supabase.instance : si l'initialisation du SDK
+          // lui-même n'a jamais abouti (ex. SUPABASE_URL/ANON_KEY absents),
+          // cet accès lève une exception non catchée qui bloquerait tout le
+          // démarrage de l'app — contraire au principe "zone blanche".
+          await authService.init();
+        } catch (e) {
+          debugPrint('AuthService init error: $e');
+        }
         try {
           await subscriptionService.init(appUserId: authService.currentUser?.id);
         } catch (e) {
@@ -134,6 +146,7 @@ void main() async {
             Provider.value(value: importService),
             Provider.value(value: supabaseBootstrap),
             Provider.value(value: traceShareService),
+            Provider.value(value: assistantService),
             ChangeNotifierProvider.value(value: gpxScanner),
             StreamProvider<ConnectivityResult>(
               create: (_) => Connectivity().onConnectivityChanged.map((results) => results.first),

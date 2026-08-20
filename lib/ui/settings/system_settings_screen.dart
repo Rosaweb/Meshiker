@@ -46,6 +46,10 @@ class SystemSettingsScreen extends StatelessWidget {
                 const Text('PHOTOS', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildPhotoSection(context),
+                const SizedBox(height: 32),
+                const Text('ASSISTANT IA', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                _buildAiAssistantSection(context, settings),
               ],
             );
           },
@@ -299,6 +303,29 @@ class SystemSettingsScreen extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildAiAssistantSection(BuildContext context, SettingsService settings) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: SwitchListTile(
+        title: const Text('Désactiver l\'assistant IA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        subtitle: const Text(
+          'Masque les points d\'entrée de l\'assistant conversationnel dans l\'aide et la navigation. '
+          'Les annonces vocales des waypoints ne sont pas concernées.',
+          style: TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+        value: settings.aiAssistantDisabled,
+        onChanged: (v) => settings.setAiAssistantDisabled(v),
+        activeThumbColor: Colors.greenAccent,
+        contentPadding: EdgeInsets.zero,
       ),
     );
   }
