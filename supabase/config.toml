@@ -10,3 +10,8 @@
 # d'atteindre le code de la fonction (observé : 401
 # UNAUTHORIZED_INVALID_JWT_FORMAT).
 verify_jwt = false
+
+[functions.assistant-token]
+# JWT Supabase standard (attaché automatiquement par supabase_flutter) :
+# verify_jwt reste à sa valeur par défaut (true).
+static_files = ["./functions/assistant-token/manuel_utilisateur.md"]
