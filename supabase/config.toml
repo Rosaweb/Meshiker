@@ -1,0 +1,12 @@
+# Config CLI Supabase (npx supabase ...). Voir supabase/schema.sql et
+# supabase/functions.sql pour le reste du backend (pas géré par des
+# migrations CLI, cf. gotcha "Supabase setup" — collé manuellement dans
+# l'éditeur SQL du dashboard ou via `supabase db query --linked`).
+
+[functions.revenuecat-webhook]
+# RevenueCat envoie son propre secret partagé dans l'en-tête Authorization
+# (vérifié à la main dans index.ts), pas un JWT Supabase — la vérification
+# JWT par défaut de la passerelle rejette sinon la requête avant même
+# d'atteindre le code de la fonction (observé : 401
+# UNAUTHORIZED_INVALID_JWT_FORMAT).
+verify_jwt = false

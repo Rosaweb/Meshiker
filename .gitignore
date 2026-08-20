@@ -60,5 +60,5 @@ android/key.properties
 *.jks
 *.keystore
 
-# Supabase CLI local state
+# État local de `supabase link` (CLI), régénéré par machine
 supabase/.temp/
