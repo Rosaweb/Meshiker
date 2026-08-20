@@ -17,9 +17,15 @@ class SubscriptionService extends ChangeNotifier {
   Offerings? _offerings;
   Offerings? get offerings => _offerings;
 
-  /// Clé API fournie. Note : Les clés commençant par 'test_' sont souvent 
-  /// limitées. En production/APK, utilisez les clés 'goog_' ou 'appl_'.
-  static const _apiKey = 'test_juekxUQmWXJYnKTwtOPKWBKKyeG';
+  /// Clés API RevenueCat, une par store (SDK key publique, embarquable côté
+  /// client par conception RevenueCat). La clé iOS n'est pas encore
+  /// disponible (à remplacer par la clé 'appl_' une fois créée côté
+  /// RevenueCat) — 'test_' pointe vers leur Test Store, pas App Store réel.
+  static const _androidApiKey = 'goog_GdPXXVTGWBrSrhGsjegbpsnHRer';
+  static const _iosApiKey = 'test_juekxUQmWXJYnKTwtOPKWBKKyeG';
+
+  static String get _apiKey =>
+      defaultTargetPlatform == TargetPlatform.iOS ? _iosApiKey : _androidApiKey;
 
   /// Initialise le SDK RevenueCat de manière ultra-sécurisée.
   Future<void> init() async {

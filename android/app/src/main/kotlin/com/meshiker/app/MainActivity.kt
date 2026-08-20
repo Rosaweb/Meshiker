@@ -1,4 +1,4 @@
-package com.example.meshiker
+package com.meshiker.app
 
 import android.graphics.Rect
 import android.os.Build

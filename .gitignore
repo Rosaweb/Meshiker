@@ -55,5 +55,10 @@ analyze_output.txt
 # Secrets locaux (URL/clé Supabase) — voir env.example.json
 env.json
 
+# Clé de signature Android release — voir android/key.properties.example
+android/key.properties
+*.jks
+*.keystore
+
 # Supabase CLI local state
 supabase/.temp/

@@ -8,7 +8,7 @@
 PRODUCT_NAME = meshiker
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.meshiker
+PRODUCT_BUNDLE_IDENTIFIER = com.meshiker.app
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 com.meshiker. All rights reserved.
