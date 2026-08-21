@@ -25,8 +25,6 @@ import 'tracks/roadmap_screen.dart';
 import 'segments/segment_manager_screen.dart';
 import 'waypoints/waypoint_manager_screen.dart';
 import 'assistant/assistant_prompt_bar.dart';
-import '../assistant/assistant_service.dart';
-import '../utils/subscription_service.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final IsarService isarService;
@@ -546,7 +544,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         children: [
           _buildLiveStatsGrid(settings),
           const SizedBox(height: 12),
-          _buildAiQuickButton(settings),
           if (settings.navShowNextWaypoint) ...[
             _buildNavSection(
                 'PROCHAIN WAYPOINT',
@@ -617,42 +614,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           const AssistantPromptBar(showMicButton: false),
         ],
       ),
-    );
-  }
-
-  /// Bouton d'accès rapide à l'assistant IA en mode vocal (appui → micro
-  /// direct → envoi automatique → réponse vocale), cf. IA interface
-  /// utilisateur.txt. Mêmes règles de masquage que `AssistantPromptBar`
-  /// (désactivé dans les paramètres, ou non-premium) — dupliquées ici car
-  /// c'est un bouton isolé, pas la barre de saisie complète.
-  Widget _buildAiQuickButton(SettingsService settings) {
-    final isPremium = context.watch<SubscriptionService>().isPremium;
-    if (settings.aiAssistantDisabled || !isPremium) {
-      return const SizedBox.shrink();
-    }
-
-    final assistant = context.read<AssistantService>();
-    return ValueListenableBuilder<AssistantSessionState>(
-      valueListenable: assistant.state,
-      builder: (context, state, _) {
-        final idle = state == AssistantSessionState.idle;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: ElevatedButton.icon(
-            onPressed: idle ? assistant.askVoice : null,
-            icon: Icon(idle ? Icons.mic : Icons.mic_none, color: Colors.white),
-            label: Text(
-              idle ? 'Poser une question à l\'assistant IA' : 'Assistant IA en cours...',
-              style: const TextStyle(color: Colors.white),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white10,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 44),
-            ),
-          ),
-        );
-      },
     );
   }
 

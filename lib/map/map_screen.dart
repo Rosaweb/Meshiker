@@ -41,6 +41,8 @@ import '../ui/settings/maps_settings_screen.dart';
 import '../ui/tracks/roadmap_screen.dart';
 import '../ui/tracks/track_edit_screen.dart';
 import '../ui/tracks/track_manager_screen.dart';
+import '../assistant/assistant_service.dart';
+import '../utils/subscription_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({
@@ -1597,6 +1599,27 @@ class _BottomControlBar extends StatelessWidget {
         onPressed: onToggleCompass,
         child: const Icon(Icons.explore, color: Colors.white38),
       ),
+      // Accès rapide vocal à l'assistant IA, sur la deuxième rangée du
+      // toolbar de la carte (demande explicite de l'utilisateur : l'écran
+      // principal doit rester visible pendant que la question est posée,
+      // contrairement au bouton d'origine placé dans le volet Navigation).
+      // Le prompt texte + bouton d'envoi restent dans le volet Navigation
+      // (AssistantPromptBar) — seul ce déclenchement micro est déporté ici.
+      if (!context.watch<SettingsService>().aiAssistantDisabled &&
+          context.watch<SubscriptionService>().isPremium)
+        ValueListenableBuilder<AssistantSessionState>(
+          valueListenable: context.watch<AssistantService>().state,
+          builder: (context, state, _) {
+            final idle = state == AssistantSessionState.idle;
+            return _RoundButton(
+              onPressed: idle ? context.read<AssistantService>().askVoice : () {},
+              child: Icon(
+                idle ? Icons.mic : Icons.mic_none,
+                color: idle ? Colors.white70 : Colors.greenAccent,
+              ),
+            );
+          },
+        ),
     ];
 
     return Container(
