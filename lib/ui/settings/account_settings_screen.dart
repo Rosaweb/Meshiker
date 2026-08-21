@@ -7,6 +7,7 @@ import '../../models/utilisateur.dart';
 import '../auth/login_screen.dart';
 import '../auth/secure_account_screen.dart';
 import 'about_screen.dart';
+import 'promo_code_bottom_sheet.dart';
 
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
@@ -181,6 +182,11 @@ class AccountSettingsScreen extends StatelessWidget {
                 onPressed: () => subService.restorePurchases(),
                 child: const Text('Restaurer mes achats', style: TextStyle(color: Colors.white70)),
               ),
+              if (!subService.isPremium)
+                TextButton(
+                  onPressed: () => PromoCodeBottomSheet.show(context),
+                  child: const Text("J'ai un code", style: TextStyle(color: Colors.white70)),
+                ),
             ],
           ),
         ),

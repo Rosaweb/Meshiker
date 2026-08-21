@@ -109,6 +109,21 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
+  /// À appeler juste après une rédemption de code promo réussie
+  /// (redeem-promo-code) : l'entitlement a été accordé côté RevenueCat par
+  /// l'Edge Function, mais le cache local du SDK ne le sait pas encore.
+  /// Invalide ce cache puis recharge, pour que `isPremium` reflète le
+  /// nouvel état sans attendre un relancement de l'app.
+  Future<void> refreshAfterPromoCodeRedeem() async {
+    try {
+      await Purchases.invalidateCustomerInfoCache();
+      final info = await Purchases.getCustomerInfo();
+      _updateFromCustomerInfo(info);
+    } catch (e) {
+      debugPrint('RevenueCat: Error refreshing after promo redeem: $e');
+    }
+  }
+
   /// Ouvre le Customer Center de RevenueCat (Best practice moderne).
   /// Permet à l'utilisateur de gérer ses abonnements, voir l'historique, etc.
   Future<void> presentCustomerCenter() async {
