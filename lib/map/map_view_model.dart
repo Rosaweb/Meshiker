@@ -9,6 +9,7 @@ import '../models/waypoint.dart';
 import '../models/trace.dart';
 import '../sync/sync_engine.dart';
 import '../utils/overpass_service.dart';
+import '../utils/osm_poi_cache.dart';
 
 /// Alimente MapScreen en segments/POI visibles dans le viewport courant.
 ///
@@ -32,6 +33,12 @@ class MapViewModel {
   final ValueNotifier<List<Trace>> activeTraces = ValueNotifier(const []);
   final ValueNotifier<List<OsmPoi>> osmPois = ValueNotifier(const []);
   final ValueNotifier<bool> isRefreshingCommunityData = ValueNotifier(false);
+  final ValueNotifier<bool> isLoadingOsmPois = ValueNotifier(false);
+
+  /// Cache par grille des POI OSM déjà récupérés dans la session en cours
+  /// (voir OsmPoiCache) -- évite de rappeler Overpass pour une zone déjà
+  /// visitée.
+  final OsmPoiCache _osmPoiCache = OsmPoiCache();
 
   /// Dernière position caméra connue de MapScreen (centre + zoom), tenue à
   /// jour à chaque déplacement. Lu par MainNavigationScreen à la mise en
@@ -57,6 +64,10 @@ class MapViewModel {
   ({double minLat, double maxLat, double minLon, double maxLon})?
       _lastBounds;
   List<String> _lastActiveGpxNames = const [];
+  double _lastZoom = 15;
+  bool _lastOsmPoisEnabled = false;
+  Set<String> _lastOsmPoiCategoryIds = const {};
+  bool _lastLoadWaypointCategories = false;
 
   /// A appeler quand le viewport de la carte change (deplacement, zoom).
   /// Debounce volontairement les appels rapproches (l'utilisateur qui
@@ -69,10 +80,18 @@ class MapViewModel {
     required double minLon,
     required double maxLon,
     List<String> activeGpxNames = const [],
+    double zoom = 15,
+    bool osmPoisEnabled = false,
+    Set<String> osmPoiCategoryIds = const {},
+    bool loadWaypointCategories = false,
     Duration debounce = const Duration(milliseconds: 300),
   }) {
     _lastBounds = (minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon);
     _lastActiveGpxNames = activeGpxNames;
+    _lastZoom = zoom;
+    _lastOsmPoisEnabled = osmPoisEnabled;
+    _lastOsmPoiCategoryIds = osmPoiCategoryIds;
+    _lastLoadWaypointCategories = loadWaypointCategories;
     _debounce?.cancel();
     _debounce = Timer(debounce, () {
       unawaited(_reload(
@@ -81,6 +100,10 @@ class MapViewModel {
         minLon: minLon,
         maxLon: maxLon,
         activeGpxNames: activeGpxNames,
+        zoom: zoom,
+        osmPoisEnabled: osmPoisEnabled,
+        osmPoiCategoryIds: osmPoiCategoryIds,
+        loadWaypointCategories: loadWaypointCategories,
       ));
     });
   }
@@ -99,6 +122,10 @@ class MapViewModel {
       minLon: b.minLon,
       maxLon: b.maxLon,
       activeGpxNames: _lastActiveGpxNames,
+      zoom: _lastZoom,
+      osmPoisEnabled: _lastOsmPoisEnabled,
+      osmPoiCategoryIds: _lastOsmPoiCategoryIds,
+      loadWaypointCategories: _lastLoadWaypointCategories,
     );
   }
 
@@ -108,6 +135,10 @@ class MapViewModel {
     required double minLon,
     required double maxLon,
     List<String> activeGpxNames = const [],
+    double zoom = 15,
+    bool osmPoisEnabled = false,
+    Set<String> osmPoiCategoryIds = const {},
+    bool loadWaypointCategories = false,
   }) async {
     // 1. Local d'abord, toujours : c'est ce qui garantit l'usage en zone
     // blanche.
@@ -123,20 +154,28 @@ class MapViewModel {
       minLon: minLon,
       maxLon: maxLon,
     );
-    
+
     // Nouveaux waypoints
-    waypoints.value = await isarService.searchWaypoints(
+    final fetchedWaypoints = await isarService.searchWaypoints(
       minLat: minLat,
       maxLat: maxLat,
       minLon: minLon,
       maxLon: maxLon,
     );
+    if (loadWaypointCategories) {
+      for (final wp in fetchedWaypoints) {
+        await wp.category.load();
+      }
+    }
+    waypoints.value = fetchedWaypoints;
 
     // Traces actives
     activeTraces.value = await isarService.tracesByNames(activeGpxNames);
 
     // Points OSM (opportuniste)
-    _reloadOsmPois(minLat, minLon, maxLat, maxLon);
+    unawaited(_reloadOsmPois(
+      minLat, minLon, maxLat, maxLon, zoom, osmPoisEnabled, osmPoiCategoryIds,
+    ));
 
     // 2. Pull communautaire opportuniste, si un moteur de sync est
     // configure. Les erreurs (hors-ligne, notamment) sont silencieuses
@@ -180,13 +219,80 @@ class MapViewModel {
     }
   }
 
-  Future<void> _reloadOsmPois(double minLat, double minLon, double maxLat, double maxLon) async {
-    // On ne fetch que si on est à un niveau de zoom suffisant pour éviter les requêtes trop larges
-    // Cette info n'est pas directement ici, on pourrait passer le zoom ou checker la taille de la bbox
-    if ((maxLat - minLat).abs() > 0.5) return; 
+  /// Charge les POI OSM visibles dans le viewport, via le cache par grille
+  /// avant tout appel reseau. Gate explicite sur le zoom (au lieu de
+  /// l'ancienne heuristique sur la taille de bbox) : au-delà d'un certain
+  /// dezoom la requete Overpass deviendrait a la fois trop lourde et peu
+  /// lisible sur la carte.
+  Future<void> _reloadOsmPois(
+    double minLat,
+    double minLon,
+    double maxLat,
+    double maxLon,
+    double zoom,
+    bool enabled,
+    Set<String> categoryIds,
+  ) async {
+    if (!enabled || categoryIds.isEmpty || zoom < 13) {
+      osmPois.value = const [];
+      return;
+    }
 
-    final fetched = await OverpassService.fetchPois(minLat, minLon, maxLat, maxLon);
-    osmPois.value = fetched;
+    isLoadingOsmPois.value = true;
+    try {
+      final cells = OsmPoiCache.cellsInBbox(minLat, minLon, maxLat, maxLon);
+
+      for (final catId in categoryIds) {
+        final hasMissingCell =
+            cells.any((cell) => !_osmPoiCache.hasCell(cell.$1, cell.$2, catId));
+        if (!hasMissingCell) continue;
+
+        // Simplification volontaire : on refetch le bbox visible entier
+        // pour cette catégorie plutôt que de calculer précisément le
+        // sous-polygone manquant (plus économe en données, nettement plus
+        // complexe pour un gain marginal).
+        final fetched = await OverpassService.fetchPois(
+          minLat: minLat,
+          minLon: minLon,
+          maxLat: maxLat,
+          maxLon: maxLon,
+          categoryIds: {catId},
+        );
+        for (final cell in cells) {
+          final inCell = fetched.where((poi) {
+            final idx = OsmPoiCache.cellIndex(poi.location.latitude, poi.location.longitude);
+            return idx == cell;
+          }).toList();
+          _osmPoiCache.put(cell.$1, cell.$2, catId, inCell);
+        }
+      }
+
+      final merged = <String, OsmPoi>{};
+      for (final cell in cells) {
+        for (final catId in categoryIds) {
+          for (final poi in _osmPoiCache.cell(cell.$1, cell.$2, catId)) {
+            merged[poi.id] = poi;
+          }
+        }
+      }
+
+      osmPois.value = _deduplicateAgainstSavedWaypoints(merged.values.toList());
+    } finally {
+      isLoadingOsmPois.value = false;
+    }
+  }
+
+  /// Exclut de la couche OSM tout POI déjà sauvegardé en tant que Waypoint
+  /// (identifié par Waypoint.osmNodeId) -- une fois sauvegardé, il est
+  /// affiché par _WaypointsLayer et ne doit plus apparaître en double dans
+  /// la couche OSM non sauvegardée.
+  List<OsmPoi> _deduplicateAgainstSavedWaypoints(List<OsmPoi> candidates) {
+    if (candidates.isEmpty) return candidates;
+    final savedOsmIds = waypoints.value
+        .where((w) => w.osmNodeId != null)
+        .map((w) => w.osmNodeId)
+        .toSet();
+    return candidates.where((poi) => !savedOsmIds.contains(poi.id)).toList();
   }
 
   void dispose() {
@@ -194,6 +300,7 @@ class MapViewModel {
     segments.dispose();
     pois.dispose();
     isRefreshingCommunityData.dispose();
+    isLoadingOsmPois.dispose();
     liveCamera.dispose();
     centerRequest.dispose();
     centerBoundsRequest.dispose();

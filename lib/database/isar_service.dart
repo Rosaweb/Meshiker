@@ -2,7 +2,10 @@ import 'dart:math' show cos, pi;
 
 import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:collection/collection.dart';
+import 'package:uuid/uuid.dart';
 
+import '../map/osm_poi_categories.dart';
 import '../models/enums.dart';
 import '../models/point_of_interest.dart';
 import '../models/recording_draft.dart';
@@ -414,6 +417,63 @@ class IsarService {
 
   Future<List<WaypointCategory>> allCategories() {
     return isar.waypointCategorys.where().sortByUpdatedAt().findAll();
+  }
+
+  Future<void> saveCategory(WaypointCategory category) async {
+    category.updatedAt = DateTime.now();
+    await isar.writeTxn(() => isar.waypointCategorys.put(category));
+  }
+
+  /// Retrouve la WaypointCategory correspondant à [osmCategoryId], ou la crée
+  /// si elle n'existe pas encore -- garantit qu'importer deux fois un même
+  /// type de POI OSM (ex: deux boulangeries) réutilise la même catégorie.
+  Future<WaypointCategory> resolveOrCreateCategoryForOsmType(String osmCategoryId) async {
+    final def = kOsmPoiCategories.firstWhere((c) => c.id == osmCategoryId);
+    final categories = await allCategories();
+
+    // 1. Lien déjà établi (import précédent, ou migration ci-dessous)
+    var match = categories.firstWhereOrNull((c) => c.osmCategoryId == osmCategoryId);
+    if (match != null) return match;
+
+    // 2. Filet de sécurité : une catégorie du même nom existe déjà (créée
+    // manuellement par l'utilisateur) -> on la relie plutôt que d'en dupliquer une.
+    match = categories.firstWhereOrNull((c) => c.name.toLowerCase() == def.label.toLowerCase());
+    if (match != null) {
+      match.osmCategoryId = osmCategoryId;
+      await saveCategory(match);
+      return match;
+    }
+
+    // 3. Rien trouvé -> création automatique
+    final created = WaypointCategory()
+      ..localUuid = const Uuid().v4()
+      ..name = def.label
+      ..iconName = def.waypointIconName
+      ..colorHex = def.color.toARGB32()
+      ..osmCategoryId = osmCategoryId;
+    await saveCategory(created);
+    return created;
+  }
+
+  /// Relie les catégories par défaut historiques ("Point d'eau/Source",
+  /// "Cabane/Refuge", créées par `_initDefaultCategories` avant l'existence
+  /// d'`osmCategoryId`, donc absentes du filet de sécurité n°2 ci-dessus qui
+  /// compare des noms strictement identiques) à leur équivalent OSM. À
+  /// appeler une fois au démarrage.
+  Future<void> backfillDefaultCategoryOsmIds() async {
+    const legacyMapping = {
+      'Point d\'eau/Source': 'water',
+      'Cabane/Refuge': 'hut',
+    };
+    final categories = await allCategories();
+    for (final cat in categories) {
+      if (cat.osmCategoryId != null) continue;
+      final osmId = legacyMapping[cat.name];
+      if (osmId != null) {
+        cat.osmCategoryId = osmId;
+        await saveCategory(cat);
+      }
+    }
   }
 
   Future<List<WaypointFolder>> allFolders() {

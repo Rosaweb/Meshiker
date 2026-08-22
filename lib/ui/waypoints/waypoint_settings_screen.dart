@@ -3,7 +3,13 @@ import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
 import '../../models/waypoint.dart';
 import '../../utils/settings_service.dart';
+import '../../utils/waypoint_icons.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+
+const _kWaypointIconNames = [
+  'water_drop', 'home', 'tent', 'terrain', 'landscape', 'camera', 'warning', 'info',
+  'camping', 'hotel', 'restaurant', 'grocery', 'bakery', 'snack', 'train', 'hospital', 'police',
+];
 
 class WaypointSettingsScreen extends StatefulWidget {
   const WaypointSettingsScreen({super.key});
@@ -41,6 +47,16 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                   value: settings.showGpxWaypoints,
                   activeThumbColor: Colors.greenAccent,
                   onChanged: (v) => settings.setShowGpxWaypoints(v),
+                ),
+                SwitchListTile(
+                  title: const Text('Icônes personnalisées par type', style: TextStyle(color: Colors.white, fontSize: 14)),
+                  subtitle: const Text(
+                    "Afficher l'icône du type de waypoint sur la carte plutôt qu'un repère générique",
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                  value: settings.useWaypointCategoryIcons,
+                  activeThumbColor: Colors.greenAccent,
+                  onChanged: (v) => settings.setUseWaypointCategoryIcons(v),
                 ),
               ],
             ),
@@ -80,7 +96,7 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                         key: ValueKey(cat.id),
                         leading: CircleAvatar(
                           backgroundColor: Color(cat.colorHex).withValues(alpha: 0.2),
-                          child: Icon(_getIconData(cat.iconName), color: Color(cat.colorHex), size: 20),
+                          child: Icon(iconForWaypointCategory(cat.iconName), color: Color(cat.colorHex), size: 20),
                         ),
                         title: Text(cat.name, style: const TextStyle(color: Colors.white)),
                         trailing: const Icon(Icons.drag_handle, color: Colors.white24),
@@ -99,20 +115,6 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
         child: const Icon(Icons.add, color: Colors.black),
       ),
     );
-  }
-
-  IconData _getIconData(String name) {
-    switch (name) {
-      case 'water_drop': return Icons.water_drop;
-      case 'home': return Icons.home;
-      case 'tent': return Icons.holiday_village;
-      case 'terrain': return Icons.terrain;
-      case 'landscape': return Icons.landscape;
-      case 'camera': return Icons.camera_alt;
-      case 'warning': return Icons.warning;
-      case 'info': return Icons.info;
-      default: return Icons.location_on;
-    }
   }
 
   void _editCategory(WaypointCategory? category) {
@@ -140,9 +142,9 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                 const Text('Icône', style: TextStyle(color: Colors.white70)),
                 Wrap(
                   spacing: 10,
-                  children: ['water_drop', 'home', 'tent', 'terrain', 'landscape', 'camera', 'warning', 'info'].map((icon) {
+                  children: _kWaypointIconNames.map((icon) {
                     return IconButton(
-                      icon: Icon(_getIconData(icon), color: selectedIcon == icon ? Colors.greenAccent : Colors.white38),
+                      icon: Icon(iconForWaypointCategory(icon), color: selectedIcon == icon ? Colors.greenAccent : Colors.white38),
                       onPressed: () => setDialogState(() => selectedIcon = icon),
                     );
                   }).toList(),

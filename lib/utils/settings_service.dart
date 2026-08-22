@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../map/osm_poi_categories.dart';
 
 enum UnitSystem { metric, imperial }
 
@@ -58,6 +59,9 @@ class SettingsService extends ChangeNotifier {
   int _accentColorHex = 0xFF69F0AE;
   double _waypointIconSize = 30.0;
   FontScaleLevel _fontScaleLevel = FontScaleLevel.normal;
+  bool _showOsmPois = false;
+  Set<String> _enabledOsmPoiCategoryIds = kOsmPoiCategories.map((c) => c.id).toSet();
+  bool _useWaypointCategoryIcons = true;
 
   // Visibilité des éléments du volet de navigation
   bool _navShowSpeed = true;
@@ -139,6 +143,9 @@ class SettingsService extends ChangeNotifier {
   Color get accentColor => Color(_accentColorHex);
   double get waypointIconSize => _waypointIconSize;
   FontScaleLevel get fontScaleLevel => _fontScaleLevel;
+  bool get showOsmPois => _showOsmPois;
+  Set<String> get enabledOsmPoiCategoryIds => _enabledOsmPoiCategoryIds;
+  bool get useWaypointCategoryIcons => _useWaypointCategoryIcons;
   double get fontScale {
     switch (_fontScaleLevel) {
       case FontScaleLevel.normal:
@@ -217,7 +224,13 @@ class SettingsService extends ChangeNotifier {
     _accentColorHex = _prefs.getInt('accent_color') ?? 0xFF69F0AE;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
     _fontScaleLevel = FontScaleLevel.values[_prefs.getInt('font_scale_level') ?? 0];
-    
+    _showOsmPois = _prefs.getBool('show_osm_pois') ?? false;
+    final enabledOsmCats = _prefs.getStringList('enabled_osm_poi_categories');
+    _enabledOsmPoiCategoryIds = enabledOsmCats != null
+        ? enabledOsmCats.toSet()
+        : kOsmPoiCategories.map((c) => c.id).toSet();
+    _useWaypointCategoryIcons = _prefs.getBool('use_waypoint_category_icons') ?? true;
+
     _navShowSpeed = _prefs.getBool('nav_show_speed') ?? true;
     _navShowDailyDist = _prefs.getBool('nav_show_daily_dist') ?? true;
     _navShowTraceDist = _prefs.getBool('nav_show_trace_dist') ?? true;
@@ -413,6 +426,24 @@ class SettingsService extends ChangeNotifier {
   Future<void> setFontScaleLevel(FontScaleLevel level) async {
     _fontScaleLevel = level;
     await _prefs.setInt('font_scale_level', level.index);
+    notifyListeners();
+  }
+
+  Future<void> setShowOsmPois(bool value) async {
+    _showOsmPois = value;
+    await _prefs.setBool('show_osm_pois', value);
+    notifyListeners();
+  }
+
+  Future<void> setEnabledOsmPoiCategories(Set<String> ids) async {
+    _enabledOsmPoiCategoryIds = ids;
+    await _prefs.setStringList('enabled_osm_poi_categories', ids.toList());
+    notifyListeners();
+  }
+
+  Future<void> setUseWaypointCategoryIcons(bool value) async {
+    _useWaypointCategoryIcons = value;
+    await _prefs.setBool('use_waypoint_category_icons', value);
     notifyListeners();
   }
 
