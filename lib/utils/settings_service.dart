@@ -72,6 +72,7 @@ class SettingsService extends ChangeNotifier {
   bool _navShowPedometer = true;
   bool _navShowNextWaypoint = true;
   bool _navShowDestination = true;
+  bool _navShowPois = true;
   bool _navShowMeasureTools = true;
   double _edgeSwipeWidth = 40.0;
   String? _gpxStoragePath;
@@ -165,6 +166,7 @@ class SettingsService extends ChangeNotifier {
   bool get navShowPedometer => _navShowPedometer;
   bool get navShowNextWaypoint => _navShowNextWaypoint;
   bool get navShowDestination => _navShowDestination;
+  bool get navShowPois => _navShowPois;
   bool get navShowMeasureTools => _navShowMeasureTools;
   double get edgeSwipeWidth => _edgeSwipeWidth;
   String? get gpxStoragePath => _gpxStoragePath;
@@ -239,6 +241,7 @@ class SettingsService extends ChangeNotifier {
     _navShowPedometer = _prefs.getBool('nav_show_pedometer') ?? true;
     _navShowNextWaypoint = _prefs.getBool('nav_show_next_waypoint') ?? true;
     _navShowDestination = _prefs.getBool('nav_show_destination') ?? true;
+    _navShowPois = _prefs.getBool('nav_show_pois') ?? true;
     _navShowMeasureTools = _prefs.getBool('nav_show_measure_tools') ?? true;
 
     _edgeSwipeWidth = _prefs.getDouble('edge_swipe_width') ?? 40.0;
@@ -411,6 +414,7 @@ class SettingsService extends ChangeNotifier {
       case 'pedometer': _navShowPedometer = value; break;
       case 'nextWaypoint': _navShowNextWaypoint = value; break;
       case 'destination': _navShowDestination = value; break;
+      case 'pois': _navShowPois = value; break;
       case 'measureTools': _navShowMeasureTools = value; break;
     }
     await _prefs.setBool('nav_show_$key', value);
