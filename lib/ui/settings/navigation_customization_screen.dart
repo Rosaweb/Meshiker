@@ -36,6 +36,7 @@ class NavigationCustomizationScreen extends StatelessWidget {
                 const Divider(color: Colors.white12, height: 32),
                 _buildToggle(context, settings, 'Prochain waypoint', settings.navShowNextWaypoint, 'nextWaypoint'),
                 _buildToggle(context, settings, 'Point d\'étape', settings.navShowDestination, 'destination'),
+                _buildToggle(context, settings, "Points d'intérêt OSM", settings.navShowPois, 'pois'),
                 _buildToggle(context, settings, 'Outils de mesure (Azimut/Dist)', settings.navShowMeasureTools, 'measureTools'),
               ],
             );

@@ -77,5 +77,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Requis à partir d'Android 11 pour que url_launcher puisse ouvrir
+             le composeur téléphonique depuis la fiche POI OSM (tel:). -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
     </queries>
 </manifest>

@@ -14,6 +14,11 @@ class WaypointCategory {
   late String iconName; // Identifiant de l'icône (ex: "water_drop")
   late int colorHex;    // Stockage de la couleur en format 0xFF...
 
+  // Référence à OsmPoiCategoryDef.id (lib/map/osm_poi_categories.dart) si
+  // cette catégorie correspond à un type OSM connu ; null pour une
+  // catégorie créée librement par l'utilisateur.
+  String? osmCategoryId;
+
   DateTime createdAt = DateTime.now();
   DateTime updatedAt = DateTime.now();
 
@@ -52,6 +57,7 @@ class Waypoint {
 
   int? colorHex; // Couleur spécifique optionnelle
   String? associatedGpxName; // Nom du fichier GPX associé
+  String? osmNodeId; // Renseigné uniquement si ce waypoint vient d'un import OSM
 
   // Stockage des chemins locaux des photos
   List<String> photoPaths = [];

@@ -44,6 +44,10 @@ void main() async {
       // IsarService.resetStuckOfflineMapDownloads) avant que l'UI ne
       // s'affiche, pour qu'elles soient reprenables dès la première frame.
       await isarService.resetStuckOfflineMapDownloads();
+      // Relie les catégories de waypoints par défaut historiques
+      // ("Point d'eau/Source", "Cabane/Refuge") à leur équivalent OSM, pour
+      // que l'import de POI OSM les réutilise au lieu d'en créer des doublons.
+      await isarService.backfillDefaultCategoryOsmIds();
       final settingsService = SettingsService();
       await settingsService.init();
 

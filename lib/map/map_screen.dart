@@ -29,6 +29,9 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:collection/collection.dart';
 import '../utils/overpass_service.dart';
 import '../utils/geo_utils.dart';
+import '../utils/waypoint_icons.dart';
+import 'osm_poi_categories.dart';
+import '../ui/waypoints/osm_poi_detail_sheet.dart';
 import '../recording/recording_service.dart';
 import '../gpx/gpx_import_service.dart';
 import '../gpx/gpx_models.dart';
@@ -266,6 +269,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       minLon: bounds.west,
       maxLon: bounds.east,
       activeGpxNames: widget.settingsService.activeGpxNames,
+      zoom: camera.zoom,
+      osmPoisEnabled: widget.settingsService.showOsmPois,
+      osmPoiCategoryIds: widget.settingsService.enabledOsmPoiCategoryIds,
+      loadWaypointCategories: widget.settingsService.useWaypointCategoryIcons,
     );
     if (widget.settingsService.mapCreationStep == MapCreationStep.stretchArea &&
         widget.settingsService.mapOrigin != null) {
@@ -1809,7 +1816,7 @@ class _WaypointsLayer extends StatelessWidget {
                     }
                   },
                   child: Icon(
-                    Icons.location_on,
+                    _iconFor(wp, settings),
                     color: Color(wp.colorHex ?? Colors.green.toARGB32()),
                     size: settings.waypointIconSize,
                   ),
@@ -1819,6 +1826,15 @@ class _WaypointsLayer extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// Filtre de rendu (pas de deuxième couche, pas de champ dupliqué sur
+  /// Waypoint) : un waypoint sans catégorie chargée, ou le réglage
+  /// désactivé, retombe sur le repère générique.
+  IconData _iconFor(wp_model.Waypoint wp, SettingsService settings) {
+    if (!settings.useWaypointCategoryIcons) return Icons.location_on;
+    final iconName = wp.category.value?.iconName;
+    return iconName != null ? iconForWaypointCategory(iconName) : Icons.location_on;
   }
 }
 
@@ -1849,16 +1865,11 @@ class _OsmPoisLayer extends StatelessWidget {
                 child: GestureDetector(
                   onTap: () {
                     settings.dismissLocateWaypointBackButton();
-                    final wp = wp_model.Waypoint()
-                      ..name = poi.name
-                      ..latitude = poi.location.latitude
-                      ..longitude = poi.location.longitude;
-
                     showDialog(
                       context: context,
                       barrierColor: Colors.black.withValues(alpha: 0.7),
-                      builder: (context) => WaypointEditScreen(
-                        waypoint: wp,
+                      builder: (context) => OsmPoiDetailSheet(
+                        poi: poi,
                         isarService: isarService,
                       ),
                     ).then((_) => viewModel.refreshNow());
@@ -1866,8 +1877,8 @@ class _OsmPoisLayer extends StatelessWidget {
                   child: Container(
                     decoration: const BoxDecoration(
                         shape: BoxShape.circle, color: Colors.white),
-                    child: const Icon(Icons.place,
-                        color: Colors.blueAccent, size: 16),
+                    child: Icon(_categoryFor(poi.categoryId)?.icon ?? Icons.place,
+                        color: _categoryFor(poi.categoryId)?.color ?? Colors.blueAccent, size: 16),
                   ),
                 ),
               ),
@@ -1876,6 +1887,9 @@ class _OsmPoisLayer extends StatelessWidget {
       },
     );
   }
+
+  OsmPoiCategoryDef? _categoryFor(String categoryId) =>
+      kOsmPoiCategories.firstWhereOrNull((c) => c.id == categoryId);
 }
 
 class _MapScaleWidget extends StatelessWidget {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../map/osm_poi_categories.dart';
 
 enum UnitSystem { metric, imperial }
 
@@ -58,6 +59,9 @@ class SettingsService extends ChangeNotifier {
   int _accentColorHex = 0xFF69F0AE;
   double _waypointIconSize = 30.0;
   FontScaleLevel _fontScaleLevel = FontScaleLevel.normal;
+  bool _showOsmPois = false;
+  Set<String> _enabledOsmPoiCategoryIds = kOsmPoiCategories.map((c) => c.id).toSet();
+  bool _useWaypointCategoryIcons = true;
 
   // Visibilité des éléments du volet de navigation
   bool _navShowSpeed = true;
@@ -68,6 +72,7 @@ class SettingsService extends ChangeNotifier {
   bool _navShowPedometer = true;
   bool _navShowNextWaypoint = true;
   bool _navShowDestination = true;
+  bool _navShowPois = true;
   bool _navShowMeasureTools = true;
   double _edgeSwipeWidth = 40.0;
   String? _gpxStoragePath;
@@ -139,6 +144,9 @@ class SettingsService extends ChangeNotifier {
   Color get accentColor => Color(_accentColorHex);
   double get waypointIconSize => _waypointIconSize;
   FontScaleLevel get fontScaleLevel => _fontScaleLevel;
+  bool get showOsmPois => _showOsmPois;
+  Set<String> get enabledOsmPoiCategoryIds => _enabledOsmPoiCategoryIds;
+  bool get useWaypointCategoryIcons => _useWaypointCategoryIcons;
   double get fontScale {
     switch (_fontScaleLevel) {
       case FontScaleLevel.normal:
@@ -158,6 +166,7 @@ class SettingsService extends ChangeNotifier {
   bool get navShowPedometer => _navShowPedometer;
   bool get navShowNextWaypoint => _navShowNextWaypoint;
   bool get navShowDestination => _navShowDestination;
+  bool get navShowPois => _navShowPois;
   bool get navShowMeasureTools => _navShowMeasureTools;
   double get edgeSwipeWidth => _edgeSwipeWidth;
   String? get gpxStoragePath => _gpxStoragePath;
@@ -217,7 +226,13 @@ class SettingsService extends ChangeNotifier {
     _accentColorHex = _prefs.getInt('accent_color') ?? 0xFF69F0AE;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
     _fontScaleLevel = FontScaleLevel.values[_prefs.getInt('font_scale_level') ?? 0];
-    
+    _showOsmPois = _prefs.getBool('show_osm_pois') ?? false;
+    final enabledOsmCats = _prefs.getStringList('enabled_osm_poi_categories');
+    _enabledOsmPoiCategoryIds = enabledOsmCats != null
+        ? enabledOsmCats.toSet()
+        : kOsmPoiCategories.map((c) => c.id).toSet();
+    _useWaypointCategoryIcons = _prefs.getBool('use_waypoint_category_icons') ?? true;
+
     _navShowSpeed = _prefs.getBool('nav_show_speed') ?? true;
     _navShowDailyDist = _prefs.getBool('nav_show_daily_dist') ?? true;
     _navShowTraceDist = _prefs.getBool('nav_show_trace_dist') ?? true;
@@ -226,6 +241,7 @@ class SettingsService extends ChangeNotifier {
     _navShowPedometer = _prefs.getBool('nav_show_pedometer') ?? true;
     _navShowNextWaypoint = _prefs.getBool('nav_show_next_waypoint') ?? true;
     _navShowDestination = _prefs.getBool('nav_show_destination') ?? true;
+    _navShowPois = _prefs.getBool('nav_show_pois') ?? true;
     _navShowMeasureTools = _prefs.getBool('nav_show_measure_tools') ?? true;
 
     _edgeSwipeWidth = _prefs.getDouble('edge_swipe_width') ?? 40.0;
@@ -398,6 +414,7 @@ class SettingsService extends ChangeNotifier {
       case 'pedometer': _navShowPedometer = value; break;
       case 'nextWaypoint': _navShowNextWaypoint = value; break;
       case 'destination': _navShowDestination = value; break;
+      case 'pois': _navShowPois = value; break;
       case 'measureTools': _navShowMeasureTools = value; break;
     }
     await _prefs.setBool('nav_show_$key', value);
@@ -413,6 +430,24 @@ class SettingsService extends ChangeNotifier {
   Future<void> setFontScaleLevel(FontScaleLevel level) async {
     _fontScaleLevel = level;
     await _prefs.setInt('font_scale_level', level.index);
+    notifyListeners();
+  }
+
+  Future<void> setShowOsmPois(bool value) async {
+    _showOsmPois = value;
+    await _prefs.setBool('show_osm_pois', value);
+    notifyListeners();
+  }
+
+  Future<void> setEnabledOsmPoiCategories(Set<String> ids) async {
+    _enabledOsmPoiCategoryIds = ids;
+    await _prefs.setStringList('enabled_osm_poi_categories', ids.toList());
+    notifyListeners();
+  }
+
+  Future<void> setUseWaypointCategoryIcons(bool value) async {
+    _useWaypointCategoryIcons = value;
+    await _prefs.setBool('use_waypoint_category_icons', value);
     notifyListeners();
   }
 

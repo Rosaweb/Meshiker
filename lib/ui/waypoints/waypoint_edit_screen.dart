@@ -10,6 +10,7 @@ import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
 import '../../search/local_search_engine.dart';
 import '../../utils/settings_service.dart';
+import '../../utils/waypoint_icons.dart';
 
 class WaypointEditScreen extends StatefulWidget {
   final Waypoint? waypoint;
@@ -229,7 +230,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                             value: c,
                             child: Row(
                               children: [
-                                Icon(_getIcon(c.iconName), color: Colors.greenAccent, size: 18),
+                                Icon(iconForWaypointCategory(c.iconName), color: Colors.greenAccent, size: 18),
                                 const SizedBox(width: 12),
                                 Text(c.name),
                               ],
@@ -399,15 +400,5 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
           ),
       ],
     );
-  }
-
-  IconData _getIcon(String iconName) {
-    switch (iconName) {
-      case 'water_drop': return Icons.water_drop;
-      case 'home': return Icons.home;
-      case 'tent': return Icons.terrain;
-      case 'terrain': return Icons.terrain;
-      default: return Icons.location_on;
-    }
   }
 }

@@ -6,6 +6,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:latlong2/latlong.dart';
 import '../map/map_screen.dart';
 import '../map/map_view_model.dart';
+import '../map/osm_poi_categories.dart';
 import '../models/waypoint.dart';
 import '../database/isar_service.dart';
 import '../recording/recording_service.dart';
@@ -57,6 +58,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       MethodChannel('meshiker/system_gestures');
 
   bool _showOnboarding = false;
+  bool _poiCategoriesExpanded = false;
 
   late final AnimationController _scrollController;
   late double _targetScroll;
@@ -570,6 +572,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 )),
             const SizedBox(height: 12),
           ],
+          if (settings.navShowPois) ...[
+            _buildPoiBlock(settings),
+            const SizedBox(height: 12),
+          ],
           if (settings.navShowMeasureTools) ...[
             _buildToolBlock(
               title: 'AZIMUT ET DISTANCE',
@@ -757,6 +763,66 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             const SizedBox(height: 12),
             trailing,
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Bloc "Points d'intérêt OSM" du volet de navigation : interrupteur
+  /// principal (fetch/affichage OSM en direct, voir SettingsService.
+  /// showOsmPois) + liste dépliable des catégories actives. Le bloc lui-
+  /// même n'apparaît que si navShowPois est activé (Personnaliser la
+  /// navigation), sur le même principe que les autres blocs de ce volet.
+  /// Titre, interrupteur et chevron partagent la même ligne (pas de
+  /// sous-titre) -- distinct des autres blocs de ce volet (via
+  /// _buildToolBlock) qui n'ont besoin que d'un titre simple.
+  Widget _buildPoiBlock(SettingsService settings) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: settings.accentColor.withValues(alpha: 0.2))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text("POINTS D'INTÉRÊT OSM",
+                    style: TextStyle(
+                        color: settings.accentColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
+              ),
+              Switch(
+                value: settings.showOsmPois,
+                activeThumbColor: Colors.greenAccent,
+                onChanged: (v) => settings.setShowOsmPois(v),
+              ),
+              IconButton(
+                icon: Icon(
+                    _poiCategoriesExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.white70),
+                onPressed: () => setState(() => _poiCategoriesExpanded = !_poiCategoriesExpanded),
+              ),
+            ],
+          ),
+          if (_poiCategoriesExpanded)
+            ...kOsmPoiCategories.map((cat) => CheckboxListTile(
+                  title: Text(cat.label, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  secondary: Icon(cat.icon, color: cat.color, size: 20),
+                  value: settings.enabledOsmPoiCategoryIds.contains(cat.id),
+                  activeColor: Colors.greenAccent,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (checked) {
+                    final updated = Set<String>.from(settings.enabledOsmPoiCategoryIds);
+                    checked == true ? updated.add(cat.id) : updated.remove(cat.id);
+                    settings.setEnabledOsmPoiCategories(updated);
+                  },
+                )),
         ],
       ),
     );
