@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:isar_community/isar.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../utils/offline_map_download_service.dart';
 import '../../utils/settings_service.dart';
 import '../../database/isar_service.dart';
@@ -54,6 +55,7 @@ class MapsSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return DefaultTabController(
       length: 2,
       child: Container(
@@ -61,14 +63,14 @@ class MapsSettingsScreen extends StatelessWidget {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
-            title: const Text('Mes cartes'),
+            title: Text(loc.mapsSettingsTitle),
             backgroundColor: Colors.transparent,
             elevation: 0,
             foregroundColor: Colors.white,
-            bottom: const TabBar(
+            bottom: TabBar(
               tabs: [
-                Tab(text: 'Fonds de carte'),
-                Tab(text: 'Hors ligne'),
+                Tab(text: loc.onlineSourcesTabLabel),
+                Tab(text: loc.offlineMapsTabLabel),
               ],
               indicatorColor: Colors.greenAccent,
               labelColor: Colors.greenAccent,
@@ -92,15 +94,16 @@ class _OnlineSourcesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Consumer<SettingsService>(
       builder: (context, settings, child) {
         return Column(
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16.0),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
               child: Text(
-                'Sélectionnez jusqu\'à 3 cartes favorites. L\'ordre détermine la priorité du bouton MAP.',
-                style: TextStyle(color: Colors.white38),
+                loc.favoriteMapsInstructionText,
+                style: const TextStyle(color: Colors.white38),
               ),
             ),
             Expanded(
@@ -126,7 +129,7 @@ class _OnlineSourcesTab extends StatelessWidget {
                               border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5)),
                             ),
                             child: Text(
-                              'Priorité ${favIndex + 1}',
+                              loc.priorityBadgeLabel(favIndex + 1),
                               style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -165,6 +168,7 @@ class _OfflineMapsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final isar = context.watch<IsarService>();
     final settings = context.watch<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
 
     return Column(
       children: [
@@ -179,7 +183,7 @@ class _OfflineMapsTab extends StatelessWidget {
                     Navigator.pop(context); // Close panels to show map
                   },
                   icon: const Icon(Icons.add_location_alt),
-                  label: const Text('Créer une carte'),
+                  label: Text(loc.createOfflineMapButton),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.greenAccent,
                     foregroundColor: Colors.black,
@@ -203,9 +207,8 @@ class _OfflineMapsTab extends StatelessWidget {
                     if (!path.toLowerCase().endsWith('.mbtiles')) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text(
-                                  'Sélectionnez un fichier .mbtiles')),
+                          SnackBar(
+                              content: Text(loc.selectMbtilesFileMessage)),
                         );
                       }
                       return;
@@ -216,7 +219,7 @@ class _OfflineMapsTab extends StatelessWidget {
                     // mock pour le moment (cf. _showSaveDialog).
                   },
                   icon: const Icon(Icons.file_download),
-                  label: const Text('Importer'),
+                  label: Text(loc.importButton),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white10,
                     foregroundColor: Colors.white,
@@ -234,8 +237,8 @@ class _OfflineMapsTab extends StatelessWidget {
               final maps = snapshot.data!;
 
               if (maps.isEmpty) {
-                return const Center(
-                  child: Text('Aucune carte hors ligne.', style: TextStyle(color: Colors.white38)),
+                return Center(
+                  child: Text(loc.noOfflineMapsMessage, style: const TextStyle(color: Colors.white38)),
                 );
               }
 
@@ -304,9 +307,9 @@ class _OfflineMapsTab extends StatelessWidget {
                             ),
                           ),
                         if (map.isError)
-                          const Text('Erreur. Appuyez pour reprendre.', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                          Text(loc.downloadErrorTapToResumeMessage, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
                         if (isInterrupted)
-                          const Text('Téléchargement interrompu. Appuyez pour reprendre.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+                          Text(loc.downloadInterruptedTapToResumeMessage, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
                       ],
                     ),
                     onTap: () {
@@ -330,6 +333,7 @@ class _OfflineMapsTab extends StatelessWidget {
   }
 
   void _showMapDetailsDialog(BuildContext context, IsarService isar, OfflineMap map) {
+    final loc = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -354,7 +358,7 @@ class _OfflineMapsTab extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.close, color: Colors.white70),
                       onPressed: () => Navigator.pop(dialogContext),
-                      tooltip: 'Fermer',
+                      tooltip: loc.closeTooltip,
                     ),
                   ],
                 ),
@@ -376,7 +380,7 @@ class _OfflineMapsTab extends StatelessWidget {
                       if (dialogContext.mounted) Navigator.pop(dialogContext);
                     },
                     icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                    label: const Text('Supprimer', style: TextStyle(color: Colors.redAccent)),
+                    label: Text(loc.deleteButtonLabel, style: const TextStyle(color: Colors.redAccent)),
                   ),
                 ),
               ],

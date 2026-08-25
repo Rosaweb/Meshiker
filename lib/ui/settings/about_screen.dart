@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../l10n/generated/app_localizations.dart';
 import 'terms_of_use_screen.dart';
 
 class AboutScreen extends StatelessWidget {
@@ -6,12 +7,13 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('À propos'),
+          title: Text(loc.aboutMenuTitle),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,
@@ -34,24 +36,21 @@ class AboutScreen extends StatelessWidget {
                           child: const Icon(Icons.terrain, color: Colors.greenAccent, size: 64),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'Meshiker',
-                          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                        Text(
+                          loc.appTitle,
+                          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
                         ),
-                        const Text(
-                          'Version 1.0.0',
-                          style: TextStyle(color: Colors.white38, fontSize: 14),
+                        Text(
+                          loc.aboutAppVersion,
+                          style: const TextStyle(color: Colors.white38, fontSize: 14),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 48),
-                  const Text(
-                    'Meshiker est votre compagnon de randonnée ultime, conçu pour fonctionner '
-                    'même dans les zones les plus reculées sans aucune connexion réseau.\n\n'
-                    'Grâce à notre moteur de mesh unique, transformez vos traces GPS en une '
-                    'véritable toile d\'araignée de sentiers partagée avec la communauté.',
-                    style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
+                  Text(
+                    loc.aboutDescription,
+                    style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -68,14 +67,14 @@ class AboutScreen extends StatelessWidget {
                         MaterialPageRoute(builder: (context) => const TermsOfUseScreen()),
                       );
                     },
-                    child: const Text(
-                      'Conditions d\'utilisation',
-                      style: TextStyle(color: Colors.greenAccent),
+                    child: Text(
+                      loc.termsOfUseTitle,
+                      style: const TextStyle(color: Colors.greenAccent),
                     ),
                   ),
-                  const Text(
-                    '© 2026 Meshiker Project',
-                    style: TextStyle(color: Colors.white24, fontSize: 12),
+                  Text(
+                    loc.aboutCopyright,
+                    style: const TextStyle(color: Colors.white24, fontSize: 12),
                   ),
                 ],
               ),

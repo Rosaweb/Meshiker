@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../utils/subscription_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/utilisateur.dart';
@@ -12,12 +13,13 @@ class AccountSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Mon compte'),
+          title: Text(loc.accountSettingsTitle),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,
@@ -28,24 +30,24 @@ class AccountSettingsScreen extends StatelessWidget {
               future: isar.currentDeviceUser(),
               builder: (context, snapshot) {
                 final user = snapshot.data;
-                
+
                 return ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    _buildUserHeader(user),
+                    _buildUserHeader(context, user),
                     const SizedBox(height: 32),
                     _buildSubscriptionSection(context, subService),
                     const SizedBox(height: 16),
-                    _buildIgnSubscriptionPlaceholder(),
+                    _buildIgnSubscriptionPlaceholder(context),
                     const SizedBox(height: 32),
-                    _buildSyncSection(user),
+                    _buildSyncSection(context, user),
                     const SizedBox(height: 32),
                     const Divider(color: Colors.white12),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.info_outline, color: Colors.greenAccent),
-                      title: const Text('À propos', style: TextStyle(color: Colors.white)),
-                      subtitle: const Text('Version, légal et contact', style: TextStyle(color: Colors.white60)),
+                      title: Text(loc.aboutMenuTitle, style: const TextStyle(color: Colors.white)),
+                      subtitle: Text(loc.aboutMenuSubtitle, style: const TextStyle(color: Colors.white60)),
                       trailing: const Icon(Icons.chevron_right, color: Colors.white24),
                       onTap: () => Navigator.push(context, PageRouteBuilder(
                         pageBuilder: (context, animation, secondaryAnimation) => const AboutScreen(),
@@ -67,7 +69,8 @@ class AccountSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUserHeader(Utilisateur? user) {
+  Widget _buildUserHeader(BuildContext context, Utilisateur? user) {
+    final loc = AppLocalizations.of(context)!;
     return Column(
       children: [
         CircleAvatar(
@@ -77,7 +80,7 @@ class AccountSettingsScreen extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          user?.pseudo ?? 'Utilisateur local',
+          user?.pseudo ?? loc.localUserFallback,
           style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
         ),
         if (user?.email != null)
@@ -90,12 +93,13 @@ class AccountSettingsScreen extends StatelessWidget {
   }
 
   Widget _buildSubscriptionSection(BuildContext context, SubscriptionService subService) {
+    final loc = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'ABONNEMENT',
-          style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+        Text(
+          loc.subscriptionSectionTitle,
+          style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
         Container(
@@ -119,13 +123,13 @@ class AccountSettingsScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          subService.isPremium ? 'Membre Premium' : 'Formule Gratuite',
+                          subService.isPremium ? loc.premiumMemberLabel : loc.freeTierLabel,
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                         ),
                         Text(
-                          subService.isPremium 
-                            ? 'Accès illimité à toutes les fonctionnalités'
-                            : 'Passez au Premium pour soutenir le projet',
+                          subService.isPremium
+                            ? loc.premiumUnlimitedAccessLabel
+                            : loc.premiumUpsellLabel,
                           style: const TextStyle(color: Colors.white38, fontSize: 12),
                         ),
                       ],
@@ -135,11 +139,11 @@ class AccountSettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               if (!subService.sdkAvailable)
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
                   child: Text(
-                    'Le service d\'abonnement est indisponible pour le moment.',
-                    style: TextStyle(color: Colors.orangeAccent, fontSize: 12),
+                    loc.subscriptionServiceUnavailableMessage,
+                    style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
                     textAlign: TextAlign.center,
                   ),
                 )
@@ -154,7 +158,7 @@ class AccountSettingsScreen extends StatelessWidget {
                     foregroundColor: Colors.black,
                     minimumSize: const Size(double.infinity, 45),
                   ),
-                  child: const Text('Voir les offres Premium'),
+                  child: Text(loc.viewPremiumOffersButton),
                 )
               else
                 ElevatedButton(
@@ -167,11 +171,11 @@ class AccountSettingsScreen extends StatelessWidget {
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 45),
                   ),
-                  child: const Text('Gérer mon abonnement'),
+                  child: Text(loc.manageSubscriptionButton),
                 ),
               TextButton(
                 onPressed: () => subService.restorePurchases(),
-                child: const Text('Restaurer mes achats', style: TextStyle(color: Colors.white70)),
+                child: Text(loc.restorePurchasesButton, style: const TextStyle(color: Colors.white70)),
               ),
             ],
           ),
@@ -180,7 +184,8 @@ class AccountSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildIgnSubscriptionPlaceholder() {
+  Widget _buildIgnSubscriptionPlaceholder(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -188,23 +193,23 @@ class AccountSettingsScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Row(
             children: [
-              Icon(Icons.map, color: Colors.blueAccent),
-              SizedBox(width: 12),
+              const Icon(Icons.map, color: Colors.blueAccent),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Cartes IGN (France)',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      loc.ignMapsTitle,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      'Bientôt disponible : abonnement annuel pour les fonds de carte IGN SCAN25 et Plan IGN.',
-                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                      loc.ignMapsComingSoon,
+                      style: const TextStyle(color: Colors.white38, fontSize: 12),
                     ),
                   ],
                 ),
@@ -216,24 +221,25 @@ class AccountSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSyncSection(Utilisateur? user) {
+  Widget _buildSyncSection(BuildContext context, Utilisateur? user) {
+    final loc = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'SYNCHRONISATION',
-          style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+        Text(
+          loc.syncSectionTitle,
+          style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.cloud_queue, color: Colors.white70),
-          title: const Text('Statut de synchronisation', style: TextStyle(color: Colors.white)),
+          title: Text(loc.syncStatusLabel, style: const TextStyle(color: Colors.white)),
           subtitle: Text(
-            user?.remoteId != null ? 'Connecté à Supabase' : 'Mode local uniquement',
+            user?.remoteId != null ? loc.syncConnectedLabel : loc.syncLocalOnlyLabel,
             style: const TextStyle(color: Colors.white38),
           ),
-          trailing: user?.remoteId != null 
+          trailing: user?.remoteId != null
             ? const Icon(Icons.check_circle, color: Colors.greenAccent)
             : const Icon(Icons.warning_amber, color: Colors.orangeAccent),
         ),

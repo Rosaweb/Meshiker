@@ -1,27 +1,29 @@
 import 'package:flutter/material.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Aide'),
+          title: Text(loc.helpMenuTitle),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,
         ),
-        body: const Center(
+        body: Center(
           child: Padding(
-            padding: EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(24.0),
             child: Text(
-              'Contenu à venir.',
+              loc.helpScreenPlaceholder,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white38),
+              style: const TextStyle(color: Colors.white38),
             ),
           ),
         ),

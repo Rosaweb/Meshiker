@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:latlong2/latlong.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../map/map_screen.dart';
 import '../map/map_view_model.dart';
 import '../map/osm_poi_categories.dart';
@@ -322,9 +323,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                         color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      child: const Text(
-                        'En attente de connexion',
-                        style: TextStyle(
+                      child: Text(
+                        AppLocalizations.of(context)!.waitingForConnection,
+                        style: const TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -424,13 +425,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   }
 
   Widget _buildSettingsPage(SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Row(children: [
-          Icon(Icons.terrain, color: Colors.greenAccent, size: 28),
-          SizedBox(width: 12),
-          Text('Meshiker', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Row(children: [
+          const Icon(Icons.terrain, color: Colors.greenAccent, size: 28),
+          const SizedBox(width: 12),
+          Text(loc.appTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
         ]),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -449,44 +451,44 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         children: [
           _buildSettingsTile(
               icon: Icons.account_circle_outlined,
-              title: 'Mon compte',
-              subtitle: 'Gérer mon abonnement',
+              title: loc.accountSettingsTitle,
+              subtitle: loc.accountSettingsSubtitle,
               onTap: () => _pushSettings(const AccountSettingsScreen())),
           const Divider(color: Colors.white12),
           _buildSettingsTile(
               icon: Icons.settings_suggest_outlined,
-              title: 'Paramètres système',
-              subtitle: 'Stockage GPX, Cache des cartes',
+              title: loc.systemSettingsTitle,
+              subtitle: loc.systemSettingsSubtitle,
               onTap: () => _pushSettings(const SystemSettingsScreen())),
           _buildSettingsTile(
               icon: Icons.display_settings,
-              title: 'Paramètres d\'affichage',
-              subtitle: 'Transparence, échelle',
+              title: loc.displaySettingsTitle,
+              subtitle: loc.displaySettingsSubtitle,
               onTap: () => _pushSettings(const DisplaySettingsScreen())),
           _buildSettingsTile(
               icon: Icons.map_outlined,
-              title: 'Mes cartes',
-              subtitle: 'Sélectionner vos favoris',
+              title: loc.mapsSettingsTitle,
+              subtitle: loc.mapsSettingsSubtitle,
               onTap: () => _pushSettings(const MapsSettingsScreen())),
           _buildSettingsTile(
               icon: Icons.route_outlined,
-              title: 'Track Manager',
-              subtitle: 'Gérer vos pistes GPX',
+              title: loc.trackManagerTitle,
+              subtitle: loc.trackManagerSubtitle,
               onTap: () => _pushSettings(const TrackManagerScreen())),
           _buildSettingsTile(
               icon: Icons.location_on_outlined,
-              title: 'Waypoint Manager',
-              subtitle: 'Gérer vos waypoints',
+              title: loc.waypointManagerTitle,
+              subtitle: loc.waypointManagerSubtitle,
               onTap: () => _pushSettings(const WaypointManagerScreen())),
           _buildSettingsTile(
               icon: Icons.timeline_outlined,
-              title: 'Mesh manager',
-              subtitle: 'Gérer les segments',
+              title: loc.meshManagerTitle,
+              subtitle: loc.meshManagerSubtitle,
               onTap: () => _pushSettings(const SegmentManagerScreen())),
           _buildSettingsTile(
               icon: Icons.help_outline,
-              title: 'Aide',
-              subtitle: 'Assistance et prise en main',
+              title: loc.helpMenuTitle,
+              subtitle: loc.helpMenuSubtitle,
               onTap: () => _pushSettings(const HelpScreen())),
           const Divider(color: Colors.white12),
           Padding(
@@ -494,8 +496,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('MODE D\'AFFICHAGE',
-                    style: TextStyle(
+                Text(loc.displayModeSectionTitle,
+                    style: const TextStyle(
                         color: Colors.greenAccent,
                         fontSize: 12,
                         fontWeight: FontWeight.bold)),
@@ -510,10 +512,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   }
 
   Widget _buildContextualPage(SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Navigation'),
+        title: Text(loc.navigationPanelTitle),
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: Colors.white,
@@ -547,7 +550,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           const SizedBox(height: 12),
           if (settings.navShowNextWaypoint) ...[
             _buildNavSection(
-                'PROCHAIN WAYPOINT',
+                loc.nextWaypointSectionTitle,
                 settings.accentColor,
                 widget.recordingService.nextWaypoint,
                 widget.recordingService.distanceToNextWaypointMeters,
@@ -556,7 +559,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           ],
           if (settings.navShowDestination) ...[
             _buildNavSection(
-                'POINT D\'ÉTAPE',
+                loc.destinationSectionTitle,
                 settings.accentColor,
                 widget.recordingService.destinationWaypoint,
                 widget.recordingService.distanceToDestinationMeters,
@@ -565,7 +568,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                   onPressed: () => _pushSettings(
                       const RoadmapScreen(isSelectionMode: true)),
                   icon: const Icon(Icons.navigation),
-                  label: const Text('Choisir un point'),
+                  label: Text(loc.choosePointButton),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white10,
                       foregroundColor: Colors.white),
@@ -578,13 +581,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           ],
           if (settings.navShowMeasureTools) ...[
             _buildToolBlock(
-              title: 'AZIMUT ET DISTANCE',
+              title: loc.azimuthDistanceSectionTitle,
               color: settings.accentColor,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildMeasureButton(context,
-                      label: 'Depuis ma position GPS',
+                      label: loc.measureFromGpsButton,
                       icon: Icons.gps_fixed, onPressed: () {
                     widget.settingsService
                         .setMeasurementMode(MeasurementMode.fromGps);
@@ -595,7 +598,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                   }),
                   const SizedBox(height: 8),
                   _buildMeasureButton(context,
-                      label: 'Entre deux points',
+                      label: loc.measureBetweenPointsButton,
                       icon: Icons.straighten, onPressed: () {
                     widget.settingsService
                         .setMeasurementMode(MeasurementMode.betweenPoints);
@@ -611,7 +614,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           ],
           if (settings.locationEnabled)
             _buildToolBlock(
-              title: 'POSITION',
+              title: loc.positionSectionTitle,
               color: settings.accentColor,
               child: _buildCoordinatesContent(),
             ),
@@ -647,8 +650,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       valueListenable: widget.recordingService.currentPosition,
       builder: (context, pos, _) {
         if (pos == null) {
-          return const Text('En attente de position GPS...',
-              style: TextStyle(color: Colors.white38, fontSize: 12));
+          return Text(AppLocalizations.of(context)!.waitingForGpsPosition,
+              style: const TextStyle(color: Colors.white38, fontSize: 12));
         }
         final utm = GeoUtils.latLonToUtm(pos.latitude, pos.longitude);
         return Row(
@@ -670,7 +673,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               onPressed: () =>
                   _copyCoordinates(context, pos.latitude, pos.longitude, utm),
               icon: const Icon(Icons.copy, color: Colors.white70, size: 20),
-              tooltip: 'Copier',
+              tooltip: AppLocalizations.of(context)!.copyTooltip,
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -694,7 +697,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         'UTM : ${utm.zone}${utm.hemisphere} ${utm.easting.round()}E ${utm.northing.round()}N';
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Coordonnées copiées dans le presse-papiers')),
+      SnackBar(content: Text(AppLocalizations.of(context)!.coordinatesCopiedMessage)),
     );
   }
 
@@ -724,6 +727,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       ValueNotifier<double> distNotifier,
       bool isNext,
       {Widget? trailing}) {
+    final loc = AppLocalizations.of(context)!;
     return _buildToolBlock(
       title: label,
       color: color,
@@ -738,8 +742,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                   // destination n'est choisie : le titre du bloc et le
                   // bouton "Choisir un point" suffisent.
                   return isNext
-                      ? const Text('Aucun point',
-                          style: TextStyle(color: Colors.white38))
+                      ? Text(loc.noPointSelected,
+                          style: const TextStyle(color: Colors.white38))
                       : const SizedBox.shrink();
                 }
                 return ValueListenableBuilder<double>(
@@ -752,7 +756,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                         : '--:--';
                     return _buildNavigationInfo(
                         name: wp.name,
-                        type: wp.category.value?.name ?? 'Point',
+                        type: wp.category.value?.name ?? loc.genericPointType,
                         distance: _formatDistance(dist),
                         eta: eta,
                         isNext: isNext);
@@ -777,6 +781,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   /// sous-titre) -- distinct des autres blocs de ce volet (via
   /// _buildToolBlock) qui n'ont besoin que d'un titre simple.
   Widget _buildPoiBlock(SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -790,7 +795,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           Row(
             children: [
               Expanded(
-                child: Text("POINTS D'INTÉRÊT OSM",
+                child: Text(loc.osmPoiSectionTitle,
                     style: TextStyle(
                         color: settings.accentColor,
                         fontSize: 12,
@@ -830,6 +835,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   Widget _buildLiveStatsGrid(SettingsService settings) {
     final recording = widget.recordingService;
+    final loc = AppLocalizations.of(context)!;
     return GridView.count(
       shrinkWrap: true,
       // Sans ça, ce GridView imbriqué est traité comme le scroll "primary"
@@ -859,26 +865,26 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           ValueListenableBuilder<double>(
               valueListenable: recording.dailyDistanceMeters,
               builder: (context, dist, _) => _buildStatCard(
-                  'Aujourd\'hui', _formatDistanceKm(dist), Icons.today)),
+                  loc.statTodayLabel, _formatDistanceKm(dist), Icons.today)),
         if (settings.navShowGpsAccuracy)
           ValueListenableBuilder<double>(
               valueListenable: recording.gpsAccuracyMeters,
               builder: (context, acc, _) => _buildStatCard(
-                  'Précision GPS', '${acc.round()} m', Icons.satellite_alt)),
+                  loc.statGpsAccuracyLabel, '${acc.round()} m', Icons.satellite_alt)),
         if (settings.navShowTraceDist)
           ValueListenableBuilder<double>(
               valueListenable: recording.trackDistanceDoneMeters,
               builder: (context, done, _) => ValueListenableBuilder<double>(
                   valueListenable: recording.trackDistanceRemainingMeters,
                   builder: (context, rem, _) => _buildStatCard(
-                      'Trace',
-                      '${_formatDistanceKm(done)} parc.\n${_formatDistanceKm(rem)} rest.',
+                      loc.statTraceLabel,
+                      '${_formatDistanceKm(done)} ${loc.statTraceDoneSuffix}\n${_formatDistanceKm(rem)} ${loc.statTraceRemainingSuffix}',
                       Icons.route,
                       multiLine: true))),
         if (settings.navShowPedometer)
           AnimatedBuilder(
               animation: widget.pedometerService,
-              builder: (context, _) => _buildStatCard('Podomètre',
+              builder: (context, _) => _buildStatCard(loc.statPedometerLabel,
                   '${widget.pedometerService.steps}', Icons.directions_walk,
                   isActive: widget.pedometerService.isActive,
                   onTap: () async {
@@ -886,15 +892,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                     if (!context.mounted) return;
                     if (widget.pedometerService.permissionDenied) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Autorisez "Activité physique" dans les paramètres Android pour utiliser le podomètre.')),
+                        SnackBar(
+                            content: Text(loc.pedometerPermissionDeniedMessage)),
                       );
                     } else if (widget.pedometerService.sensorUnavailable) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Aucun capteur de pas détecté sur cet appareil.')),
+                        SnackBar(
+                            content: Text(loc.pedometerSensorUnavailableMessage)),
                       );
                     }
                   })),
@@ -902,7 +906,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           ValueListenableBuilder<String>(
               valueListenable: recording.gpsStatus,
               builder: (context, status, _) => _buildStatCard(
-                    'Satellites',
+                    loc.statSatellitesLabel,
                     status,
                     Icons.satellite_alt,
                     multiLine: status.contains('\n'),
@@ -911,7 +915,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         ValueListenableBuilder<String>(
           valueListenable: recording.solarTimes,
           builder: (context, times, _) => _buildStatCard(
-            'Soleil',
+            loc.statSunLabel,
             times,
             Icons.wb_sunny_outlined,
             multiLine: true,
@@ -923,11 +927,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             final weather = widget.weatherService;
             final code = weather.next4HoursWeatherCode;
             final label = !weather.isActive
-                ? 'Météo'
+                ? loc.weatherLabel
                 : (weather.isLoading
-                    ? 'Chargement...'
+                    ? loc.loadingLabel
                     : (weather.error ??
-                        (code != null ? weatherCodeLabel(code) : 'Météo')));
+                        (code != null ? weatherCodeLabel(code) : loc.weatherLabel)));
             return _buildStatCard(
               label,
               '',
@@ -957,7 +961,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             // météo, ce bloc n'est pas activé par un tap — il reflète
             // simplement l'état de la localisation.
             return _buildStatCard(
-              'Altitude',
+              loc.altitudeLabel,
               available ? _formatAltitude(pos.altitude) : '--',
               Icons.terrain,
             );
@@ -970,10 +974,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   void _showSatelliteDetails(BuildContext context) {
     final recording = widget.recordingService;
     final breakdown = recording.constellationBreakdown;
+    final loc = AppLocalizations.of(context)!;
 
     if (breakdown.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aucune donnée satellite disponible')),
+        SnackBar(content: Text(loc.noSatelliteDataMessage)),
       );
       return;
     }
@@ -982,8 +987,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Satellites détectés',
-            style: TextStyle(color: Colors.white)),
+        title: Text(loc.satellitesDetectedDialogTitle,
+            style: const TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -999,8 +1004,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('FERMER',
-                style: TextStyle(color: Colors.greenAccent)),
+            child: Text(loc.closeButtonUppercase,
+                style: const TextStyle(color: Colors.greenAccent)),
           ),
         ],
       ),
@@ -1010,6 +1015,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   Widget _buildSpeedCard() {
     final recording = widget.recordingService;
     final accent = widget.settingsService.accentColor;
+    final loc = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
@@ -1022,7 +1028,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           Row(children: [
             Icon(Icons.speed, color: accent, size: 15),
             const SizedBox(width: 4),
-            Text('Vitesse', style: TextStyle(color: accent, fontSize: 11))
+            Text(loc.speedLabel, style: TextStyle(color: accent, fontSize: 11))
           ]),
           Expanded(
             child: FittedBox(
@@ -1037,13 +1043,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 2),
                   Text(
-                      'Jour: ${_formatSpeed(recording.averageSpeedDailyMps.value)}',
+                      '${loc.speedDailyLabel}: ${_formatSpeed(recording.averageSpeedDailyMps.value)}',
                       style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 12,
                           fontWeight: FontWeight.w500)),
                   Text(
-                      'Gén.: ${_formatSpeed(recording.averageSpeedGlobalMps.value)}',
+                      '${loc.speedGlobalLabel}: ${_formatSpeed(recording.averageSpeedGlobalMps.value)}',
                       style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 12,
@@ -1270,37 +1276,38 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   }
 
   Widget _buildOnboarding(bool isReversed) {
+    final loc = AppLocalizations.of(context)!;
     return GestureDetector(
       onTap: () => setState(() => _showOnboarding = false),
       child: Container(
         color: Colors.black.withValues(alpha: 0.8),
-        child: const Center(
+        child: Center(
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.touch_app, color: Colors.white, size: 80),
-          SizedBox(height: 20),
-          Text('Bienvenue !',
-              style: TextStyle(
+          const Icon(Icons.touch_app, color: Colors.white, size: 80),
+          const SizedBox(height: 20),
+          Text(loc.onboardingWelcomeTitle,
+              style: const TextStyle(
                   color: Colors.white,
                   fontSize: 28,
                   fontWeight: FontWeight.bold)),
-          SizedBox(height: 40),
+          const SizedBox(height: 40),
           Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
             _HintGesture(
                 icon: Icons.arrow_forward,
-                text: 'Swipe vers la droite\nParamètres'),
+                text: loc.onboardingSwipeRightSettings),
             _HintGesture(
                 icon: Icons.arrow_back,
-                text: 'Swipe vers la gauche\nNavigation'),
+                text: loc.onboardingSwipeLeftNavigation),
           ]),
-          SizedBox(height: 60),
-          Text('Appuyez pour commencer',
-              style: TextStyle(color: Colors.white70)),
-            SizedBox(height: 60),
+          const SizedBox(height: 60),
+          Text(loc.onboardingTapToStart,
+              style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 60),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 _HintGesture(
                     icon: Icons.arrow_upward,
-                    text: 'Swipe vers le haut\nMenu étendu'),
+                    text: loc.onboardingSwipeUpMenu),
               ]),
         ])),
       ),

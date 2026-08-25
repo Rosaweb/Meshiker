@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
+import '../../l10n/generated/app_localizations.dart';
 import '../../utils/settings_service.dart';
 import '../../utils/tile_cache_service.dart';
 import '../../utils/photo_scanner_service.dart';
@@ -12,12 +13,13 @@ class SystemSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Paramètres système'),
+          title: Text(loc.systemSettingsTitle),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,
@@ -27,27 +29,27 @@ class SystemSettingsScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                const Text('LANGUE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(loc.languageSectionTitle, style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildLanguageSection(context, settings),
                 const SizedBox(height: 32),
-                const Text('UNITÉS DE MESURE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(loc.unitsSectionTitle, style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildUnitsSection(context, settings),
                 const SizedBox(height: 32),
-                const Text('STOCKAGE GPX/KML', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(loc.gpxStorageSectionTitle, style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildGpxStorageSection(context, settings),
                 const SizedBox(height: 32),
-                const Text('CACHE DES CARTES', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(loc.cacheSectionTitle, style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildCacheSection(context, settings, cacheService),
                 const SizedBox(height: 32),
-                const Text('RÉSEAU ET TÉLÉCHARGEMENT', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(loc.networkSectionTitle, style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildNetworkSection(context, settings),
                 const SizedBox(height: 32),
-                const Text('PHOTOS', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(loc.photosSectionTitle, style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildPhotoSection(context),
               ],
@@ -59,6 +61,7 @@ class SystemSettingsScreen extends StatelessWidget {
   }
 
   Widget _buildLanguageSection(BuildContext context, SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     const labelStyle = TextStyle(color: Colors.white, fontSize: 14);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -72,7 +75,7 @@ class SystemSettingsScreen extends StatelessWidget {
           RadioListTile<AppLanguage>(
             dense: true,
             activeColor: Colors.greenAccent,
-            title: const Text('Système (par défaut)', style: labelStyle),
+            title: Text(loc.languageSystemOption, style: labelStyle),
             value: AppLanguage.system,
             groupValue: settings.appLanguage,
             onChanged: (lang) {
@@ -82,7 +85,7 @@ class SystemSettingsScreen extends StatelessWidget {
           RadioListTile<AppLanguage>(
             dense: true,
             activeColor: Colors.greenAccent,
-            title: const Text('Français', style: labelStyle),
+            title: Text(loc.languageFrenchOption, style: labelStyle),
             value: AppLanguage.fr,
             groupValue: settings.appLanguage,
             onChanged: (lang) {
@@ -92,7 +95,7 @@ class SystemSettingsScreen extends StatelessWidget {
           RadioListTile<AppLanguage>(
             dense: true,
             activeColor: Colors.greenAccent,
-            title: const Text('English', style: labelStyle),
+            title: Text(loc.languageEnglishOption, style: labelStyle),
             value: AppLanguage.en,
             groupValue: settings.appLanguage,
             onChanged: (lang) {
@@ -105,6 +108,7 @@ class SystemSettingsScreen extends StatelessWidget {
   }
 
   Widget _buildUnitsSection(BuildContext context, SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     const labelStyle = TextStyle(color: Colors.white, fontSize: 14);
     return Container(
       padding: const EdgeInsets.all(16),
@@ -127,7 +131,7 @@ class SystemSettingsScreen extends StatelessWidget {
                       activeColor: Colors.greenAccent,
                       visualDensity: VisualDensity.compact,
                     ),
-                    const Text('Métrique', style: labelStyle),
+                    Text(loc.unitMetricLabel, style: labelStyle),
                   ],
                 ),
               ),
@@ -141,7 +145,7 @@ class SystemSettingsScreen extends StatelessWidget {
                       activeColor: Colors.greenAccent,
                       visualDensity: VisualDensity.compact,
                     ),
-                    const Text('Impérial', style: labelStyle),
+                    Text(loc.unitImperialLabel, style: labelStyle),
                   ],
                 ),
               ),
@@ -159,7 +163,7 @@ class SystemSettingsScreen extends StatelessWidget {
                       activeColor: Colors.greenAccent,
                       visualDensity: VisualDensity.compact,
                     ),
-                    const Text('Celsius', style: labelStyle),
+                    Text(loc.unitCelsiusLabel, style: labelStyle),
                   ],
                 ),
               ),
@@ -173,7 +177,7 @@ class SystemSettingsScreen extends StatelessWidget {
                       activeColor: Colors.greenAccent,
                       visualDensity: VisualDensity.compact,
                     ),
-                    const Text('Fahrenheit', style: labelStyle),
+                    Text(loc.unitFahrenheitLabel, style: labelStyle),
                   ],
                 ),
               ),
@@ -185,6 +189,7 @@ class SystemSettingsScreen extends StatelessWidget {
   }
 
   Widget _buildPhotoSection(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -195,11 +200,11 @@ class SystemSettingsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Stockage public', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Text(loc.publicStorageLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          const Text(
-            'Les photos prises dans l\'app sont enregistrées dans le dossier "Images/Meshiker" de votre téléphone pour être visibles dans votre galerie habituelle.',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
+          Text(
+            loc.publicStorageDescription,
+            style: const TextStyle(color: Colors.white38, fontSize: 12),
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
@@ -207,17 +212,17 @@ class SystemSettingsScreen extends StatelessWidget {
               final scanner = PhotoScannerService();
               final messenger = ScaffoldMessenger.of(context);
               messenger.showSnackBar(
-                const SnackBar(content: Text('Recherche de nouvelles photos...')),
+                SnackBar(content: Text(loc.scanningPhotosMessage)),
               );
-              
+
               final photos = await scanner.scanPhotos();
-              
+
               messenger.showSnackBar(
-                SnackBar(content: Text('${photos.length} photos trouvées dans le dossier Meshiker.')),
+                SnackBar(content: Text(loc.photosFoundMessage(photos.length))),
               );
             },
             icon: const Icon(Icons.photo_library),
-            label: const Text('Synchroniser la galerie'),
+            label: Text(loc.syncGalleryButton),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.white10, foregroundColor: Colors.white),
           ),
         ],
@@ -226,6 +231,7 @@ class SystemSettingsScreen extends StatelessWidget {
   }
 
   Widget _buildNetworkSection(BuildContext context, SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -234,8 +240,8 @@ class SystemSettingsScreen extends StatelessWidget {
         border: Border.all(color: Colors.white10),
       ),
       child: SwitchListTile(
-        title: const Text('Wi-Fi uniquement', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        subtitle: const Text('N\'autoriser le téléchargement des cartes qu\'en Wi-Fi', style: TextStyle(color: Colors.white38, fontSize: 12)),
+        title: Text(loc.wifiOnlyLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        subtitle: Text(loc.wifiOnlySubtitle, style: const TextStyle(color: Colors.white38, fontSize: 12)),
         value: settings.wifiOnlyDownload,
         onChanged: (v) => settings.setWifiOnlyDownload(v),
         activeThumbColor: Colors.greenAccent,
@@ -245,6 +251,7 @@ class SystemSettingsScreen extends StatelessWidget {
   }
 
   Widget _buildGpxStorageSection(BuildContext context, SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -255,10 +262,10 @@ class SystemSettingsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Dossier personnalisé', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Text(loc.customFolderLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(
-            settings.gpxStoragePath ?? 'Utiliser le stockage par défaut',
+            settings.gpxStoragePath ?? loc.useDefaultStorageLabel,
             style: const TextStyle(color: Colors.white38, fontSize: 12),
           ),
           const SizedBox(height: 16),
@@ -277,11 +284,10 @@ class SystemSettingsScreen extends StatelessWidget {
                          if (context.mounted && result == GpxScanResult.permissionDenied) {
                            ScaffoldMessenger.of(context).showSnackBar(
                              SnackBar(
-                               content: const Text(
-                                   'Accès au stockage refusé : autorisez "Tous les fichiers" pour Meshiker dans les paramètres Android.'),
+                               content: Text(loc.storageAccessDeniedMessage),
                                duration: const Duration(seconds: 5),
                                action: SnackBarAction(
-                                 label: 'PARAMÈTRES',
+                                 label: loc.settingsSnackbarAction,
                                  onPressed: () => ph.openAppSettings(),
                                ),
                              ),
@@ -291,7 +297,7 @@ class SystemSettingsScreen extends StatelessWidget {
                     }
                   },
                   icon: const Icon(Icons.folder_open),
-                  label: const Text('Sélectionner'),
+                  label: Text(loc.selectButtonLabel),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.white10, foregroundColor: Colors.white),
                 ),
               ),
@@ -300,17 +306,17 @@ class SystemSettingsScreen extends StatelessWidget {
                 IconButton(
                   onPressed: () => settings.setGpxStoragePath(null),
                   icon: const Icon(Icons.refresh, color: Colors.orangeAccent),
-                  tooltip: 'Réinitialiser',
+                  tooltip: loc.resetTooltip,
                 ),
               ],
             ],
           ),
-          
+
           if (settings.gpxStoragePath != null) ...[
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
             ),
-            const Text('Dossier des traces enregistrées', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            Text(loc.recordingFolderLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             const SizedBox(height: 16),
             Row(
@@ -326,14 +332,14 @@ class SystemSettingsScreen extends StatelessWidget {
                         } else {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Le dossier doit être à l\'intérieur du répertoire racine GPX.')),
+                              SnackBar(content: Text(loc.folderMustBeInsideRootMessage)),
                             );
                           }
                         }
                       }
                     },
                     icon: const Icon(Icons.create_new_folder),
-                    label: const Text('Sélectionner'),
+                    label: Text(loc.selectButtonLabel),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.white10, foregroundColor: Colors.white),
                   ),
                 ),
@@ -342,7 +348,7 @@ class SystemSettingsScreen extends StatelessWidget {
                   IconButton(
                     onPressed: () => settings.setRecordingSubPath(null),
                     icon: const Icon(Icons.close, color: Colors.redAccent),
-                    tooltip: 'Utiliser la racine',
+                    tooltip: loc.useRootFolderTooltip,
                   ),
                 ],
               ],
@@ -354,6 +360,7 @@ class SystemSettingsScreen extends StatelessWidget {
   }
 
   Widget _buildCacheSection(BuildContext context, SettingsService settings, TileCacheService cacheService) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -367,7 +374,7 @@ class SystemSettingsScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Taille du cache', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              Text(loc.cacheSizeLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               Text('${settings.tileCacheLimitMb.round()} MB', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
             ],
           ),
@@ -385,7 +392,7 @@ class SystemSettingsScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Utilisation actuelle', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(loc.currentUsageLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               Text('${cacheService.currentSizeMb.toStringAsFixed(1)} MB', style: const TextStyle(color: Colors.white38, fontSize: 12)),
             ],
           ),
@@ -399,7 +406,7 @@ class SystemSettingsScreen extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: () => cacheService.clearAll(),
             icon: const Icon(Icons.delete_sweep),
-            label: const Text('VIDER LE CACHE'),
+            label: Text(loc.clearCacheButton),
             style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent, side: const BorderSide(color: Colors.redAccent)),
           ),
         ],

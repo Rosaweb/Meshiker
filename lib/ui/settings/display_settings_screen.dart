@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../utils/settings_service.dart';
 import 'maps_settings_screen.dart';
 import 'navigation_customization_screen.dart';
@@ -10,12 +11,13 @@ class DisplaySettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Paramètres d\'affichage'),
+          title: Text(loc.displaySettingsTitle),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,
@@ -29,17 +31,17 @@ class DisplaySettingsScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               children: [
-                const Text('INTERFACE ET CARTE', style: headerStyle),
+                Text(loc.interfaceMapSectionTitle, style: headerStyle),
                 const SizedBox(height: 12),
 
                 // Couleur d'accent : cadres/titres/icônes de l'écran Outils
                 // de navigation (d'autres éléments suivront plus tard).
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Couleur du thème', style: labelStyle),
-                  subtitle: const Text(
-                      'Cadres, titres et icônes de l\'écran Outils de navigation',
-                      style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  title: Text(loc.themeColorLabel, style: labelStyle),
+                  subtitle: Text(
+                      loc.themeColorSubtitle,
+                      style: const TextStyle(color: Colors.white38, fontSize: 11)),
                   trailing: GestureDetector(
                     onTap: () => _pickAccentColor(context, settings),
                     child: Container(
@@ -59,7 +61,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Transparence menu Paramètres/Outils', style: labelStyle),
+                    Text(loc.settingsPanelOpacityLabel, style: labelStyle),
                     Text('${((1.1 - settings.barOpacity) * 100).round()}%', style: valueStyle),
                   ],
                 ),
@@ -77,7 +79,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Transparence menu principal', style: labelStyle),
+                    Text(loc.mainMenuOpacityLabel, style: labelStyle),
                     Text('${((1.1 - settings.mainMenuOpacity) * 100).round()}%', style: valueStyle),
                   ],
                 ),
@@ -94,7 +96,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 // Échelle & Gaucher
                 Row(
                   children: [
-                    const Text('Afficher l\'échelle', style: labelStyle),
+                    Text(loc.showScaleLabel, style: labelStyle),
                     const Spacer(),
                     Switch(
                       value: settings.showScale,
@@ -105,7 +107,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                    const Text('Mode Gaucher', style: labelStyle),
+                    Text(loc.leftHandedModeLabel, style: labelStyle),
                     const Spacer(),
                     Switch(
                       value: settings.reversePanels,
@@ -120,7 +122,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Zones de swipe', style: labelStyle),
+                    Text(loc.swipeZonesLabel, style: labelStyle),
                     Text('${settings.edgeSwipeWidth.round()} px', style: valueStyle),
                   ],
                 ),
@@ -138,7 +140,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Taille icônes Waypoints', style: labelStyle),
+                    Text(loc.waypointIconSizeLabel, style: labelStyle),
                     Text('${settings.waypointIconSize.round()} px', style: valueStyle),
                   ],
                 ),
@@ -153,13 +155,13 @@ class DisplaySettingsScreen extends StatelessWidget {
                 ),
 
                 const Divider(color: Colors.white12, height: 24),
-                const Text('OUVERTURE DE LA CARTE', style: headerStyle),
+                Text(loc.mapStartupSectionTitle, style: headerStyle),
                 const SizedBox(height: 4),
                 RadioListTile<MapStartupMode>(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   activeColor: Colors.greenAccent,
-                  title: const Text('Reprendre là où j\'ai arrêté', style: labelStyle),
+                  title: Text(loc.resumeLastPositionLabel, style: labelStyle),
                   value: MapStartupMode.lastPosition,
                   groupValue: settings.mapStartupMode,
                   onChanged: (mode) {
@@ -170,10 +172,10 @@ class DisplaySettingsScreen extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   activeColor: Colors.greenAccent,
-                  title: const Text('Point personnalisé', style: labelStyle),
+                  title: Text(loc.customPointLabel, style: labelStyle),
                   subtitle: settings.mapStartupMode == MapStartupMode.customPoint
-                      ? const Text('Touchez pour choisir/modifier le point sur la carte',
-                          style: TextStyle(color: Colors.white38, fontSize: 11))
+                      ? Text(loc.customPointSubtitle,
+                          style: const TextStyle(color: Colors.white38, fontSize: 11))
                       : null,
                   value: MapStartupMode.customPoint,
                   groupValue: settings.mapStartupMode,
@@ -186,12 +188,12 @@ class DisplaySettingsScreen extends StatelessWidget {
                 ),
 
                 const Divider(color: Colors.white12, height: 24),
-                const Text('APERÇU DES TRACES GPX', style: headerStyle),
+                Text(loc.gpxPreviewSectionTitle, style: headerStyle),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Expanded(
-                      child: Text('Fond de carte des aperçus', style: labelStyle),
+                    Expanded(
+                      child: Text(loc.previewBasemapLabel, style: labelStyle),
                     ),
                     DropdownButton<String?>(
                       value: settings.tracePreviewMapSourceId,
@@ -200,9 +202,9 @@ class DisplaySettingsScreen extends StatelessWidget {
                       underline: const SizedBox(),
                       onChanged: (id) => settings.setTracePreviewMapSourceId(id),
                       items: [
-                        const DropdownMenuItem<String?>(
+                        DropdownMenuItem<String?>(
                           value: null,
-                          child: Text('Fond de carte actif'),
+                          child: Text(loc.activeBasemapOption),
                         ),
                         ...availableSources.map(
                           (source) => DropdownMenuItem<String?>(
@@ -216,13 +218,13 @@ class DisplaySettingsScreen extends StatelessWidget {
                 ),
 
                 const Divider(color: Colors.white12, height: 24),
-                const Text('ACCESSIBILITÉ', style: headerStyle),
+                Text(loc.accessibilitySectionTitle, style: headerStyle),
                 const SizedBox(height: 4),
                 RadioListTile<FontScaleLevel>(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   activeColor: Colors.greenAccent,
-                  title: const Text('Taille du texte normale (par défaut)', style: labelStyle),
+                  title: Text(loc.fontSizeNormalLabel, style: labelStyle),
                   value: FontScaleLevel.normal,
                   groupValue: settings.fontScaleLevel,
                   onChanged: (level) {
@@ -233,7 +235,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   activeColor: Colors.greenAccent,
-                  title: const Text('Grand', style: labelStyle),
+                  title: Text(loc.fontSizeLargeLabel, style: labelStyle),
                   value: FontScaleLevel.large,
                   groupValue: settings.fontScaleLevel,
                   onChanged: (level) {
@@ -244,7 +246,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   activeColor: Colors.greenAccent,
-                  title: const Text('Très grand', style: labelStyle),
+                  title: Text(loc.fontSizeExtraLargeLabel, style: labelStyle),
                   value: FontScaleLevel.extraLarge,
                   groupValue: settings.fontScaleLevel,
                   onChanged: (level) {
@@ -255,7 +257,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                 const Divider(color: Colors.white12, height: 24),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('PERSONNALISER LE VOLET DE NAVIGATION', style: headerStyle),
+                  title: Text(loc.customizeNavigationPanelLabel, style: headerStyle),
                   trailing: const Icon(Icons.chevron_right, color: Colors.white24),
                   onTap: () {
                     final bool isReversed = settings.reversePanels;
@@ -280,13 +282,14 @@ class DisplaySettingsScreen extends StatelessWidget {
   }
 
   void _pickAccentColor(BuildContext context, SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     Color selected = settings.accentColor;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('Couleur du thème', style: TextStyle(color: Colors.white)),
+          title: Text(loc.themeColorLabel, style: const TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: ColorPicker(
               pickerColor: selected,
@@ -298,13 +301,13 @@ class DisplaySettingsScreen extends StatelessWidget {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.cancelButtonUppercase)),
             TextButton(
               onPressed: () {
                 settings.setAccentColor(selected);
                 Navigator.pop(context);
               },
-              child: const Text('APPLIQUER', style: TextStyle(color: Colors.greenAccent)),
+              child: Text(loc.applyButtonUppercase, style: const TextStyle(color: Colors.greenAccent)),
             ),
           ],
         ),

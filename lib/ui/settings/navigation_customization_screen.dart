@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../utils/settings_service.dart';
 
 class NavigationCustomizationScreen extends StatelessWidget {
@@ -7,12 +8,13 @@ class NavigationCustomizationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Personnaliser la navigation'),
+          title: Text(loc.navCustomizeTitle),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,
@@ -22,22 +24,22 @@ class NavigationCustomizationScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                const Text(
-                  'CHOISISSEZ LES ÉLÉMENTS À AFFICHER',
-                  style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                Text(
+                  loc.navCustomizeSectionTitle,
+                  style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-                _buildToggle(context, settings, 'Vitesse (actuelle, jour, gén.)', settings.navShowSpeed, 'speed'),
-                _buildToggle(context, settings, 'Distance du jour', settings.navShowDailyDist, 'dailyDist'),
-                _buildToggle(context, settings, 'Distances sur la trace', settings.navShowTraceDist, 'traceDist'),
-                _buildToggle(context, settings, 'Précision satellite', settings.navShowGpsAccuracy, 'gpsAccuracy'),
-                _buildToggle(context, settings, 'Nombre de satellites / Statut', settings.navShowSatellites, 'satellites'),
-                _buildToggle(context, settings, 'Podomètre', settings.navShowPedometer, 'pedometer'),
+                _buildToggle(context, settings, loc.navToggleSpeed, settings.navShowSpeed, 'speed'),
+                _buildToggle(context, settings, loc.navToggleDailyDist, settings.navShowDailyDist, 'dailyDist'),
+                _buildToggle(context, settings, loc.navToggleTraceDist, settings.navShowTraceDist, 'traceDist'),
+                _buildToggle(context, settings, loc.navToggleGpsAccuracy, settings.navShowGpsAccuracy, 'gpsAccuracy'),
+                _buildToggle(context, settings, loc.navToggleSatellites, settings.navShowSatellites, 'satellites'),
+                _buildToggle(context, settings, loc.statPedometerLabel, settings.navShowPedometer, 'pedometer'),
                 const Divider(color: Colors.white12, height: 32),
-                _buildToggle(context, settings, 'Prochain waypoint', settings.navShowNextWaypoint, 'nextWaypoint'),
-                _buildToggle(context, settings, 'Point d\'étape', settings.navShowDestination, 'destination'),
-                _buildToggle(context, settings, "Points d'intérêt OSM", settings.navShowPois, 'pois'),
-                _buildToggle(context, settings, 'Outils de mesure (Azimut/Dist)', settings.navShowMeasureTools, 'measureTools'),
+                _buildToggle(context, settings, loc.navToggleNextWaypoint, settings.navShowNextWaypoint, 'nextWaypoint'),
+                _buildToggle(context, settings, loc.navToggleDestination, settings.navShowDestination, 'destination'),
+                _buildToggle(context, settings, loc.navTogglePois, settings.navShowPois, 'pois'),
+                _buildToggle(context, settings, loc.navToggleMeasureTools, settings.navShowMeasureTools, 'measureTools'),
               ],
             );
           },
