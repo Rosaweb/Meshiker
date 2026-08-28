@@ -169,6 +169,189 @@
   "closeTooltip": "Close",
   "deleteButtonLabel": "Delete",
 
+  "deleteButtonUppercase": "DELETE",
+  "saveButtonUppercase": "SAVE",
+  "createButtonUppercase": "CREATE",
+  "noneLabel": "None",
+
+  "waypointManagerManageTypesTooltip": "Manage types",
+  "waypointManagerCreateFolderTooltip": "Create a folder",
+  "searchByNameHint": "Search by name...",
+  "allTypesLabel": "All types",
+  "proximityFilterLabel": "Proximity",
+  "selectedCountLabel": "{count} SELECTED",
+  "@selectedCountLabel": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "bulkActionsLabel": "Bulk actions",
+  "moveButtonUppercase": "MOVE",
+  "emptyFolderLabel": "Empty folder",
+  "noWaypointForTraceMessage": "No waypoints for this track",
+  "noCategoryLabel": "No type",
+  "confirmDeleteWaypointsMessage": "Do you really want to delete {count} waypoint(s)?",
+  "@confirmDeleteWaypointsMessage": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "moveToDialogTitle": "Move to...",
+  "removeFromFolderLabel": "Remove from any folder",
+  "personalFoldersSectionLabel": "PERSONAL FOLDERS",
+  "gpxTracesSectionLabel": "GPX TRACKS",
+  "newFolderDialogTitle": "New folder",
+  "folderNameHint": "Folder name",
+
+  "chooseColorDialogTitle": "Choose a color",
+  "selectTypeHint": "Select a type",
+  "descriptionOptionalHint": "Description (optional)",
+  "pointColorSectionLabel": "POINT COLOR",
+  "locateOnMapButton": "Locate on map",
+  "noPhotosLabel": "No photos",
+  "confirmDeleteWaypointMessage": "Do you really want to delete this waypoint?",
+  "pointNameHint": "Point name",
+  "requiredFieldError": "Required",
+
+  "waypointSettingsTitle": "Waypoint Settings",
+  "displayOptionsSectionLabel": "DISPLAY OPTIONS",
+  "showGpxWaypointsLabel": "Show GPX waypoints",
+  "showGpxWaypointsSubtitle": "Disable to only see independent waypoints",
+  "categoryIconsLabel": "Custom icons per type",
+  "categoryIconsSubtitle": "Show the waypoint type icon on the map instead of a generic marker",
+  "manageTypesSectionLabel": "TYPE MANAGEMENT",
+  "nameFieldLabel": "Name",
+  "iconFieldLabel": "Icon",
+  "colorFieldLabel": "Color",
+  "newTypeDialogTitle": "New Type",
+  "editTypeDialogTitle": "Edit Type",
+
+  "savePoiButtonUppercase": "SAVE",
+  "addressNotProvidedLabel": "Address not provided",
+  "phoneNotProvidedLabel": "Phone not provided",
+  "hoursNotProvidedLabel": "Hours not provided",
+  "poiDescriptionNameLine": "Name: {name}",
+  "@poiDescriptionNameLine": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "poiDescriptionAddressLine": "Address: {address}",
+  "@poiDescriptionAddressLine": {
+    "placeholders": { "address": { "type": "String" } }
+  },
+  "poiDescriptionPhoneLine": "Phone: {phone}",
+  "@poiDescriptionPhoneLine": {
+    "placeholders": { "phone": { "type": "String" } }
+  },
+
+  "unexpectedErrorMessage": "An unexpected error occurred.",
+  "retryButtonLabel": "Retry",
+  "distanceLabel": "Distance",
+  "elevationGainLabel": "Elevation +",
+  "elevationLossLabel": "Elevation -",
+  "resetButtonUppercase": "RESET",
+  "scanQrCodeLabel": "Scan a QR code",
+  "importShareLabel": "Import a share",
+
+  "deleteSegmentDialogTitle": "Delete segment",
+  "confirmDeleteSegmentMessage": "Do you really want to delete this segment?",
+  "segmentsSummaryLabel": "{count, plural, =1{{count} segment} other{{count} segments}} · {distance}",
+  "@segmentsSummaryLabel": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "distance": { "type": "String" }
+    }
+  },
+  "noSegmentsMessage": "No segments recorded.",
+  "segmentNumberLabel": "Segment #{id}",
+  "@segmentNumberLabel": {
+    "placeholders": { "id": { "type": "int" } }
+  },
+
+  "scanErrorMessage": "Error during scan: {error}",
+  "@scanErrorMessage": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "gpxFolderNotFoundMessage": "GPX/KML folder not found.",
+  "storageAccessDeniedRescanMessage": "Storage access denied: allow \"All files\" for Meshiker in Android settings, then rerun the scan.",
+  "trackCountBadge": "({count})",
+  "@trackCountBadge": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "scanGpxFolderTooltip": "Scan the GPX/KML folder",
+  "noTracksImportedMessage": "No tracks imported.",
+  "searchTrackHint": "Search a track...",
+  "sortByLabel": "Sort by:",
+  "sortNoneLabel": "None (default)",
+  "sortAlphabeticalLabel": "Alphabetical order",
+  "sortDistAscLabel": "Distance ascending",
+  "sortDistDescLabel": "Distance descending",
+  "sortGainPosLabel": "Positive elevation",
+  "sortLossNegLabel": "Negative elevation",
+  "sortTotalElevationLabel": "Total elevation",
+  "deactivateAllTooltip": "Deactivate all",
+  "activateAllTooltip": "Activate all",
+  "unnamedTrackLabel": "Unnamed track",
+  "segmentationErrorLabel": "Segmentation error",
+  "meshCalculatingLabel": "Computing Mesh...",
+
+  "traceNameHint": "Track name",
+  "navigateMenuLabel": "Navigate",
+  "viewWaypointsMenuLabel": "View waypoints",
+  "shareTraceMenuLabel": "Share the track",
+  "createOfflineMapMenuLabel": "Create offline map",
+  "traceColorMenuLabel": "Track color",
+  "reverseDirectionMenuLabel": "Reverse direction",
+  "moveMenuLabel": "Move",
+  "traceHasNoPointsMessage": "This track doesn't contain any points.",
+  "mapDownloadStartedMessage": "Download of map \"{name}\" started",
+  "@mapDownloadStartedMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "noSourceFileMessage": "This track has no associated source file.",
+  "sourceFileNotFoundMessage": "Source file not found on disk.",
+  "fileMovedMessage": "File moved.",
+  "deleteTraceDialogTitle": "Delete track",
+  "confirmDeleteTraceMessage": "Do you really want to delete \"{name}\"? The source file will also be deleted from device storage. This action is irreversible.",
+  "@confirmDeleteTraceMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "noElevationDataMessage": "No altitude data available.",
+  "confirmReverseMessage": "This track's start and end will be swapped. You can undo by reversing again.",
+  "reverseButtonUppercase": "REVERSE",
+  "traceDirectionReversedMessage": "Track direction reversed.",
+
+  "mobileNetworkModeLabel": "Mobile network",
+  "wifiNetworkModeLabel": "WiFi network",
+  "chooseShareModeMessage": "Choose a share mode above.",
+  "wifiRecipientSameNetworkMessage": "The recipient must be connected to the same WiFi network.",
+  "linkCopiedMessage": "Link copied",
+  "copyLinkButtonLabel": "Copy the link",
+
+  "traceImportedMessage": "Track imported: {name}",
+  "@traceImportedMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "cameraAccessDeniedMessage": "Camera access denied: allow it for Meshiker in Android settings.",
+  "cameraPermissionDeniedMessage": "Camera permission denied.",
+  "pasteShareLinkInstructionText": "Paste the received share link or code, or scan the QR code.",
+  "orDividerLabel": "or",
+
+  "roadmapTitle": "Roadmap",
+  "noTraceLoadedMessage": "No track loaded.\nOpen a track from the",
+  "chooseActionHintMessage": "and choose \"{action}\".",
+  "@chooseActionHintMessage": {
+    "placeholders": { "action": { "type": "String" } }
+  },
+  "traceNotFoundMessage": "Track not found.",
+  "traceHasNoWaypointsMessage": "This track doesn't contain any waypoints.",
+
+  "noElevationDataForTraceMessage": "No altitude data available for this track.",
+  "pinchZoomDragHintMessage": "Pinch to zoom, drag to navigate",
+  "elevationProfileTitle": "Elevation profile — {name}",
+  "@elevationProfileTitle": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "maxAltitudeLabel": "Max altitude",
+
+  "loadingPreviewMessage": "Loading preview...",
+  "previewUnavailableMessage": "Preview unavailable",
+
   "helpScreenPlaceholder": "Content coming soon.",
   "termsOfUseTitle": "Terms of use",
   "termsOfUseHeading": "Meshiker Terms of Use",

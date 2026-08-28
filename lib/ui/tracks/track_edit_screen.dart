@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/isar_service.dart';
 import '../../gpx/gpx_models.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/offline_map/offline_map.dart';
 import '../../models/trace.dart';
 import '../../recording/recording_service.dart';
@@ -79,6 +80,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
     final dist = settings.unitSystem == UnitSystem.metric
         ? '${(widget.trace.totalDistanceMeters / 1000).toStringAsFixed(1)} km'
         : '${(widget.trace.totalDistanceMeters * 0.000621371).toStringAsFixed(1)} mi';
@@ -97,14 +99,14 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
                   children: [
                     TraceMapPreview(trace: widget.trace),
                     const SizedBox(height: 24),
-                    _buildInfoCard(dist),
+                    _buildInfoCard(dist, loc),
                     const SizedBox(height: 24),
                     TextField(
                       controller: _descController,
                       maxLines: 3,
                       style: const TextStyle(color: Colors.white70),
                       decoration: InputDecoration(
-                        hintText: 'Description (optionnel)',
+                        hintText: loc.descriptionOptionalHint,
                         hintStyle: const TextStyle(color: Colors.white24),
                         filled: true,
                         fillColor: Colors.white.withValues(alpha: 0.05),
@@ -124,7 +126,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('ANNULER', style: TextStyle(color: Colors.white54)),
+                    child: Text(loc.cancelButtonUppercase, style: const TextStyle(color: Colors.white54)),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton(
@@ -134,7 +136,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
                       foregroundColor: Colors.black,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text('ENREGISTRER', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: Text(loc.saveButtonUppercase, style: const TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -146,6 +148,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
   }
 
   Widget _buildHeader() {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -173,9 +176,9 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
             child: TextFormField(
               controller: _nameController,
               style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-              decoration: const InputDecoration(
-                hintText: 'Nom de la trace',
-                hintStyle: TextStyle(color: Colors.black26),
+              decoration: InputDecoration(
+                hintText: loc.traceNameHint,
+                hintStyle: const TextStyle(color: Colors.black26),
                 border: InputBorder.none,
                 isDense: true,
               ),
@@ -186,15 +189,15 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
             color: Colors.grey[900],
             onSelected: _onMenuAction,
             itemBuilder: (context) => [
-              _menuItem(_TraceMenuAction.navigate, Icons.navigation, 'Naviguer', color: Colors.greenAccent),
-              _menuItem(_TraceMenuAction.waypoints, Icons.location_on_outlined, 'Voir les waypoints'),
-              _menuItem(_TraceMenuAction.share, Icons.qr_code, 'Partager la trace'),
-              _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, 'Créer carte hors-ligne'),
+              _menuItem(_TraceMenuAction.navigate, Icons.navigation, loc.navigateMenuLabel, color: Colors.greenAccent),
+              _menuItem(_TraceMenuAction.waypoints, Icons.location_on_outlined, loc.viewWaypointsMenuLabel),
+              _menuItem(_TraceMenuAction.share, Icons.qr_code, loc.shareTraceMenuLabel),
+              _menuItem(_TraceMenuAction.offlineMap, Icons.download_for_offline_outlined, loc.createOfflineMapMenuLabel),
               const PopupMenuDivider(),
-              _menuItem(_TraceMenuAction.color, Icons.palette_outlined, 'Couleur de la trace'),
-              _menuItem(_TraceMenuAction.reverse, Icons.swap_horiz, 'Inverser le sens'),
-              _menuItem(_TraceMenuAction.move, Icons.drive_file_move_outline, 'Déplacer'),
-              _menuItem(_TraceMenuAction.delete, Icons.delete_outline, 'Supprimer', color: Colors.redAccent),
+              _menuItem(_TraceMenuAction.color, Icons.palette_outlined, loc.traceColorMenuLabel),
+              _menuItem(_TraceMenuAction.reverse, Icons.swap_horiz, loc.reverseDirectionMenuLabel),
+              _menuItem(_TraceMenuAction.move, Icons.drive_file_move_outline, loc.moveMenuLabel),
+              _menuItem(_TraceMenuAction.delete, Icons.delete_outline, loc.deleteButtonLabel, color: Colors.redAccent),
             ],
           ),
         ],
@@ -296,11 +299,12 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     final isar = context.read<IsarService>();
     final settings = context.read<SettingsService>();
     final messenger = ScaffoldMessenger.of(context);
+    final loc = AppLocalizations.of(context)!;
 
     final polyline = await isar.getTracePolyline(widget.trace);
     if (polyline.isEmpty) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Cette trace ne contient aucun point.')),
+        SnackBar(content: Text(loc.traceHasNoPointsMessage)),
       );
       return;
     }
@@ -345,7 +349,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
 
     messenger.showSnackBar(
       SnackBar(
-        content: Text('Téléchargement de la carte "${map.name}" démarré',
+        content: Text(loc.mapDownloadStartedMessage(map.name),
             textAlign: TextAlign.center),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
@@ -357,10 +361,11 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
   }
 
   Future<void> _moveSourceFile() async {
+    final loc = AppLocalizations.of(context)!;
     final sourcePath = widget.trace.sourceFilePath;
     if (sourcePath == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cette trace n\'a pas de fichier source associé.')),
+        SnackBar(content: Text(loc.noSourceFileMessage)),
       );
       return;
     }
@@ -369,7 +374,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     if (!await sourceFile.exists()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Fichier source introuvable sur le disque.')),
+          SnackBar(content: Text(loc.sourceFileNotFoundMessage)),
         );
       }
       return;
@@ -399,32 +404,33 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fichier déplacé.')),
+        SnackBar(content: Text(loc.fileMovedMessage)),
       );
     }
   }
 
   void _confirmDelete() {
+    final loc = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Supprimer la trace', style: TextStyle(color: Colors.white)),
+        title: Text(loc.deleteTraceDialogTitle, style: const TextStyle(color: Colors.white)),
         content: Text(
-          'Voulez-vous vraiment supprimer "${widget.trace.name}" ? Le fichier source sera aussi supprimé du stockage de l\'appareil. Cette action est irréversible.',
+          loc.confirmDeleteTraceMessage(widget.trace.name),
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('ANNULER'),
+            child: Text(loc.cancelButtonUppercase),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
               await _deleteTrace();
             },
-            child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+            child: Text(loc.deleteButtonUppercase, style: const TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -449,7 +455,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     if (mounted) Navigator.pop(context);
   }
 
-  Widget _buildInfoCard(String dist) {
+  Widget _buildInfoCard(String dist, AppLocalizations loc) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -460,9 +466,9 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _infoStat('Distance', dist),
-          _infoStat('Dénivelé +', '${widget.trace.totalElevationGainMeters.round()}m'),
-          _infoStat('Dénivelé -', '${widget.trace.totalElevationLossMeters.round()}m'),
+          _infoStat(loc.distanceLabel, dist),
+          _infoStat(loc.elevationGainLabel, '${widget.trace.totalElevationGainMeters.round()}m'),
+          _infoStat(loc.elevationLossLabel, '${widget.trace.totalElevationLossMeters.round()}m'),
         ],
       ),
     );
@@ -500,9 +506,9 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
               color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text(
-              'Aucune donnée d\'altitude disponible.',
-              style: TextStyle(color: Colors.white38, fontSize: 12),
+            child: Text(
+              AppLocalizations.of(context)!.noElevationDataMessage,
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
             ),
           );
         }
@@ -546,26 +552,27 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
   }
 
   void _confirmReverse() {
+    final loc = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Inverser le sens', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Le départ et l\'arrivée de cette trace seront échangés. Vous pouvez annuler en inversant à nouveau.',
-          style: TextStyle(color: Colors.white70),
+        title: Text(loc.reverseDirectionMenuLabel, style: const TextStyle(color: Colors.white)),
+        content: Text(
+          loc.confirmReverseMessage,
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('ANNULER'),
+            child: Text(loc.cancelButtonUppercase),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
               await _reverseDirection();
             },
-            child: const Text('INVERSER', style: TextStyle(color: Colors.greenAccent)),
+            child: Text(loc.reverseButtonUppercase, style: const TextStyle(color: Colors.greenAccent)),
           ),
         ],
       ),
@@ -574,22 +581,24 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
 
   Future<void> _reverseDirection() async {
     final isar = context.read<IsarService>();
+    final loc = AppLocalizations.of(context)!;
     await isar.reverseTraceDirection(widget.trace);
     if (!mounted) return;
     setState(() {
       _pointsFuture = isar.getTraceTrackPoints(widget.trace);
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Sens de la trace inversé.')),
+      SnackBar(content: Text(loc.traceDirectionReversedMessage)),
     );
   }
 
   void _showColorPicker() {
+    final loc = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Choisir une couleur', style: TextStyle(color: Colors.white)),
+        title: Text(loc.chooseColorDialogTitle, style: const TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
           child: BlockPicker(
             pickerColor: _currentColor,

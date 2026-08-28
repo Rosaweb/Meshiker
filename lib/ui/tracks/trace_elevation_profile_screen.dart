@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../gpx/gpx_models.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/trace.dart';
 import '../../utils/settings_service.dart';
 import 'elevation_chart_painter.dart';
@@ -124,6 +125,7 @@ class _TraceElevationProfileScreenState
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
     final noData = widget.points.every((p) => p.elevation == null);
 
     return PopScope(
@@ -138,14 +140,14 @@ class _TraceElevationProfileScreenState
             children: [
               _buildHeader(),
               if (noData)
-                const Expanded(
+                Expanded(
                   child: Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32),
+                      padding: const EdgeInsets.all(32),
                       child: Text(
-                        'Aucune donnée d\'altitude disponible pour cette trace.',
+                        loc.noElevationDataForTraceMessage,
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white38),
+                        style: const TextStyle(color: Colors.white38),
                       ),
                     ),
                   ),
@@ -153,7 +155,7 @@ class _TraceElevationProfileScreenState
               else ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                  child: _buildSummaryRow(settings),
+                  child: _buildSummaryRow(settings, loc),
                 ),
                 Expanded(
                   child: Padding(
@@ -190,15 +192,15 @@ class _TraceElevationProfileScreenState
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                   child: Row(
                     children: [
-                      const Expanded(
-                        child: Text('Pincez pour zoomer, glissez pour naviguer',
-                            style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      Expanded(
+                        child: Text(loc.pinchZoomDragHintMessage,
+                            style: const TextStyle(color: Colors.white38, fontSize: 11)),
                       ),
                       if (_scale > 1.0)
                         TextButton(
                           onPressed: _resetZoom,
-                          child: const Text('RÉINITIALISER',
-                              style: TextStyle(color: Colors.greenAccent, fontSize: 11)),
+                          child: Text(loc.resetButtonUppercase,
+                              style: const TextStyle(color: Colors.greenAccent, fontSize: 11)),
                         ),
                     ],
                   ),
@@ -212,6 +214,7 @@ class _TraceElevationProfileScreenState
   }
 
   Widget _buildHeader() {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -232,7 +235,7 @@ class _TraceElevationProfileScreenState
           const Icon(Icons.show_chart, color: Colors.black87, size: 20),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('Profil altimétrique — ${widget.trace.name}',
+            child: Text(loc.elevationProfileTitle(widget.trace.name),
                 style: const TextStyle(
                     color: Colors.black87, fontSize: 15, fontWeight: FontWeight.bold),
                 overflow: TextOverflow.ellipsis),
@@ -242,17 +245,17 @@ class _TraceElevationProfileScreenState
     );
   }
 
-  Widget _buildSummaryRow(SettingsService settings) {
+  Widget _buildSummaryRow(SettingsService settings, AppLocalizations loc) {
     final dist = settings.unitSystem == UnitSystem.metric
         ? '${(_series.totalDistanceM / 1000).toStringAsFixed(1)} km'
         : '${(_series.totalDistanceM * 0.000621371).toStringAsFixed(1)} mi';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _stat('Distance', dist),
-        _stat('Dénivelé +', '${widget.trace.totalElevationGainMeters.round()} m'),
-        _stat('Dénivelé -', '${widget.trace.totalElevationLossMeters.round()} m'),
-        _stat('Altitude max', '${_series.maxEle.round()} m'),
+        _stat(loc.distanceLabel, dist),
+        _stat(loc.elevationGainLabel, '${widget.trace.totalElevationGainMeters.round()} m'),
+        _stat(loc.elevationLossLabel, '${widget.trace.totalElevationLossMeters.round()} m'),
+        _stat(loc.maxAltitudeLabel, '${_series.maxEle.round()} m'),
       ],
     );
   }

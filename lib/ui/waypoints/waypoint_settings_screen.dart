@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../database/isar_service.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/waypoint.dart';
 import '../../utils/settings_service.dart';
 import '../../utils/waypoint_icons.dart';
@@ -23,11 +24,12 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
   Widget build(BuildContext context) {
     final isar = context.watch<IsarService>();
     final settings = context.watch<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Waypoint Settings'),
+        title: Text(loc.waypointSettingsTitle),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
       ),
@@ -39,20 +41,20 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('OPTIONS D\'AFFICHAGE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                Text(loc.displayOptionsSectionLabel, style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 SwitchListTile(
-                  title: const Text('Afficher les waypoints GPX', style: TextStyle(color: Colors.white, fontSize: 14)),
-                  subtitle: const Text('Désactivez pour ne voir que les waypoints indépendants', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                  title: Text(loc.showGpxWaypointsLabel, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  subtitle: Text(loc.showGpxWaypointsSubtitle, style: const TextStyle(color: Colors.white38, fontSize: 12)),
                   value: settings.showGpxWaypoints,
                   activeThumbColor: Colors.greenAccent,
                   onChanged: (v) => settings.setShowGpxWaypoints(v),
                 ),
                 SwitchListTile(
-                  title: const Text('Icônes personnalisées par type', style: TextStyle(color: Colors.white, fontSize: 14)),
-                  subtitle: const Text(
-                    "Afficher l'icône du type de waypoint sur la carte plutôt qu'un repère générique",
-                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  title: Text(loc.categoryIconsLabel, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  subtitle: Text(
+                    loc.categoryIconsSubtitle,
+                    style: const TextStyle(color: Colors.white38, fontSize: 12),
                   ),
                   value: settings.useWaypointCategoryIcons,
                   activeThumbColor: Colors.greenAccent,
@@ -61,11 +63,11 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('GESTION DES TYPES', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+              child: Text(loc.manageTypesSectionLabel, style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ),
           Expanded(
@@ -119,6 +121,7 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
 
   void _editCategory(WaypointCategory? category) {
     final isar = context.read<IsarService>();
+    final loc = AppLocalizations.of(context)!;
     final nameController = TextEditingController(text: category?.name);
     int selectedColor = category?.colorHex ?? Colors.blue.toARGB32();
     String selectedIcon = category?.iconName ?? 'location_on';
@@ -128,7 +131,7 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: Text(category == null ? 'Nouveau Type' : 'Modifier Type', style: const TextStyle(color: Colors.white)),
+          title: Text(category == null ? loc.newTypeDialogTitle : loc.editTypeDialogTitle, style: const TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -136,10 +139,10 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                 TextField(
                   controller: nameController,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'Nom', labelStyle: TextStyle(color: Colors.white70)),
+                  decoration: InputDecoration(labelText: loc.nameFieldLabel, labelStyle: const TextStyle(color: Colors.white70)),
                 ),
                 const SizedBox(height: 20),
-                const Text('Icône', style: TextStyle(color: Colors.white70)),
+                Text(loc.iconFieldLabel, style: const TextStyle(color: Colors.white70)),
                 Wrap(
                   spacing: 10,
                   children: _kWaypointIconNames.map((icon) {
@@ -150,7 +153,7 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                   }).toList(),
                 ),
                 const SizedBox(height: 20),
-                const Text('Couleur', style: TextStyle(color: Colors.white70)),
+                Text(loc.colorFieldLabel, style: const TextStyle(color: Colors.white70)),
                 ColorPicker(
                   pickerColor: Color(selectedColor),
                   onColorChanged: (color) => setDialogState(() => selectedColor = color.toARGB32()),
@@ -164,11 +167,11 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.cancelButtonUppercase)),
             TextButton(
               onPressed: () async {
                 if (nameController.text.isEmpty) return;
-                
+
                 final cat = category ?? WaypointCategory();
                 cat.name = nameController.text;
                 cat.colorHex = selectedColor;
@@ -176,14 +179,14 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                 if (category == null) {
                    cat.localUuid = DateTime.now().millisecondsSinceEpoch.toString();
                 }
-                
+
                 await isar.isar.writeTxn(() => isar.isar.waypointCategorys.put(cat));
                 if (mounted) {
                   setState(() {});
                   Navigator.pop(context);
                 }
-              }, 
-              child: const Text('ENREGISTRER', style: TextStyle(color: Colors.greenAccent))
+              },
+              child: Text(loc.saveButtonUppercase, style: const TextStyle(color: Colors.greenAccent))
             ),
           ],
         ),

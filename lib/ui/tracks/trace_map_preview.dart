@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../database/isar_service.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../map/map_style.dart';
 import '../../map/map_view_model.dart';
 import '../../models/trace.dart';
@@ -47,6 +48,7 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -65,8 +67,8 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
                 alignment: Alignment.center,
                 child: Text(
                   snapshot.connectionState == ConnectionState.waiting
-                      ? 'Chargement de l\'aperçu...'
-                      : 'Aperçu indisponible',
+                      ? loc.loadingPreviewMessage
+                      : loc.previewUnavailableMessage,
                   style: const TextStyle(color: Colors.white38, fontSize: 12),
                 ),
               );

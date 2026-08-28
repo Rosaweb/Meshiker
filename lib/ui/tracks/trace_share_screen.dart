@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/trace.dart';
 import '../../sharing/local_gpx_server.dart';
 import '../../sharing/trace_share_models.dart';
@@ -72,11 +73,12 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.grey[900],
       appBar: AppBar(
         backgroundColor: Colors.grey[900],
-        title: const Text('Partager la trace'),
+        title: Text(loc.shareTraceMenuLabel),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
@@ -92,7 +94,7 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
                 Expanded(
                   child: _ModeButton(
                     icon: Icons.signal_cellular_alt,
-                    label: 'Réseau mobile',
+                    label: loc.mobileNetworkModeLabel,
                     selected: _mode == _ShareMode.network,
                     onTap: _selectNetwork,
                   ),
@@ -101,7 +103,7 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
                 Expanded(
                   child: _ModeButton(
                     icon: Icons.wifi,
-                    label: 'Réseau wifi',
+                    label: loc.wifiNetworkModeLabel,
                     selected: _mode == _ShareMode.wifi,
                     onTap: _selectWifi,
                   ),
@@ -109,20 +111,20 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
               ],
             ),
             const SizedBox(height: 32),
-            Expanded(child: _buildModeContent()),
+            Expanded(child: _buildModeContent(loc)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildModeContent() {
+  Widget _buildModeContent(AppLocalizations loc) {
     switch (_mode) {
       case null:
-        return const Center(
+        return Center(
           child: Text(
-            'Choisissez un mode de partage ci-dessus.',
-            style: TextStyle(color: Colors.white38),
+            loc.chooseShareModeMessage,
+            style: const TextStyle(color: Colors.white38),
             textAlign: TextAlign.center,
           ),
         );
@@ -130,6 +132,7 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
         return FutureBuilder<TraceShareResult>(
           future: _networkFuture,
           builder: (context, snapshot) => _buildAsyncContent(
+            loc: loc,
             snapshot: snapshot,
             onRetry: _retryNetwork,
             urlOf: (result) => result.shareUrl,
@@ -139,16 +142,18 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
         return FutureBuilder<Uri>(
           future: _wifiFuture,
           builder: (context, snapshot) => _buildAsyncContent(
+            loc: loc,
             snapshot: snapshot,
             onRetry: _retryWifi,
             urlOf: (uri) => uri.toString(),
-            subtitle: 'Le destinataire doit être connecté au même réseau WiFi.',
+            subtitle: loc.wifiRecipientSameNetworkMessage,
           ),
         );
     }
   }
 
   Widget _buildAsyncContent<T>({
+    required AppLocalizations loc,
     required AsyncSnapshot<T> snapshot,
     required VoidCallback onRetry,
     required String Function(T data) urlOf,
@@ -160,7 +165,7 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
     if (snapshot.hasError) {
       final message = snapshot.error is TraceShareException
           ? (snapshot.error as TraceShareException).message
-          : 'Une erreur inattendue est survenue.';
+          : loc.unexpectedErrorMessage;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -169,7 +174,7 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
             const SizedBox(height: 16),
             Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 24),
-            ElevatedButton(onPressed: onRetry, child: const Text('Réessayer')),
+            ElevatedButton(onPressed: onRetry, child: Text(loc.retryButtonLabel)),
           ],
         ),
       );
@@ -201,11 +206,11 @@ class _TraceShareScreenState extends State<TraceShareScreen> {
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: url));
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lien copié')));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(loc.linkCopiedMessage)));
               }
             },
             icon: const Icon(Icons.copy),
-            label: const Text('Copier le lien'),
+            label: Text(loc.copyLinkButtonLabel),
           ),
         ],
       ),

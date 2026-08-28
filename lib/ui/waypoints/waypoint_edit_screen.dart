@@ -6,6 +6,7 @@ import 'package:isar_community/isar.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../database/isar_service.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
 import '../../search/local_search_engine.dart';
@@ -88,11 +89,12 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
   }
 
   void _pickColor() {
+    final loc = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Choisir une couleur', style: TextStyle(color: Colors.white)),
+        title: Text(loc.chooseColorDialogTitle, style: const TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
           child: BlockPicker(
             pickerColor: _currentColor,
@@ -138,21 +140,22 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
   bool get _isNew => widget.waypoint == null || widget.waypoint!.id == Isar.autoIncrement;
 
   Future<void> _confirmDelete() async {
+    final loc = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Supprimer', style: TextStyle(color: Colors.white)),
-        content: const Text('Voulez-vous vraiment supprimer ce waypoint ?',
-            style: TextStyle(color: Colors.white70)),
+        title: Text(loc.deleteButtonLabel, style: const TextStyle(color: Colors.white)),
+        content: Text(loc.confirmDeleteWaypointMessage,
+            style: const TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('ANNULER'),
+            child: Text(loc.cancelButtonUppercase),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+            child: Text(loc.deleteButtonUppercase, style: const TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -181,6 +184,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
@@ -209,20 +213,20 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                         initialValue: _selectedCategory,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          hintText: 'Sélectionner un type',
+                          hintText: loc.selectTypeHint,
                           hintStyle: const TextStyle(color: Colors.white38),
                           filled: true,
                           fillColor: Colors.white.withValues(alpha: 0.05),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                         ),
                         items: [
-                          const DropdownMenuItem<WaypointCategory>(
+                          DropdownMenuItem<WaypointCategory>(
                             value: null,
                             child: Row(
                               children: [
-                                Icon(Icons.block, color: Colors.white38, size: 18),
-                                SizedBox(width: 12),
-                                Text('Aucun', style: TextStyle(color: Colors.white38)),
+                                const Icon(Icons.block, color: Colors.white38, size: 18),
+                                const SizedBox(width: 12),
+                                Text(loc.noneLabel, style: const TextStyle(color: Colors.white38)),
                               ],
                             ),
                           ),
@@ -245,7 +249,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                         maxLines: 3,
                         style: const TextStyle(color: Colors.white70),
                         decoration: InputDecoration(
-                          hintText: 'Description (facultatif)',
+                          hintText: loc.descriptionOptionalHint,
                           hintStyle: const TextStyle(color: Colors.white24),
                           filled: true,
                           fillColor: Colors.white.withValues(alpha: 0.05),
@@ -255,7 +259,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                       const SizedBox(height: 24),
                       Row(
                         children: [
-                          const Text('COULEUR DU POINT', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text(loc.pointColorSectionLabel, style: const TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
                           const Spacer(),
                           GestureDetector(
                             onTap: _pickColor,
@@ -275,14 +279,14 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                         const SizedBox(height: 16),
                         InkWell(
                           onTap: _locateOnMap,
-                          child: const Row(
+                          child: Row(
                             children: [
-                              Icon(Icons.location_searching, color: Colors.greenAccent, size: 18),
-                              SizedBox(width: 12),
+                              const Icon(Icons.location_searching, color: Colors.greenAccent, size: 18),
+                              const SizedBox(width: 12),
                               Expanded(
-                                child: Text('Localiser sur la carte', style: TextStyle(color: Colors.white)),
+                                child: Text(loc.locateOnMapButton, style: const TextStyle(color: Colors.white)),
                               ),
-                              Icon(Icons.chevron_right, color: Colors.white24),
+                              const Icon(Icons.chevron_right, color: Colors.white24),
                             ],
                           ),
                         ),
@@ -290,7 +294,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                       const SizedBox(height: 24),
                       Row(
                         children: [
-                          const Text('PHOTOS', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text(loc.photosSectionTitle, style: const TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
                           const Spacer(),
                           IconButton(
                             onPressed: _pickImage,
@@ -314,12 +318,12 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                   if (_isNew)
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('ANNULER', style: TextStyle(color: Colors.white54)),
+                      child: Text(loc.cancelButtonUppercase, style: const TextStyle(color: Colors.white54)),
                     )
                   else
                     TextButton(
                       onPressed: _confirmDelete,
-                      child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent)),
+                      child: Text(loc.deleteButtonUppercase, style: const TextStyle(color: Colors.redAccent)),
                     ),
                   const SizedBox(width: 12),
                   ElevatedButton(
@@ -329,7 +333,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
                       foregroundColor: Colors.black,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text('ENREGISTRER', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: Text(loc.saveButtonUppercase, style: const TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -341,6 +345,7 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
   }
 
   Widget _buildHeader() {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -363,13 +368,13 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
             child: TextFormField(
               controller: _nameController,
               style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-              decoration: const InputDecoration(
-                hintText: 'Nom du point',
-                hintStyle: TextStyle(color: Colors.black26),
+              decoration: InputDecoration(
+                hintText: loc.pointNameHint,
+                hintStyle: const TextStyle(color: Colors.black26),
                 border: InputBorder.none,
                 isDense: true,
               ),
-              validator: (v) => (v == null || v.isEmpty) ? 'Requis' : null,
+              validator: (v) => (v == null || v.isEmpty) ? loc.requiredFieldError : null,
             ),
           ),
         ],
@@ -379,7 +384,8 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
 
   Widget _buildPhotoGrid() {
     if (_photoPaths.isEmpty) {
-      return const Text('Aucune photo', style: TextStyle(color: Colors.white12, fontSize: 12));
+      final loc = AppLocalizations.of(context)!;
+      return Text(loc.noPhotosLabel, style: const TextStyle(color: Colors.white12, fontSize: 12));
     }
     return Wrap(
       spacing: 8,

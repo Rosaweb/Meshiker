@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../database/isar_service.dart';
 import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
@@ -95,6 +96,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   Widget build(BuildContext context) {
     final isar = context.watch<IsarService>();
     final settings = context.watch<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
 
     return PopScope(
       // Le bouton/geste retour du système doit avoir le même comportement
@@ -116,7 +118,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Waypoint Manager'),
+            Text(loc.waypointManagerTitle),
             if (_currentBreadcrumb != null)
               Text(
                 '/ ${_currentBreadcrumb!}',
@@ -141,12 +143,12 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WaypointSettingsScreen())),
-              tooltip: 'Gérer les types',
+              tooltip: loc.waypointManagerManageTypesTooltip,
             ),
             IconButton(
               icon: const Icon(Icons.create_new_folder_outlined),
               onPressed: () => _showCreateFolderDialog(isar),
-              tooltip: 'Créer un dossier',
+              tooltip: loc.waypointManagerCreateFolderTooltip,
             ),
           ],
         ],
@@ -156,9 +158,9 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
             color: Colors.white.withValues(alpha: 0.05),
-            child: _isMultiSelectMode 
-              ? _buildSelectionActions(isar) 
-              : _buildFilters(),
+            child: _isMultiSelectMode
+              ? _buildSelectionActions(isar, loc)
+              : _buildFilters(loc),
           ),
 
           Expanded(
@@ -203,15 +205,15 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
     }
   }
 
-  Widget _buildFilters() {
+  Widget _buildFilters(AppLocalizations loc) {
     return Column(
       children: [
         TextField(
           style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Rechercher par nom...',
-            hintStyle: TextStyle(color: Colors.white38),
-            prefixIcon: Icon(Icons.search, color: Colors.white70),
+          decoration: InputDecoration(
+            hintText: loc.searchByNameHint,
+            hintStyle: const TextStyle(color: Colors.white38),
+            prefixIcon: const Icon(Icons.search, color: Colors.white70),
             isDense: true,
             border: InputBorder.none,
           ),
@@ -222,11 +224,11 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
             Expanded(
               child: DropdownButton<WaypointCategory>(
                 isExpanded: true,
-                hint: const Text('Tous les types', style: TextStyle(color: Colors.white70)),
+                hint: Text(loc.allTypesLabel, style: const TextStyle(color: Colors.white70)),
                 value: _typeFilter,
                 dropdownColor: Colors.grey[900],
                 items: [
-                  const DropdownMenuItem(value: null, child: Text('Tous les types', style: TextStyle(color: Colors.white))),
+                  DropdownMenuItem(value: null, child: Text(loc.allTypesLabel, style: const TextStyle(color: Colors.white))),
                   ..._allCategories.map((c) => DropdownMenuItem(value: c, child: Text(c.name, style: const TextStyle(color: Colors.white)))),
                 ],
                 onChanged: (v) => setState(() => _typeFilter = v),
@@ -234,7 +236,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
             ),
             const SizedBox(width: 8),
             FilterChip(
-              label: const Text('Proximité', style: TextStyle(fontSize: 12)),
+              label: Text(loc.proximityFilterLabel, style: const TextStyle(fontSize: 12)),
               selected: _sortByDistance,
               onSelected: (v) => setState(() => _sortByDistance = v),
               selectedColor: Colors.greenAccent,
@@ -245,7 +247,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
     );
   }
 
-  Widget _buildSelectionActions(IsarService isar) {
+  Widget _buildSelectionActions(IsarService isar, AppLocalizations loc) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
@@ -253,22 +255,22 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '${_selectedIds.length} SÉLECTIONNÉ(S)',
+              loc.selectedCountLabel(_selectedIds.length),
               style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12),
             ),
             const SizedBox(height: 8),
-            const Text('Actions groupées', style: TextStyle(color: Colors.white38, fontSize: 10)),
+            Text(loc.bulkActionsLabel, style: const TextStyle(color: Colors.white38, fontSize: 10)),
           ],
         ),
         const VerticalDivider(color: Colors.white10, indent: 20, endIndent: 20),
         _ActionButton(
           icon: Icons.folder_open,
-          label: 'DÉPLACER',
+          label: loc.moveButtonUppercase,
           onTap: () => _showMoveDialog(isar),
         ),
         _ActionButton(
           icon: Icons.delete_outline,
-          label: 'SUPPRIMER',
+          label: loc.deleteButtonUppercase,
           color: Colors.redAccent,
           onTap: () => _confirmDelete(isar),
         ),
@@ -277,6 +279,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   }
 
   Widget _buildDynamicList(List<Waypoint> waypoints, List<WaypointFolder> folders, SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     final Map<int, List<Waypoint>> customGroups = {};
     final Map<String, List<Waypoint>> gpxGroups = {};
     final List<Waypoint> noFolder = [];
@@ -310,7 +313,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
       } else {
         final items = customGroups[folder.id] ?? [];
         return items.isEmpty
-          ? const Center(child: Text('Dossier vide', style: TextStyle(color: Colors.white24)))
+          ? Center(child: Text(loc.emptyFolderLabel, style: const TextStyle(color: Colors.white24)))
           : ListView(
               children: items.map((w) => _WaypointTile(
                 waypoint: w,
@@ -325,7 +328,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
         if (_isDirectEntry) {
           // Lien direct depuis une trace sans (ou plus) aucun waypoint : on
           // affiche une liste vide plutôt que de retomber sur le manager.
-          return const Center(child: Text('Aucun waypoint pour cette trace', style: TextStyle(color: Colors.white24)));
+          return Center(child: Text(loc.noWaypointForTraceMessage, style: const TextStyle(color: Colors.white24)));
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() => _drillGpxName = null);
@@ -358,7 +361,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
               leading: const Icon(Icons.folder, color: Colors.blueAccent, size: 20),
               title: Text(folder.name, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
               children: (customGroups[folder.id] ?? []).isEmpty
-                ? [const ListTile(title: Text('Dossier vide', style: TextStyle(color: Colors.white24, fontSize: 12)))]
+                ? [ListTile(title: Text(loc.emptyFolderLabel, style: const TextStyle(color: Colors.white24, fontSize: 12)))]
                 : customGroups[folder.id]!.map((w) => _WaypointTile(
                     waypoint: w,
                     isSelected: _selectedIds.contains(w.id),
@@ -422,14 +425,15 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   }
 
   void _confirmDelete(IsarService isar) {
+    final loc = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Supprimer', style: TextStyle(color: Colors.white)),
-        content: Text('Voulez-vous vraiment supprimer ${_selectedIds.length} waypoint(s) ?', style: const TextStyle(color: Colors.white70)),
+        title: Text(loc.deleteButtonLabel, style: const TextStyle(color: Colors.white)),
+        content: Text(loc.confirmDeleteWaypointsMessage(_selectedIds.length), style: const TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.cancelButtonUppercase)),
           TextButton(
             onPressed: () async {
               final deletedUuids = await isar.deleteWaypoints(_selectedIds.toList());
@@ -442,7 +446,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
               setState(() => _selectedIds.clear());
               if (mounted) Navigator.pop(context);
             },
-            child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent))
+            child: Text(loc.deleteButtonUppercase, style: const TextStyle(color: Colors.redAccent))
           ),
         ],
       ),
@@ -450,6 +454,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   }
 
   void _showMoveDialog(IsarService isar) async {
+    final loc = AppLocalizations.of(context)!;
     final allWps = await isar.allWaypoints();
     final gpxNames = allWps.map((w) => w.associatedGpxName).whereType<String>().toSet().toList()..sort();
     final customFolders = await isar.allFolders();
@@ -459,7 +464,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('Déplacer vers...', style: TextStyle(color: Colors.white)),
+          title: Text(loc.moveToDialogTitle, style: const TextStyle(color: Colors.white)),
           content: SizedBox(
             width: double.maxFinite,
             child: ListView(
@@ -467,7 +472,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
               children: [
                 ListTile(
                   leading: const Icon(Icons.close, color: Colors.white38),
-                  title: const Text('Sortir de tout dossier', style: TextStyle(color: Colors.white)),
+                  title: Text(loc.removeFromFolderLabel, style: const TextStyle(color: Colors.white)),
                   onTap: () async {
                     await isar.moveWaypointsToGpx(_selectedIds.toList(), null, folderId: null);
                     setState(() => _selectedIds.clear());
@@ -475,11 +480,11 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
                   },
                 ),
                 const Divider(color: Colors.white10),
-                
+
                 if (customFolders.isNotEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('DOSSIERS PERSONNELS', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(loc.personalFoldersSectionLabel, style: const TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                   for (var f in customFolders)
                     ListTile(
@@ -495,9 +500,9 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
                 ],
 
                 if (gpxNames.isNotEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('TRACES GPX', style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(loc.gpxTracesSectionLabel, style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                   for (var name in gpxNames)
                     ListTile(
@@ -519,33 +524,34 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
   }
 
   void _showCreateFolderDialog(IsarService isar) {
+    final loc = AppLocalizations.of(context)!;
     final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Nouveau dossier', style: TextStyle(color: Colors.white)),
+        title: Text(loc.newFolderDialogTitle, style: const TextStyle(color: Colors.white)),
         content: TextField(
           controller: controller,
           autofocus: true,
           style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Nom du dossier',
-            hintStyle: TextStyle(color: Colors.white38),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent)),
+          decoration: InputDecoration(
+            hintText: loc.folderNameHint,
+            hintStyle: const TextStyle(color: Colors.white38),
+            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent)),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.cancelButtonUppercase)),
           TextButton(
             onPressed: () async {
               if (controller.text.isNotEmpty) {
                 await isar.createWaypointFolder(controller.text);
                 if (mounted) Navigator.pop(context);
               }
-            }, 
-            child: const Text('CRÉER', style: TextStyle(color: Colors.greenAccent))
+            },
+            child: Text(loc.createButtonUppercase, style: const TextStyle(color: Colors.greenAccent))
           ),
         ],
       ),
@@ -600,6 +606,7 @@ class _WaypointTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       color: isSelected ? Colors.blueAccent.withValues(alpha: 0.15) : Colors.transparent,
       child: ListTile(
@@ -621,7 +628,7 @@ class _WaypointTile extends StatelessWidget {
           ],
         ),
         title: Text(waypoint.name, style: const TextStyle(color: Colors.white)),
-        subtitle: Text(waypoint.category.value?.name ?? 'Aucun type', style: const TextStyle(color: Colors.white38)),
+        subtitle: Text(waypoint.category.value?.name ?? loc.noCategoryLabel, style: const TextStyle(color: Colors.white38)),
         trailing: const Icon(Icons.chevron_right, color: Colors.white24),
         onTap: onTap,
         onLongPress: onLongPress,

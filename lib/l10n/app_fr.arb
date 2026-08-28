@@ -193,6 +193,189 @@
   "closeTooltip": "Fermer",
   "deleteButtonLabel": "Supprimer",
 
+  "deleteButtonUppercase": "SUPPRIMER",
+  "saveButtonUppercase": "ENREGISTRER",
+  "createButtonUppercase": "CRÉER",
+  "noneLabel": "Aucun",
+
+  "waypointManagerManageTypesTooltip": "Gérer les types",
+  "waypointManagerCreateFolderTooltip": "Créer un dossier",
+  "searchByNameHint": "Rechercher par nom...",
+  "allTypesLabel": "Tous les types",
+  "proximityFilterLabel": "Proximité",
+  "selectedCountLabel": "{count} SÉLECTIONNÉ(S)",
+  "@selectedCountLabel": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "bulkActionsLabel": "Actions groupées",
+  "moveButtonUppercase": "DÉPLACER",
+  "emptyFolderLabel": "Dossier vide",
+  "noWaypointForTraceMessage": "Aucun waypoint pour cette trace",
+  "noCategoryLabel": "Aucun type",
+  "confirmDeleteWaypointsMessage": "Voulez-vous vraiment supprimer {count} waypoint(s) ?",
+  "@confirmDeleteWaypointsMessage": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "moveToDialogTitle": "Déplacer vers...",
+  "removeFromFolderLabel": "Sortir de tout dossier",
+  "personalFoldersSectionLabel": "DOSSIERS PERSONNELS",
+  "gpxTracesSectionLabel": "TRACES GPX",
+  "newFolderDialogTitle": "Nouveau dossier",
+  "folderNameHint": "Nom du dossier",
+
+  "chooseColorDialogTitle": "Choisir une couleur",
+  "selectTypeHint": "Sélectionner un type",
+  "descriptionOptionalHint": "Description (facultatif)",
+  "pointColorSectionLabel": "COULEUR DU POINT",
+  "locateOnMapButton": "Localiser sur la carte",
+  "noPhotosLabel": "Aucune photo",
+  "confirmDeleteWaypointMessage": "Voulez-vous vraiment supprimer ce waypoint ?",
+  "pointNameHint": "Nom du point",
+  "requiredFieldError": "Requis",
+
+  "waypointSettingsTitle": "Waypoint Settings",
+  "displayOptionsSectionLabel": "OPTIONS D'AFFICHAGE",
+  "showGpxWaypointsLabel": "Afficher les waypoints GPX",
+  "showGpxWaypointsSubtitle": "Désactivez pour ne voir que les waypoints indépendants",
+  "categoryIconsLabel": "Icônes personnalisées par type",
+  "categoryIconsSubtitle": "Afficher l'icône du type de waypoint sur la carte plutôt qu'un repère générique",
+  "manageTypesSectionLabel": "GESTION DES TYPES",
+  "nameFieldLabel": "Nom",
+  "iconFieldLabel": "Icône",
+  "colorFieldLabel": "Couleur",
+  "newTypeDialogTitle": "Nouveau Type",
+  "editTypeDialogTitle": "Modifier Type",
+
+  "savePoiButtonUppercase": "SAUVEGARDER",
+  "addressNotProvidedLabel": "Adresse non renseignée",
+  "phoneNotProvidedLabel": "Téléphone non renseigné",
+  "hoursNotProvidedLabel": "Horaires non renseignés",
+  "poiDescriptionNameLine": "Nom : {name}",
+  "@poiDescriptionNameLine": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "poiDescriptionAddressLine": "Adresse : {address}",
+  "@poiDescriptionAddressLine": {
+    "placeholders": { "address": { "type": "String" } }
+  },
+  "poiDescriptionPhoneLine": "Téléphone : {phone}",
+  "@poiDescriptionPhoneLine": {
+    "placeholders": { "phone": { "type": "String" } }
+  },
+
+  "unexpectedErrorMessage": "Une erreur inattendue est survenue.",
+  "retryButtonLabel": "Réessayer",
+  "distanceLabel": "Distance",
+  "elevationGainLabel": "Dénivelé +",
+  "elevationLossLabel": "Dénivelé -",
+  "resetButtonUppercase": "RÉINITIALISER",
+  "scanQrCodeLabel": "Scanner un QR code",
+  "importShareLabel": "Importer un partage",
+
+  "deleteSegmentDialogTitle": "Supprimer le segment",
+  "confirmDeleteSegmentMessage": "Voulez-vous vraiment supprimer ce segment ?",
+  "segmentsSummaryLabel": "{count, plural, =1{{count} segment} other{{count} segments}} · {distance}",
+  "@segmentsSummaryLabel": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "distance": { "type": "String" }
+    }
+  },
+  "noSegmentsMessage": "Aucun segment enregistré.",
+  "segmentNumberLabel": "Segment #{id}",
+  "@segmentNumberLabel": {
+    "placeholders": { "id": { "type": "int" } }
+  },
+
+  "scanErrorMessage": "Erreur lors du scan : {error}",
+  "@scanErrorMessage": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "gpxFolderNotFoundMessage": "Dossier GPX/KML introuvable.",
+  "storageAccessDeniedRescanMessage": "Accès au stockage refusé : autorisez \"Tous les fichiers\" pour Meshiker dans les paramètres Android, puis relancez le scan.",
+  "trackCountBadge": "({count})",
+  "@trackCountBadge": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "scanGpxFolderTooltip": "Scanner le dossier GPX/KML",
+  "noTracksImportedMessage": "Aucune piste importée.",
+  "searchTrackHint": "Rechercher une trace...",
+  "sortByLabel": "Trier par :",
+  "sortNoneLabel": "Aucun (par défaut)",
+  "sortAlphabeticalLabel": "Ordre alphabétique",
+  "sortDistAscLabel": "Distance croissante",
+  "sortDistDescLabel": "Distance décroissante",
+  "sortGainPosLabel": "Dénivelé positif",
+  "sortLossNegLabel": "Dénivelé négatif",
+  "sortTotalElevationLabel": "Dénivelé cumulé",
+  "deactivateAllTooltip": "Tout désactiver",
+  "activateAllTooltip": "Tout activer",
+  "unnamedTrackLabel": "Piste sans nom",
+  "segmentationErrorLabel": "Erreur de segmentation",
+  "meshCalculatingLabel": "Calcul du Mesh...",
+
+  "traceNameHint": "Nom de la trace",
+  "navigateMenuLabel": "Naviguer",
+  "viewWaypointsMenuLabel": "Voir les waypoints",
+  "shareTraceMenuLabel": "Partager la trace",
+  "createOfflineMapMenuLabel": "Créer carte hors-ligne",
+  "traceColorMenuLabel": "Couleur de la trace",
+  "reverseDirectionMenuLabel": "Inverser le sens",
+  "moveMenuLabel": "Déplacer",
+  "traceHasNoPointsMessage": "Cette trace ne contient aucun point.",
+  "mapDownloadStartedMessage": "Téléchargement de la carte \"{name}\" démarré",
+  "@mapDownloadStartedMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "noSourceFileMessage": "Cette trace n'a pas de fichier source associé.",
+  "sourceFileNotFoundMessage": "Fichier source introuvable sur le disque.",
+  "fileMovedMessage": "Fichier déplacé.",
+  "deleteTraceDialogTitle": "Supprimer la trace",
+  "confirmDeleteTraceMessage": "Voulez-vous vraiment supprimer \"{name}\" ? Le fichier source sera aussi supprimé du stockage de l'appareil. Cette action est irréversible.",
+  "@confirmDeleteTraceMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "noElevationDataMessage": "Aucune donnée d'altitude disponible.",
+  "confirmReverseMessage": "Le départ et l'arrivée de cette trace seront échangés. Vous pouvez annuler en inversant à nouveau.",
+  "reverseButtonUppercase": "INVERSER",
+  "traceDirectionReversedMessage": "Sens de la trace inversé.",
+
+  "mobileNetworkModeLabel": "Réseau mobile",
+  "wifiNetworkModeLabel": "Réseau wifi",
+  "chooseShareModeMessage": "Choisissez un mode de partage ci-dessus.",
+  "wifiRecipientSameNetworkMessage": "Le destinataire doit être connecté au même réseau WiFi.",
+  "linkCopiedMessage": "Lien copié",
+  "copyLinkButtonLabel": "Copier le lien",
+
+  "traceImportedMessage": "Trace importée : {name}",
+  "@traceImportedMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "cameraAccessDeniedMessage": "Accès à la caméra refusé : autorisez-le pour Meshiker dans les paramètres Android.",
+  "cameraPermissionDeniedMessage": "Permission caméra refusée.",
+  "pasteShareLinkInstructionText": "Colle le lien ou le code de partage reçu, ou scanne le QR code.",
+  "orDividerLabel": "ou",
+
+  "roadmapTitle": "Roadmap",
+  "noTraceLoadedMessage": "Aucune trace chargée.\nOuvrez une trace depuis le",
+  "chooseActionHintMessage": "et choisissez « {action} ».",
+  "@chooseActionHintMessage": {
+    "placeholders": { "action": { "type": "String" } }
+  },
+  "traceNotFoundMessage": "Trace introuvable.",
+  "traceHasNoWaypointsMessage": "Cette trace ne contient aucun waypoint.",
+
+  "noElevationDataForTraceMessage": "Aucune donnée d'altitude disponible pour cette trace.",
+  "pinchZoomDragHintMessage": "Pincez pour zoomer, glissez pour naviguer",
+  "elevationProfileTitle": "Profil altimétrique — {name}",
+  "@elevationProfileTitle": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "maxAltitudeLabel": "Altitude max",
+
+  "loadingPreviewMessage": "Chargement de l'aperçu...",
+  "previewUnavailableMessage": "Aperçu indisponible",
+
   "helpScreenPlaceholder": "Contenu à venir.",
   "termsOfUseTitle": "Conditions d'utilisation",
   "termsOfUseHeading": "Conditions Générales d'Utilisation de Meshiker",

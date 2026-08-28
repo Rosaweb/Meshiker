@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:isar_community/isar.dart';
 import '../../database/isar_service.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../map/map_view_model.dart';
 import '../../models/trace.dart';
 import '../../models/waypoint.dart';
@@ -32,18 +33,19 @@ class RoadmapScreen extends StatelessWidget {
     final isar = context.watch<IsarService>();
     final recording = context.watch<RecordingService>();
     final settings = context.read<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: isTransparent ? Colors.transparent : Colors.black,
       appBar: AppBar(
-        title: const Text('Roadmap'),
+        title: Text(loc.roadmapTitle),
         backgroundColor: isTransparent ? Colors.transparent : Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.route_outlined),
-            tooltip: 'Track Manager',
+            tooltip: loc.trackManagerTitle,
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const TrackManagerScreen()),
@@ -58,29 +60,29 @@ class RoadmapScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      'Aucune trace chargée.\nOuvrez une trace depuis le',
+                    Text(
+                      loc.noTraceLoadedMessage,
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white38),
+                      style: const TextStyle(color: Colors.white38),
                     ),
                     GestureDetector(
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const TrackManagerScreen()),
                       ),
-                      child: const Text(
-                        'Track Manager',
-                        style: TextStyle(
+                      child: Text(
+                        loc.trackManagerTitle,
+                        style: const TextStyle(
                           color: Colors.greenAccent,
                           fontWeight: FontWeight.bold,
                           decoration: TextDecoration.underline,
                         ),
                       ),
                     ),
-                    const Text(
-                      'et choisissez « Naviguer ».',
+                    Text(
+                      loc.chooseActionHintMessage(loc.navigateMenuLabel),
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white38),
+                      style: const TextStyle(color: Colors.white38),
                     ),
                   ],
                 ),
@@ -94,18 +96,18 @@ class RoadmapScreen extends StatelessWidget {
                 }
                 final data = snapshot.data;
                 if (data == null) {
-                  return const Center(
+                  return Center(
                     child: Text(
-                      'Trace introuvable.',
-                      style: TextStyle(color: Colors.white38),
+                      loc.traceNotFoundMessage,
+                      style: const TextStyle(color: Colors.white38),
                     ),
                   );
                 }
                 if (data.entries.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
-                      'Cette trace ne contient aucun waypoint.',
-                      style: TextStyle(color: Colors.white38),
+                      loc.traceHasNoWaypointsMessage,
+                      style: const TextStyle(color: Colors.white38),
                     ),
                   );
                 }
@@ -244,6 +246,7 @@ class _RoadmapWaypointTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     final distanceColor = passed ? Colors.white38 : Colors.greenAccent;
     return ListTile(
       enabled: onTap != null,
@@ -257,7 +260,7 @@ class _RoadmapWaypointTile extends StatelessWidget {
         style: TextStyle(color: passed ? Colors.white38 : Colors.white),
       ),
       subtitle: Text(
-        waypoint.category.value?.name ?? 'Point',
+        waypoint.category.value?.name ?? loc.genericPointType,
         style: const TextStyle(color: Colors.white38),
       ),
       trailing: Text(

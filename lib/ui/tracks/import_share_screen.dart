@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:provider/provider.dart';
 
 import '../../gpx/gpx_scanner_service.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/trace.dart';
 import '../../sharing/trace_share_models.dart';
 import '../../sharing/trace_share_service.dart';
@@ -37,6 +38,7 @@ class _ImportShareScreenState extends State<ImportShareScreen> {
 
     final shareService = context.read<TraceShareService>();
     final ownerUuid = context.read<GpxScannerService>().ownerUuid;
+    final loc = AppLocalizations.of(context)!;
 
     Trace trace;
     try {
@@ -46,7 +48,7 @@ class _ImportShareScreenState extends State<ImportShareScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _errorMessage = e is TraceShareException ? e.message : 'Une erreur inattendue est survenue.';
+        _errorMessage = e is TraceShareException ? e.message : loc.unexpectedErrorMessage;
       });
       return;
     }
@@ -54,27 +56,28 @@ class _ImportShareScreenState extends State<ImportShareScreen> {
     if (!mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Trace importée : ${trace.name}')),
+      SnackBar(content: Text(loc.traceImportedMessage(trace.name))),
     );
   }
 
   Future<void> _scanQrCode() async {
     final status = await ph.Permission.camera.request();
     if (!mounted) return;
+    final loc = AppLocalizations.of(context)!;
 
     if (status.isPermanentlyDenied) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Accès à la caméra refusé : autorisez-le pour Meshiker dans les paramètres Android.'),
+          content: Text(loc.cameraAccessDeniedMessage),
           duration: const Duration(seconds: 5),
-          action: SnackBarAction(label: 'PARAMÈTRES', onPressed: () => ph.openAppSettings()),
+          action: SnackBarAction(label: loc.settingsSnackbarAction, onPressed: () => ph.openAppSettings()),
         ),
       );
       return;
     }
     if (!status.isGranted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Permission caméra refusée.')),
+        SnackBar(content: Text(loc.cameraPermissionDeniedMessage)),
       );
       return;
     }
@@ -90,20 +93,21 @@ class _ImportShareScreenState extends State<ImportShareScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.grey[900],
       appBar: AppBar(
         backgroundColor: Colors.grey[900],
-        title: const Text('Importer un partage'),
+        title: Text(loc.importShareLabel),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Colle le lien ou le code de partage reçu, ou scanne le QR code.',
-              style: TextStyle(color: Colors.white70),
+            Text(
+              loc.pasteShareLinkInstructionText,
+              style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -129,22 +133,22 @@ class _ImportShareScreenState extends State<ImportShareScreen> {
                   ? const SizedBox(
                       width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.download),
-              label: const Text('Importer'),
+              label: Text(loc.importButton),
             ),
             const SizedBox(height: 24),
-            const Row(children: [
-              Expanded(child: Divider(color: Colors.white24)),
+            Row(children: [
+              const Expanded(child: Divider(color: Colors.white24)),
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: Text('ou', style: TextStyle(color: Colors.white38)),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(loc.orDividerLabel, style: const TextStyle(color: Colors.white38)),
               ),
-              Expanded(child: Divider(color: Colors.white24)),
+              const Expanded(child: Divider(color: Colors.white24)),
             ]),
             const SizedBox(height: 24),
             OutlinedButton.icon(
               onPressed: _isLoading ? null : _scanQrCode,
               icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Scanner un QR code'),
+              label: Text(loc.scanQrCodeLabel),
             ),
           ],
         ),

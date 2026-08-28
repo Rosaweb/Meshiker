@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../database/isar_service.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../map/map_view_model.dart';
 import '../../models/waypoint.dart';
 import '../../search/local_search_engine.dart';
@@ -36,6 +37,7 @@ class OsmPoiDetailSheet extends StatelessWidget {
 
   Future<void> _save(BuildContext context) async {
     final settings = context.read<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
     final category = await isarService.resolveOrCreateCategoryForOsmType(poi.categoryId);
 
     final wp = Waypoint()
@@ -53,9 +55,9 @@ class OsmPoiDetailSheet extends StatelessWidget {
       // désactivé, puisque la couleur du marqueur n'en dépend pas.
       ..colorHex = category.colorHex
       ..description = [
-        'Nom : ${poi.name}',
-        if (_address != null) 'Adresse : $_address',
-        if (_phone != null) 'Téléphone : $_phone',
+        loc.poiDescriptionNameLine(poi.name),
+        if (_address != null) loc.poiDescriptionAddressLine(_address!),
+        if (_phone != null) loc.poiDescriptionPhoneLine(_phone!),
       ].join('\n');
     wp.category.value = category;
 
@@ -69,6 +71,7 @@ class OsmPoiDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     return Dialog(
       backgroundColor: Colors.grey[900],
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
@@ -80,7 +83,7 @@ class OsmPoiDetailSheet extends StatelessWidget {
           children: [
             Text(poi.name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            Text(_address ?? 'Adresse non renseignée', style: const TextStyle(color: Colors.white70)),
+            Text(_address ?? loc.addressNotProvidedLabel, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
             if (_phone != null)
               InkWell(
@@ -89,16 +92,16 @@ class OsmPoiDetailSheet extends StatelessWidget {
                     style: const TextStyle(color: Colors.greenAccent, decoration: TextDecoration.underline)),
               )
             else
-              const Text('Téléphone non renseigné', style: TextStyle(color: Colors.white38)),
+              Text(loc.phoneNotProvidedLabel, style: const TextStyle(color: Colors.white38)),
             const SizedBox(height: 8),
-            Text(_hours ?? 'Horaires non renseignés', style: const TextStyle(color: Colors.white70)),
+            Text(_hours ?? loc.hoursNotProvidedLabel, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () => _save(context),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
-                child: const Text('SAUVEGARDER', style: TextStyle(color: Colors.black)),
+                child: Text(loc.savePoiButtonUppercase, style: const TextStyle(color: Colors.black)),
               ),
             ),
           ],

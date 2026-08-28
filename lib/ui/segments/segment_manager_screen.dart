@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:isar_community/isar.dart';
 import '../../database/isar_service.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/segment.dart';
 import '../../utils/settings_service.dart';
 
@@ -14,17 +15,18 @@ class SegmentManagerScreen extends StatefulWidget {
 
 class _SegmentManagerScreenState extends State<SegmentManagerScreen> {
   Future<void> _deleteSegment(IsarService isar, Segment segment) async {
+    final loc = AppLocalizations.of(context)!;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Supprimer le segment', style: TextStyle(color: Colors.white)),
-        content: const Text('Voulez-vous vraiment supprimer ce segment ?', style: TextStyle(color: Colors.white70)),
+        title: Text(loc.deleteSegmentDialogTitle, style: const TextStyle(color: Colors.white)),
+        content: Text(loc.confirmDeleteSegmentMessage, style: const TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ANNULER')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(loc.cancelButtonUppercase)),
           TextButton(
-            onPressed: () => Navigator.pop(context, true), 
-            child: const Text('SUPPRIMER', style: TextStyle(color: Colors.redAccent))
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(loc.deleteButtonUppercase, style: const TextStyle(color: Colors.redAccent))
           ),
         ],
       ),
@@ -39,11 +41,12 @@ class _SegmentManagerScreenState extends State<SegmentManagerScreen> {
   Widget build(BuildContext context) {
     final isar = context.watch<IsarService>();
     final settings = context.watch<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Mesh Manager'),
+        title: Text(loc.meshManagerTitle),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         bottom: PreferredSize(
@@ -61,7 +64,7 @@ class _SegmentManagerScreenState extends State<SegmentManagerScreen> {
                 child: Padding(
                   padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
                   child: Text(
-                    '${segments.length} segment${segments.length > 1 ? 's' : ''} · $totalDistance',
+                    loc.segmentsSummaryLabel(segments.length, totalDistance),
                     style: const TextStyle(color: Colors.white38, fontSize: 12),
                   ),
                 ),
@@ -74,14 +77,14 @@ class _SegmentManagerScreenState extends State<SegmentManagerScreen> {
         stream: isar.isar.segments.where().watch(fireImmediately: true),
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          
+
           final segments = snapshot.data!;
           if (segments.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
-                'Aucun segment enregistré.',
+                loc.noSegmentsMessage,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38),
+                style: const TextStyle(color: Colors.white38),
               ),
             );
           }
@@ -90,14 +93,14 @@ class _SegmentManagerScreenState extends State<SegmentManagerScreen> {
             itemCount: segments.length,
             itemBuilder: (context, index) {
               final segment = segments[index];
-              final distance = settings.unitSystem == UnitSystem.metric 
+              final distance = settings.unitSystem == UnitSystem.metric
                 ? '${(segment.distanceMeters / 1000).toStringAsFixed(2)} km'
                 : '${(segment.distanceMeters * 0.000621371).toStringAsFixed(2)} mi';
 
               return ListTile(
                 leading: const Icon(Icons.timeline, color: Colors.blueAccent),
                 title: Text(
-                  'Segment #${segment.id}',
+                  loc.segmentNumberLabel(segment.id),
                   style: const TextStyle(color: Colors.white),
                 ),
                 subtitle: Text(

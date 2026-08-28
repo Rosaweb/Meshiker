@@ -4,6 +4,7 @@ import 'package:isar_community/isar.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as p;
 import '../../database/isar_service.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../models/trace.dart';
 import '../../models/enums.dart';
 import '../../utils/settings_service.dart';
@@ -40,35 +41,35 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
   Future<void> _refreshFolder() async {
     final scanner = context.read<GpxScannerService>();
     final settings = context.read<SettingsService>();
+    final loc = AppLocalizations.of(context)!;
 
     if (settings.gpxStoragePath == null || settings.gpxStoragePath!.isEmpty) return;
 
     try {
       final result = await scanner.scanFolder(settings.gpxStoragePath!);
-      if (mounted) _showScanResultIfNeeded(result);
+      if (mounted) _showScanResultIfNeeded(result, loc);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur lors du scan : $e')),
+          SnackBar(content: Text(loc.scanErrorMessage(e.toString()))),
         );
       }
     }
   }
 
-  void _showScanResultIfNeeded(GpxScanResult result) {
+  void _showScanResultIfNeeded(GpxScanResult result, AppLocalizations loc) {
     switch (result) {
       case GpxScanResult.ok:
         return;
       case GpxScanResult.directoryNotFound:
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Dossier GPX/KML introuvable.')),
+          SnackBar(content: Text(loc.gpxFolderNotFoundMessage)),
         );
       case GpxScanResult.permissionDenied:
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Accès au stockage refusé : autorisez "Tous les fichiers" pour Meshiker dans les paramètres Android, puis relancez le scan.'),
-            duration: Duration(seconds: 5),
+          SnackBar(
+            content: Text(loc.storageAccessDeniedRescanMessage),
+            duration: const Duration(seconds: 5),
           ),
         );
     }
@@ -119,7 +120,8 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
     final settings = context.watch<SettingsService>();
     final gpxScanner = context.watch<GpxScannerService>();
     final recording = context.watch<RecordingService>();
-    
+    final loc = AppLocalizations.of(context)!;
+
     final userPos = recording.currentPosition.value != null 
         ? LatLng(recording.currentPosition.value!.latitude, recording.currentPosition.value!.longitude)
         : null;
@@ -129,13 +131,13 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('Track Manager'),
+            Text(loc.trackManagerTitle),
             StreamBuilder<List<Trace>>(
               stream: isar.isar.traces.where().watch(fireImmediately: true),
               builder: (context, snapshot) {
                 final count = snapshot.data?.length ?? 0;
                 return Text(
-                  ' ($count)',
+                  loc.trackCountBadge(count),
                   style: const TextStyle(color: Colors.white38, fontSize: 16),
                 );
               },
@@ -160,7 +162,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () => _refreshFolder(),
-              tooltip: 'Scanner le dossier GPX/KML',
+              tooltip: loc.scanGpxFolderTooltip,
             ),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
@@ -168,7 +170,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
               context,
               MaterialPageRoute(builder: (_) => const ImportShareScreen()),
             ),
-            tooltip: 'Importer un partage',
+            tooltip: loc.importShareLabel,
           ),
         ],
       ),
@@ -180,14 +182,14 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
               stream: isar.isar.traces.where().watch(fireImmediately: true),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                
+
                 final allTracks = snapshot.data!;
                 if (allTracks.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
-                      'Aucune piste importée.',
+                      loc.noTracksImportedMessage,
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white38),
+                      style: const TextStyle(color: Colors.white38),
                     ),
                   );
                 }
@@ -210,6 +212,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
   }
 
   Widget _buildSearchAndSort(IsarService isar, SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     return Container(
       padding: const EdgeInsets.all(12),
       color: Colors.white.withValues(alpha: 0.05),
@@ -217,10 +220,10 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
         children: [
           TextField(
             style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              hintText: 'Rechercher une trace...',
-              hintStyle: TextStyle(color: Colors.white38),
-              prefixIcon: Icon(Icons.search, color: Colors.white70),
+            decoration: InputDecoration(
+              hintText: loc.searchTrackHint,
+              hintStyle: const TextStyle(color: Colors.white38),
+              prefixIcon: const Icon(Icons.search, color: Colors.white70),
               isDense: true,
               border: InputBorder.none,
             ),
@@ -229,7 +232,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
           const Divider(color: Colors.white10),
           Row(
             children: [
-              const Text('Trier par :', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(loc.sortByLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(width: 12),
               SizedBox(
                 width: 160,
@@ -239,15 +242,15 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
                   dropdownColor: Colors.grey[900],
                   underline: const SizedBox(),
                   style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold),
-                  items: const [
-                    DropdownMenuItem(value: TrackSortOption.none, child: Text('Aucun (par défaut)')),
-                    DropdownMenuItem(value: TrackSortOption.alphabetical, child: Text('Ordre alphabétique')),
-                    DropdownMenuItem(value: TrackSortOption.proximity, child: Text('Proximité')),
-                    DropdownMenuItem(value: TrackSortOption.distAsc, child: Text('Distance croissante')),
-                    DropdownMenuItem(value: TrackSortOption.distDesc, child: Text('Distance décroissante')),
-                    DropdownMenuItem(value: TrackSortOption.gainPos, child: Text('Dénivelé positif')),
-                    DropdownMenuItem(value: TrackSortOption.lossNeg, child: Text('Dénivelé négatif')),
-                    DropdownMenuItem(value: TrackSortOption.totalElevation, child: Text('Dénivelé cumulé')),
+                  items: [
+                    DropdownMenuItem(value: TrackSortOption.none, child: Text(loc.sortNoneLabel)),
+                    DropdownMenuItem(value: TrackSortOption.alphabetical, child: Text(loc.sortAlphabeticalLabel)),
+                    DropdownMenuItem(value: TrackSortOption.proximity, child: Text(loc.proximityFilterLabel)),
+                    DropdownMenuItem(value: TrackSortOption.distAsc, child: Text(loc.sortDistAscLabel)),
+                    DropdownMenuItem(value: TrackSortOption.distDesc, child: Text(loc.sortDistDescLabel)),
+                    DropdownMenuItem(value: TrackSortOption.gainPos, child: Text(loc.sortGainPosLabel)),
+                    DropdownMenuItem(value: TrackSortOption.lossNeg, child: Text(loc.sortLossNegLabel)),
+                    DropdownMenuItem(value: TrackSortOption.totalElevation, child: Text(loc.sortTotalElevationLabel)),
                   ],
                   onChanged: (v) => setState(() => _sortOption = v!),
                 ),
@@ -271,7 +274,7 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
                               settings.setActiveGpxList(allNames.toList());
                             }
                           },
-                    tooltip: isAllSelected ? 'Tout désactiver' : 'Tout activer',
+                    tooltip: isAllSelected ? loc.deactivateAllTooltip : loc.activateAllTooltip,
                   );
                 },
               ),
@@ -418,8 +421,9 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
   }
 
   Widget _buildTrackTile(Trace track, SettingsService settings) {
+    final loc = AppLocalizations.of(context)!;
     final isActive = settings.activeGpxNames.contains(track.name);
-    final isProcessing = track.processingStatus == TraceProcessingStatus.processing || 
+    final isProcessing = track.processingStatus == TraceProcessingStatus.processing ||
                          track.processingStatus == TraceProcessingStatus.pending;
 
     return ListTile(
@@ -439,13 +443,13 @@ class _TrackManagerScreenState extends State<TrackManagerScreen> {
         ],
       ),
       title: Text(
-        track.name.isNotEmpty ? track.name : 'Piste sans nom',
+        track.name.isNotEmpty ? track.name : loc.unnamedTrackLabel,
         style: const TextStyle(color: Colors.white),
       ),
       subtitle: Text(
         track.processingStatus == TraceProcessingStatus.ready
             ? '${(track.totalDistanceMeters / 1000).toStringAsFixed(1)} km  •  ${track.totalElevationGainMeters.round()} m +'
-            : (track.processingStatus == TraceProcessingStatus.error ? 'Erreur de segmentation' : 'Calcul du Mesh...'),
+            : (track.processingStatus == TraceProcessingStatus.error ? loc.segmentationErrorLabel : loc.meshCalculatingLabel),
         style: TextStyle(
           color: track.processingStatus == TraceProcessingStatus.error ? Colors.redAccent : Colors.white38,
           fontSize: 11

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../l10n/generated/app_localizations.dart';
+
 /// Écran plein écran de scan de QR code : se contente de rendre le flux
 /// caméra et de renvoyer (via `Navigator.pop`) la première valeur détectée.
 /// La permission caméra est gérée par l'appelant, avant la navigation
@@ -32,7 +34,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: const Text('Scanner un QR code'),
+        title: Text(AppLocalizations.of(context)!.scanQrCodeLabel),
       ),
       body: MobileScanner(onDetect: _onDetect),
     );
