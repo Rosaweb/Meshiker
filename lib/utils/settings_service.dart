@@ -49,9 +49,36 @@ class SettingsService extends ChangeNotifier {
   bool _showScale = true;
   bool _reversePanels = false;
   bool _showAllWaypoints = true;
+  // Volontairement jamais persisté ni initialisé à true au démarrage :
+  // "afficher l'intégralité des waypoints" (appui long sur le bouton, cf.
+  // showAllWaypoints/roadmapTraceName pour le mode normal) est une
+  // consultation ponctuelle, pas une préférence durable.
+  bool _showEveryWaypoint = false;
   bool _showAllGpx = true;
   DisplayMode _displayMode = DisplayMode.gpx;
   bool _showGpxWaypoints = true;
+  bool _flattenWaypointFolders = false;
+
+  // Annonces vocales des waypoints en cours de navigation (géofencing local,
+  // sans IA — cf. spec-assistant-vocal-ia.md §2). Deux contextes indépendants :
+  // "waypoint manager" (waypoints affichés sur la carte) et "roadmap" (trace
+  // chargée pour la navigation) — mêmes réglages, activables séparément.
+  bool _waypointAnnouncementsEnabled = false;
+  bool _waypointAnnounceOnApproach = true;
+  bool _waypointAnnounceOnSpot = true;
+  double _waypointAnnounceDistanceMeters = 300.0;
+  bool _waypointAnnounceTitle = true;
+  bool _waypointAnnounceType = true;
+  bool _waypointAnnounceDescription = false;
+
+  bool _roadmapAnnouncementsEnabled = false;
+  bool _roadmapAnnounceOnApproach = true;
+  bool _roadmapAnnounceOnSpot = true;
+  double _roadmapAnnounceDistanceMeters = 300.0;
+  bool _roadmapAnnounceTitle = true;
+  bool _roadmapAnnounceType = true;
+  bool _roadmapAnnounceDescription = false;
+
   bool _locationEnabled = true;
   // Couleur d'accent appliquée aux cadres/titres/icônes de l'écran Outils
   // de navigation (et, à terme, à d'autres éléments des paramètres).
@@ -79,6 +106,7 @@ class SettingsService extends ChangeNotifier {
   String? _recordingSubPath; // Nouveau : dossier d'enregistrement par défaut
   double _tileCacheLimitMb = 500.0;
   bool _wifiOnlyDownload = true;
+  bool _aiAssistantDisabled = false;
   List<String> _favoriteMapIds = ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
 
   // État de navigation
@@ -136,10 +164,26 @@ class SettingsService extends ChangeNotifier {
   bool get showScale => _showScale;
   bool get reversePanels => _reversePanels;
   bool get showAllWaypoints => _showAllWaypoints;
+  bool get showEveryWaypoint => _showEveryWaypoint;
   DisplayMode get displayMode => _displayMode;
   bool get showAllGpx => _showAllGpx;
   bool get showMesh => _displayMode == DisplayMode.mesh;
   bool get showGpxWaypoints => _showGpxWaypoints;
+  bool get flattenWaypointFolders => _flattenWaypointFolders;
+  bool get waypointAnnouncementsEnabled => _waypointAnnouncementsEnabled;
+  bool get waypointAnnounceOnApproach => _waypointAnnounceOnApproach;
+  bool get waypointAnnounceOnSpot => _waypointAnnounceOnSpot;
+  double get waypointAnnounceDistanceMeters => _waypointAnnounceDistanceMeters;
+  bool get waypointAnnounceTitle => _waypointAnnounceTitle;
+  bool get waypointAnnounceType => _waypointAnnounceType;
+  bool get waypointAnnounceDescription => _waypointAnnounceDescription;
+  bool get roadmapAnnouncementsEnabled => _roadmapAnnouncementsEnabled;
+  bool get roadmapAnnounceOnApproach => _roadmapAnnounceOnApproach;
+  bool get roadmapAnnounceOnSpot => _roadmapAnnounceOnSpot;
+  double get roadmapAnnounceDistanceMeters => _roadmapAnnounceDistanceMeters;
+  bool get roadmapAnnounceTitle => _roadmapAnnounceTitle;
+  bool get roadmapAnnounceType => _roadmapAnnounceType;
+  bool get roadmapAnnounceDescription => _roadmapAnnounceDescription;
   bool get locationEnabled => _locationEnabled;
   Color get accentColor => Color(_accentColorHex);
   double get waypointIconSize => _waypointIconSize;
@@ -173,11 +217,27 @@ class SettingsService extends ChangeNotifier {
   String? get recordingSubPath => _recordingSubPath;
   double get tileCacheLimitMb => _tileCacheLimitMb;
   bool get wifiOnlyDownload => _wifiOnlyDownload;
+  /// Masque les points d'entrée de l'assistant IA conversationnel (page
+  /// Aide, volet Navigation) — sans effet sur les annonces vocales de
+  /// waypoints, fonctionnalité déterministe indépendante (voir
+  /// `waypoint_announcement_settings_section.dart`).
+  bool get aiAssistantDisabled => _aiAssistantDisabled;
   List<String> get favoriteMapIds => _favoriteMapIds;
   List<String> get activeGpxNames => _activeGpxNames;
   String? get navigationWaypointUuid => _navigationWaypointUuid;
   bool get waypointSelectionMode => _waypointSelectionMode;
   String? get roadmapTraceName => _roadmapTraceName;
+
+  /// Vrai si une trace est chargée pour la navigation (Roadmap) ET reste
+  /// affichée sur la carte. `roadmapTraceName` n'est jamais remis à `null`
+  /// après un `setRoadmapTraceName` (pas de "quitter la navigation"
+  /// explicite dans l'app) : si l'utilisateur désactive ensuite l'affichage
+  /// de cette trace depuis le Track Manager, elle reste techniquement
+  /// "chargée" mais ne doit plus compter comme telle pour l'affichage des
+  /// waypoints (cf. logique d'affichage des waypoints).
+  bool get hasActiveRoadmapTrace =>
+      _roadmapTraceName != null && _activeGpxNames.contains(_roadmapTraceName);
+
   final MapCreationStep _mapCreationStepProp = MapCreationStep.none;
   MapCreationStep get mapCreationStep => _mapCreationStep;
   ({double lat, double lon})? get mapOrigin => _mapOrigin;
@@ -222,6 +282,21 @@ class SettingsService extends ChangeNotifier {
     // On force le mode GPX au démarrage (ne pas charger depuis les préférences)
     _displayMode = DisplayMode.gpx;
     _showGpxWaypoints = _prefs.getBool('show_gpx_waypoints') ?? true;
+    _flattenWaypointFolders = _prefs.getBool('flatten_waypoint_folders') ?? false;
+    _waypointAnnouncementsEnabled = _prefs.getBool('waypoint_announcements_enabled') ?? false;
+    _waypointAnnounceOnApproach = _prefs.getBool('waypoint_announce_on_approach') ?? true;
+    _waypointAnnounceOnSpot = _prefs.getBool('waypoint_announce_on_spot') ?? true;
+    _waypointAnnounceDistanceMeters = _prefs.getDouble('waypoint_announce_distance_m') ?? 300.0;
+    _waypointAnnounceTitle = _prefs.getBool('waypoint_announce_title') ?? true;
+    _waypointAnnounceType = _prefs.getBool('waypoint_announce_type') ?? true;
+    _waypointAnnounceDescription = _prefs.getBool('waypoint_announce_description') ?? false;
+    _roadmapAnnouncementsEnabled = _prefs.getBool('roadmap_announcements_enabled') ?? false;
+    _roadmapAnnounceOnApproach = _prefs.getBool('roadmap_announce_on_approach') ?? true;
+    _roadmapAnnounceOnSpot = _prefs.getBool('roadmap_announce_on_spot') ?? true;
+    _roadmapAnnounceDistanceMeters = _prefs.getDouble('roadmap_announce_distance_m') ?? 300.0;
+    _roadmapAnnounceTitle = _prefs.getBool('roadmap_announce_title') ?? true;
+    _roadmapAnnounceType = _prefs.getBool('roadmap_announce_type') ?? true;
+    _roadmapAnnounceDescription = _prefs.getBool('roadmap_announce_description') ?? false;
     _locationEnabled = _prefs.getBool('location_enabled') ?? true;
     _accentColorHex = _prefs.getInt('accent_color') ?? 0xFF69F0AE;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
@@ -249,6 +324,7 @@ class SettingsService extends ChangeNotifier {
     _recordingSubPath = _prefs.getString('recording_sub_path');
     _tileCacheLimitMb = _prefs.getDouble('tile_cache_limit_mb') ?? 500.0;
     _wifiOnlyDownload = _prefs.getBool('wifi_only_download') ?? true;
+    _aiAssistantDisabled = _prefs.getBool('ai_assistant_disabled') ?? false;
     _favoriteMapIds = _prefs.getStringList('favorite_maps') ?? ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
     
     _activeGpxNames = _prefs.getStringList('active_gpx_list') ?? [];
@@ -374,6 +450,15 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Mode "appui long" du bouton d'affichage des waypoints : montre
+  /// l'intégralité des waypoints (toutes traces et dossiers confondus),
+  /// sans persistance -- un appui simple suivant y met fin.
+  void setShowEveryWaypoint(bool value) {
+    if (_showEveryWaypoint == value) return;
+    _showEveryWaypoint = value;
+    notifyListeners();
+  }
+
   Future<void> setDisplayMode(DisplayMode mode) async {
     _displayMode = mode;
     await _prefs.setInt('display_mode', mode.index);
@@ -389,6 +474,100 @@ class SettingsService extends ChangeNotifier {
   Future<void> setShowGpxWaypoints(bool value) async {
     _showGpxWaypoints = value;
     await _prefs.setBool('show_gpx_waypoints', value);
+    notifyListeners();
+  }
+
+  Future<void> setFlattenWaypointFolders(bool value) async {
+    _flattenWaypointFolders = value;
+    await _prefs.setBool('flatten_waypoint_folders', value);
+    notifyListeners();
+  }
+
+  Future<void> setWaypointAnnouncementsEnabled(bool value) async {
+    _waypointAnnouncementsEnabled = value;
+    await _prefs.setBool('waypoint_announcements_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setWaypointAnnounceTrigger(String key, bool value) async {
+    switch (key) {
+      case 'approach':
+        _waypointAnnounceOnApproach = value;
+        await _prefs.setBool('waypoint_announce_on_approach', value);
+        break;
+      case 'onSpot':
+        _waypointAnnounceOnSpot = value;
+        await _prefs.setBool('waypoint_announce_on_spot', value);
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setWaypointAnnounceDistanceMeters(double value) async {
+    _waypointAnnounceDistanceMeters = value;
+    await _prefs.setDouble('waypoint_announce_distance_m', value);
+    notifyListeners();
+  }
+
+  Future<void> setWaypointAnnounceContent(String key, bool value) async {
+    switch (key) {
+      case 'title':
+        _waypointAnnounceTitle = value;
+        await _prefs.setBool('waypoint_announce_title', value);
+        break;
+      case 'type':
+        _waypointAnnounceType = value;
+        await _prefs.setBool('waypoint_announce_type', value);
+        break;
+      case 'description':
+        _waypointAnnounceDescription = value;
+        await _prefs.setBool('waypoint_announce_description', value);
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapAnnouncementsEnabled(bool value) async {
+    _roadmapAnnouncementsEnabled = value;
+    await _prefs.setBool('roadmap_announcements_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapAnnounceTrigger(String key, bool value) async {
+    switch (key) {
+      case 'approach':
+        _roadmapAnnounceOnApproach = value;
+        await _prefs.setBool('roadmap_announce_on_approach', value);
+        break;
+      case 'onSpot':
+        _roadmapAnnounceOnSpot = value;
+        await _prefs.setBool('roadmap_announce_on_spot', value);
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapAnnounceDistanceMeters(double value) async {
+    _roadmapAnnounceDistanceMeters = value;
+    await _prefs.setDouble('roadmap_announce_distance_m', value);
+    notifyListeners();
+  }
+
+  Future<void> setRoadmapAnnounceContent(String key, bool value) async {
+    switch (key) {
+      case 'title':
+        _roadmapAnnounceTitle = value;
+        await _prefs.setBool('roadmap_announce_title', value);
+        break;
+      case 'type':
+        _roadmapAnnounceType = value;
+        await _prefs.setBool('roadmap_announce_type', value);
+        break;
+      case 'description':
+        _roadmapAnnounceDescription = value;
+        await _prefs.setBool('roadmap_announce_description', value);
+        break;
+    }
     notifyListeners();
   }
 
@@ -520,6 +699,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setWifiOnlyDownload(bool value) async {
     _wifiOnlyDownload = value;
     await _prefs.setBool('wifi_only_download', value);
+    notifyListeners();
+  }
+
+  Future<void> setAiAssistantDisabled(bool value) async {
+    _aiAssistantDisabled = value;
+    await _prefs.setBool('ai_assistant_disabled', value);
     notifyListeners();
   }
 

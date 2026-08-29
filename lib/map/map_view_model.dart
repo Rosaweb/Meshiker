@@ -67,7 +67,8 @@ class MapViewModel {
   double _lastZoom = 15;
   bool _lastOsmPoisEnabled = false;
   Set<String> _lastOsmPoiCategoryIds = const {};
-  bool _lastLoadWaypointCategories = false;
+  String? _lastRoadmapTraceName;
+  bool _lastShowEveryWaypoint = false;
 
   /// A appeler quand le viewport de la carte change (deplacement, zoom).
   /// Debounce volontairement les appels rapproches (l'utilisateur qui
@@ -83,7 +84,8 @@ class MapViewModel {
     double zoom = 15,
     bool osmPoisEnabled = false,
     Set<String> osmPoiCategoryIds = const {},
-    bool loadWaypointCategories = false,
+    String? roadmapTraceName,
+    bool showEveryWaypoint = false,
     Duration debounce = const Duration(milliseconds: 300),
   }) {
     _lastBounds = (minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon);
@@ -91,7 +93,8 @@ class MapViewModel {
     _lastZoom = zoom;
     _lastOsmPoisEnabled = osmPoisEnabled;
     _lastOsmPoiCategoryIds = osmPoiCategoryIds;
-    _lastLoadWaypointCategories = loadWaypointCategories;
+    _lastRoadmapTraceName = roadmapTraceName;
+    _lastShowEveryWaypoint = showEveryWaypoint;
     _debounce?.cancel();
     _debounce = Timer(debounce, () {
       unawaited(_reload(
@@ -103,7 +106,8 @@ class MapViewModel {
         zoom: zoom,
         osmPoisEnabled: osmPoisEnabled,
         osmPoiCategoryIds: osmPoiCategoryIds,
-        loadWaypointCategories: loadWaypointCategories,
+        roadmapTraceName: roadmapTraceName,
+        showEveryWaypoint: showEveryWaypoint,
       ));
     });
   }
@@ -125,7 +129,35 @@ class MapViewModel {
       zoom: _lastZoom,
       osmPoisEnabled: _lastOsmPoisEnabled,
       osmPoiCategoryIds: _lastOsmPoiCategoryIds,
-      loadWaypointCategories: _lastLoadWaypointCategories,
+      roadmapTraceName: _lastRoadmapTraceName,
+      showEveryWaypoint: _lastShowEveryWaypoint,
+    );
+  }
+
+  /// Rechargement immédiat dédié au bouton d'affichage des waypoints (tap
+  /// / appui long) : contrairement à [refreshNow], les nouvelles valeurs
+  /// sont fournies explicitement plutôt que rejouées depuis le dernier
+  /// [onViewportChanged] connu, qui serait sinon périmé tant que la carte
+  /// n'a pas rebougé.
+  Future<void> reloadWaypointDisplay({
+    required String? roadmapTraceName,
+    required bool showEveryWaypoint,
+  }) async {
+    _lastRoadmapTraceName = roadmapTraceName;
+    _lastShowEveryWaypoint = showEveryWaypoint;
+    final b = _lastBounds;
+    if (b == null) return;
+    await _reload(
+      minLat: b.minLat,
+      maxLat: b.maxLat,
+      minLon: b.minLon,
+      maxLon: b.maxLon,
+      activeGpxNames: _lastActiveGpxNames,
+      zoom: _lastZoom,
+      osmPoisEnabled: _lastOsmPoisEnabled,
+      osmPoiCategoryIds: _lastOsmPoiCategoryIds,
+      roadmapTraceName: roadmapTraceName,
+      showEveryWaypoint: showEveryWaypoint,
     );
   }
 
@@ -138,7 +170,8 @@ class MapViewModel {
     double zoom = 15,
     bool osmPoisEnabled = false,
     Set<String> osmPoiCategoryIds = const {},
-    bool loadWaypointCategories = false,
+    String? roadmapTraceName,
+    bool showEveryWaypoint = false,
   }) async {
     // 1. Local d'abord, toujours : c'est ce qui garantit l'usage en zone
     // blanche.
@@ -154,18 +187,53 @@ class MapViewModel {
       minLon: minLon,
       maxLon: maxLon,
     );
+    // Waypoints -- portée dépendante du contexte (voir doc utilisateur
+    // "Affichage des waypoints" / HelpScreen) :
+    // - appui long actif (showEveryWaypoint) : tout, sans filtre de trace ;
+    // - une trace est chargée en navigation ET toujours affichée : ses
+    //   seuls waypoints ;
+    // - sinon : les waypoints de toutes les traces actuellement affichées
+    //   (aucune si aucune trace n'est affichée).
+    final effectiveRoadmapTrace =
+        (roadmapTraceName != null && activeGpxNames.contains(roadmapTraceName))
+            ? roadmapTraceName
+            : null;
 
-    // Nouveaux waypoints
-    final fetchedWaypoints = await isarService.searchWaypoints(
-      minLat: minLat,
-      maxLat: maxLat,
-      minLon: minLon,
-      maxLon: maxLon,
-    );
-    if (loadWaypointCategories) {
-      for (final wp in fetchedWaypoints) {
-        await wp.category.load();
-      }
+    final List<Waypoint> fetchedWaypoints;
+    if (showEveryWaypoint) {
+      fetchedWaypoints = await isarService.searchWaypoints(
+        minLat: minLat,
+        maxLat: maxLat,
+        minLon: minLon,
+        maxLon: maxLon,
+      );
+    } else if (effectiveRoadmapTrace != null) {
+      fetchedWaypoints = await isarService.searchWaypoints(
+        minLat: minLat,
+        maxLat: maxLat,
+        minLon: minLon,
+        maxLon: maxLon,
+        filterGpxName: effectiveRoadmapTrace,
+      );
+    } else if (activeGpxNames.isNotEmpty) {
+      fetchedWaypoints = await isarService.searchWaypoints(
+        minLat: minLat,
+        maxLat: maxLat,
+        minLon: minLon,
+        maxLon: maxLon,
+        filterGpxNames: activeGpxNames,
+      );
+    } else {
+      fetchedWaypoints = const [];
+    }
+    // Isar ne charge pas automatiquement les IsarLinks : sans ce chargement,
+    // la fenêtre contextuelle du waypoint (ouverte depuis la carte) ne
+    // pourrait jamais présélectionner son type/dossier actuel, et les icônes
+    // de catégorie sur la carte (voir `useWaypointCategoryIcons`) resteraient
+    // vides -- toujours chargé, indépendamment de ce réglage d'affichage.
+    for (final wp in fetchedWaypoints) {
+      await wp.category.load();
+      await wp.folder.load();
     }
     waypoints.value = fetchedWaypoints;
 

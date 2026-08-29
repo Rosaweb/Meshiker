@@ -78,5 +78,7 @@
 	<string>Cette application a besoin d'accéder à vos photos pour les associer aux waypoints.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Cette application a besoin d'utiliser l'appareil photo pour prendre des photos de vos waypoints.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Meshiker utilise le micro pour vous permettre de poser vos questions à l'assistant IA à voix haute.</string>
 </dict>
 </plist>

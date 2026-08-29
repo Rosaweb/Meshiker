@@ -25,6 +25,7 @@ import 'tracks/track_manager_screen.dart';
 import 'tracks/roadmap_screen.dart';
 import 'segments/segment_manager_screen.dart';
 import 'waypoints/waypoint_manager_screen.dart';
+import 'assistant/assistant_prompt_bar.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final IsarService isarService;
@@ -615,6 +616,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               color: settings.accentColor,
               child: _buildCoordinatesContent(),
             ),
+          const SizedBox(height: 12),
+          const AssistantPromptBar(showMicButton: false),
         ],
       ),
     );

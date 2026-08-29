@@ -110,9 +110,18 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final wp = widget.waypoint ?? Waypoint()
-      ..localUuid = const Uuid().v4()
       ..latitude = widget.latitude ?? 0
       ..longitude = widget.longitude ?? 0;
+
+    // `_isNew` (basé sur l'id Isar) est le bon indicateur, pas
+    // `widget.waypoint == null` : un waypoint construit ailleurs (ex :
+    // création depuis un POI OSM sur la carte, voir _OsmPoisLayer dans
+    // map_screen.dart) est déjà non-null mais jamais persisté, donc son
+    // localUuid n'est jamais renseigné. Sans ce test, `put()` plantait sur
+    // ce champ `late` non initialisé et l'enregistrement échouait.
+    if (_isNew) {
+      wp.localUuid = const Uuid().v4();
+    }
 
     wp.name = _nameController.text;
     wp.description = _descController.text;
