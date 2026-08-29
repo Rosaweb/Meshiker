@@ -28,6 +28,17 @@ const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')!;
 // `gemini-3.1-flash-live-preview` est le modèle audio natif recommandé sur
 // la Gemini Developer API standard (pas Vertex — les tokens éphémères n'y
 // sont pas supportés, cf. plan-implementation-assistant-vocal-conversationnel.md).
+//
+// Vérifié empiriquement le 2026-08-29 après un faux suspect : ce nom N'ÉTAIT
+// PAS la cause du "Connexion assistant fermée de façon inattendue" remonté
+// par l'utilisateur ce jour-là. `gemini-live-2.5-flash-native-audio` (nom
+// vu dans AI Studio) a été essayé à sa place et rejeté instantanément par le
+// WebSocket réel (code 1008, "is not found ... or is not supported for
+// bidiGenerateContent") — ce nom n'existe pas dans `GET /v1beta/models`
+// pour ce projet. `gemini-3.1-flash-live-preview`, lui, complète bien le
+// handshake `setup`/`setupComplete` en conditions réelles. La vraie cause
+// du symptôme original était côté client, voir le try/catch ajouté dans
+// `AssistantService._startMicStreaming` (lib/assistant/assistant_service.dart).
 const LIVE_MODEL = 'models/gemini-3.1-flash-live-preview';
 
 // Session ouverte à la demande (une question = une session courte, décision

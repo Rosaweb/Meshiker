@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -54,6 +55,18 @@ class AssistantService {
   StreamSubscription<dynamic>? _wsSub;
   StreamController<Uint8List>? _micController;
   StreamSubscription<Uint8List>? _micSub;
+
+  // `FlutterSoundPlayer.feedUint8FromStream` (donc `_feed` en interne) gère
+  // son flow-control avec un unique `Completer` d'instance, pas une file —
+  // un deuxième appel avant la fin du premier écrase le `Completer` en
+  // cours plutôt que de s'y ajouter. Gemini envoie ses chunks audio par
+  // rafales (plusieurs par seconde), donc appeler `feedUint8FromStream` en
+  // fire-and-forget à chaque chunk (comme avant) provoque des appels
+  // concurrents à `_feed` — cause du son haché et des plantages observés
+  // le 2026-08-29. Cette file interne sérialise les appels : un seul
+  // `feedUint8FromStream` à la fois, les autres chunks attendent leur tour.
+  final Queue<Uint8List> _audioQueue = Queue<Uint8List>();
+  bool _isFeedingAudio = false;
 
   static const _micSampleRateHz = 16000;
   static const _playbackSampleRateHz = 24000;
@@ -198,9 +211,29 @@ class AssistantService {
   }
 
   void _handleServerMessage(dynamic raw, void Function() onSetupComplete) {
+    // La Live API envoie certains messages serveur (dont `setupComplete`,
+    // vérifié empiriquement le 2026-08-29) sous forme de frame WebSocket
+    // *binaire* plutôt que texte, même s'il ne s'agit que de JSON encodé en
+    // UTF-8 — `dart:io`'s WebSocket (utilisé par `web_socket_channel`)
+    // délivre alors `raw` comme `List<int>`, pas `String`. Sans ce
+    // décodage, `raw as String` levait une exception silencieusement
+    // avalée par le catch ci-dessous : `onSetupComplete` n'était jamais
+    // appelé, la session restait ouverte et inerte jusqu'au timeout
+    // serveur (~3 min) — cause du "Connexion assistant fermée de façon
+    // inattendue" observé (texte ET vocal, les deux dépendent de
+    // `setupComplete` pour progresser).
+    final String text;
+    if (raw is String) {
+      text = raw;
+    } else if (raw is List<int>) {
+      text = utf8.decode(raw);
+    } else {
+      return;
+    }
+
     final Map<String, dynamic> json;
     try {
-      json = jsonDecode(raw as String) as Map<String, dynamic>;
+      json = jsonDecode(text) as Map<String, dynamic>;
     } catch (_) {
       return;
     }
@@ -216,7 +249,7 @@ class AssistantService {
             unawaited(_stopMicStreaming());
           }
           state.value = AssistantSessionState.responding;
-          unawaited(_player.feedUint8FromStream(Uint8List.fromList(bytes)));
+          _enqueueAudio(Uint8List.fromList(bytes));
         case GeminiLiveInterrupted():
           break;
         case GeminiLiveTurnComplete():
@@ -238,13 +271,27 @@ class AssistantService {
       _sendClientMessage(GeminiLiveClient.buildAudioChunk(chunk, sampleRateHz: _micSampleRateHz));
     });
 
-    await _recorder.startRecorder(
-      codec: Codec.pcm16,
-      sampleRate: _micSampleRateHz,
-      numChannels: 1,
-      audioSource: AudioSource.defaultSource,
-      toStream: controller.sink,
-    );
+    // Appelé fire-and-forget depuis le handler de message WebSocket
+    // (`onSetupComplete` n'est pas awaited) — sans ce try/catch, un échec ici
+    // (ex. `flutter_sound` incapable de démarrer l'enregistreur) ne remonte
+    // nulle part : le micro ne streame jamais rien, la session Gemini reste
+    // ouverte et inerte jusqu'au timeout serveur (plusieurs minutes), puis se
+    // ferme via `onDone` avec un message générique qui ne dit rien du vrai
+    // problème. Repéré le 2026-08-29 : l'utilisateur voyait "Connexion à
+    // l'assistant..." bloqué plusieurs minutes avant "Connexion fermée de
+    // façon inattendue", alors que le handshake `setup`/`setupComplete`
+    // avec Gemini fonctionne (vérifié empiriquement en dehors de l'app).
+    try {
+      await _recorder.startRecorder(
+        codec: Codec.pcm16,
+        sampleRate: _micSampleRateHz,
+        numChannels: 1,
+        audioSource: AudioSource.defaultSource,
+        toStream: controller.sink,
+      );
+    } catch (e) {
+      _fail('Impossible de démarrer le micro : $e');
+    }
   }
 
   Future<void> _stopMicStreaming() async {
@@ -281,6 +328,28 @@ class AssistantService {
     _playerStreamStarted = true;
   }
 
+  void _enqueueAudio(Uint8List bytes) {
+    _audioQueue.add(bytes);
+    unawaited(_pumpAudioQueue());
+  }
+
+  Future<void> _pumpAudioQueue() async {
+    if (_isFeedingAudio) return;
+    _isFeedingAudio = true;
+    try {
+      while (_audioQueue.isNotEmpty) {
+        final chunk = _audioQueue.removeFirst();
+        await _player.feedUint8FromStream(chunk);
+      }
+    } catch (_) {
+      // Le lecteur a probablement été arrêté pendant qu'on vidait la file
+      // (fin/annulation de session) — rien à faire, `_teardownSession`
+      // vide `_audioQueue` de son côté.
+    } finally {
+      _isFeedingAudio = false;
+    }
+  }
+
   Future<void> _finishSession() async {
     await _stopMicStreaming();
     await _closeChannel();
@@ -296,6 +365,7 @@ class AssistantService {
   Future<void> _teardownSession() async {
     await _stopMicStreaming();
     await _closeChannel();
+    _audioQueue.clear();
     if (_playerStreamStarted) {
       try {
         await _player.stopPlayer();
