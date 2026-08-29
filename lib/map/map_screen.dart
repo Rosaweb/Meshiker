@@ -1183,7 +1183,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return TileLayer(
       urlTemplate: source.url,
       subdomains: const ['a', 'b', 'c'],
-      userAgentPackageName: 'com.example.meshiker',
+      userAgentPackageName: 'com.meshiker.app',
       tileProvider: _buildTileProvider(source.id),
       errorTileCallback: _onTileError,
       reset: _tileResetController.stream,

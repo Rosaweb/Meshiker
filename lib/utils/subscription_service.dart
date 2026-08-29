@@ -22,12 +22,23 @@ class SubscriptionService extends ChangeNotifier {
   static const _apiKey = 'test_juekxUQmWXJYnKTwtOPKWBKKyeG';
 
   /// Initialise le SDK RevenueCat de manière ultra-sécurisée.
-  Future<void> init() async {
+  ///
+  /// [appUserId] doit être l'id utilisateur Supabase (anonyme ou non) déjà
+  /// connu au moment de l'appel, pour que RevenueCat s'identifie dès la
+  /// première configuration plutôt que de démarrer sur un ID anonyme
+  /// `$RCAnonymousID:...` qu'il faudrait relier après coup via
+  /// `Purchases.logIn()`. Appeler `configure()` avant que cet id soit
+  /// définitif risquerait de transférer un achat existant lié au compte
+  /// Google Play vers un mauvais ID anonyme (webhook `TRANSFER` inattendu).
+  Future<void> init({String? appUserId}) async {
     try {
       await Purchases.setLogLevel(LogLevel.debug);
 
       PurchasesConfiguration configuration = PurchasesConfiguration(_apiKey);
-      
+      if (appUserId != null) {
+        configuration.appUserID = appUserId;
+      }
+
       // Tentative de configuration
       await Purchases.configure(configuration);
       _sdkAvailable = true;
@@ -95,6 +106,21 @@ class SubscriptionService extends ChangeNotifier {
       _updateFromCustomerInfo(info);
     } catch (e) {
       debugPrint('RevenueCat: Restore error: $e');
+    }
+  }
+
+  /// À appeler juste après une rédemption de code promo réussie
+  /// (redeem-promo-code) : l'entitlement a été accordé côté RevenueCat par
+  /// l'Edge Function, mais le cache local du SDK ne le sait pas encore.
+  /// Invalide ce cache puis recharge, pour que `isPremium` reflète le
+  /// nouvel état sans attendre un relancement de l'app.
+  Future<void> refreshAfterPromoCodeRedeem() async {
+    try {
+      await Purchases.invalidateCustomerInfoCache();
+      final info = await Purchases.getCustomerInfo();
+      _updateFromCustomerInfo(info);
+    } catch (e) {
+      debugPrint('RevenueCat: Error refreshing after promo redeem: $e');
     }
   }
 

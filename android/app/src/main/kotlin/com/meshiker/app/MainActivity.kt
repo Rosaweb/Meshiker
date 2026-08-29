@@ -1,12 +1,15 @@
-package com.example.meshiker
+package com.meshiker.app
 
 import android.graphics.Rect
 import android.os.Build
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+// RevenueCatUI.presentPaywall() nécessite que MainActivity hérite de
+// FlutterFragmentActivity (paywall natif rendu comme Fragment) — sinon
+// PlatformException(PAYWALLS_MISSING_WRONG_ACTIVITY) au premier appel.
+class MainActivity : FlutterFragmentActivity() {
     private val gestureExclusionChannel = "meshiker/system_gestures"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

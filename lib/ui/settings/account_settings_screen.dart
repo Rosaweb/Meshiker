@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../utils/auth_service.dart';
 import '../../utils/subscription_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/utilisateur.dart';
+import '../auth/login_screen.dart';
+import '../auth/secure_account_screen.dart';
 import 'about_screen.dart';
+import 'promo_code_bottom_sheet.dart';
 
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
@@ -22,13 +26,13 @@ class AccountSettingsScreen extends StatelessWidget {
           elevation: 0,
           foregroundColor: Colors.white,
         ),
-        body: Consumer2<SubscriptionService, IsarService>(
-          builder: (context, subService, isar, child) {
+        body: Consumer3<SubscriptionService, IsarService, AuthService>(
+          builder: (context, subService, isar, authService, child) {
             return FutureBuilder<Utilisateur?>(
               future: isar.currentDeviceUser(),
               builder: (context, snapshot) {
                 final user = snapshot.data;
-                
+
                 return ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
@@ -38,7 +42,7 @@ class AccountSettingsScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     _buildIgnSubscriptionPlaceholder(),
                     const SizedBox(height: 32),
-                    _buildSyncSection(user),
+                    _buildSyncSection(context, authService),
                     const SizedBox(height: 32),
                     const Divider(color: Colors.white12),
                     ListTile(
@@ -147,7 +151,12 @@ class AccountSettingsScreen extends StatelessWidget {
                 ElevatedButton(
                   onPressed: () async {
                     // Présente le Paywall RevenueCat (Best practice moderne)
-                    await RevenueCatUI.presentPaywall();
+                    final result = await RevenueCatUI.presentPaywall();
+                    if (result == PaywallResult.purchased && context.mounted) {
+                      // Spec section 4 : proposer immédiatement de sécuriser
+                      // le compte anonyme après un achat réussi.
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const SecureAccountScreen()));
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.greenAccent,
@@ -173,6 +182,11 @@ class AccountSettingsScreen extends StatelessWidget {
                 onPressed: () => subService.restorePurchases(),
                 child: const Text('Restaurer mes achats', style: TextStyle(color: Colors.white70)),
               ),
+              if (!subService.isPremium)
+                TextButton(
+                  onPressed: () => PromoCodeBottomSheet.show(context),
+                  child: const Text("J'ai un code", style: TextStyle(color: Colors.white70)),
+                ),
             ],
           ),
         ),
@@ -216,7 +230,8 @@ class AccountSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSyncSection(Utilisateur? user) {
+  Widget _buildSyncSection(BuildContext context, AuthService authService) {
+    final isAnonymous = authService.isAnonymous;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -228,15 +243,29 @@ class AccountSettingsScreen extends StatelessWidget {
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.cloud_queue, color: Colors.white70),
-          title: const Text('Statut de synchronisation', style: TextStyle(color: Colors.white)),
+          title: const Text('Statut du compte', style: TextStyle(color: Colors.white)),
           subtitle: Text(
-            user?.remoteId != null ? 'Connecté à Supabase' : 'Mode local uniquement',
+            isAnonymous ? 'Mode anonyme (non récupérable)' : 'Connecté (${authService.currentUser?.email ?? "compte permanent"})',
             style: const TextStyle(color: Colors.white38),
           ),
-          trailing: user?.remoteId != null 
-            ? const Icon(Icons.check_circle, color: Colors.greenAccent)
-            : const Icon(Icons.warning_amber, color: Colors.orangeAccent),
+          trailing: isAnonymous
+            ? const Icon(Icons.warning_amber, color: Colors.orangeAccent)
+            : const Icon(Icons.check_circle, color: Colors.greenAccent),
         ),
+        if (isAnonymous)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: OutlinedButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white24),
+                minimumSize: const Size(double.infinity, 40),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Déjà un compte ? Se connecter'),
+            ),
+          ),
       ],
     );
   }

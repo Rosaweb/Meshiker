@@ -23,6 +23,14 @@ create table if not exists public.profiles (
   total_distance_meters bigint not null default 0,
   total_segments_contributed integer not null default 0,
   trust_level double precision not null default 0.5,
+  -- Statut premium RevenueCat, synchronisé par le webhook Edge Function
+  -- `revenuecat-webhook` (voir functions.sql) sur app_user_id = profiles.id
+  -- (garanti être cet UUID Supabase grâce à Purchases.logIn() côté client,
+  -- cf. spec-authentification-paywall.md). Un utilisateur anonyme peut
+  -- légitimement être premium (achat avant conversion de compte) : ne pas
+  -- confondre avec la distinction is_anonymous du JWT, qui gate uniquement
+  -- les fonctionnalités sociales (voir create_trace_share dans functions.sql).
+  is_premium boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -259,3 +267,51 @@ create policy "trace share owners can upload their gpx object"
         and ts.owner_id = auth.uid()
     )
   );
+
+-- ============================================================
+-- Codes promo / octroi premium (voir spec-codes-promo.md et
+-- functions.sql pour redeem_promo_code). Système à part du paywall
+-- store : octroie un accès gratuit via les promotional entitlements
+-- RevenueCat, jamais une remise sur achat.
+-- ============================================================
+
+create table if not exists public.promo_codes (
+  id uuid primary key default uuid_generate_v4(),
+  code text not null unique,
+  -- Doit correspondre exactement à l'identifiant d'entitlement vérifié
+  -- côté client (SubscriptionService._updateFromCustomerInfo,
+  -- entitlements.active.containsKey('Meshiker Pro')) — PAS "premium".
+  -- Un mauvais identifiant ici octroierait un entitlement RevenueCat que
+  -- l'app ne regarde jamais : redemption "réussie" en base, mais aucun
+  -- accès premium réel côté utilisateur.
+  entitlement_id text not null default 'Meshiker Pro',
+  duration text not null check (duration in (
+    'daily', 'weekly', 'monthly', 'two_month', 'three_month',
+    'six_month', 'yearly', 'lifetime'
+  )),
+  max_redemptions integer,          -- null = illimité
+  redemptions_count integer not null default 0,
+  expires_at timestamptz,           -- null = pas de limite de temps
+  is_active boolean not null default true,
+  campaign_name text,               -- ex. "cadeau Marc", "lancement V2"
+  created_at timestamptz not null default now(),
+  created_by uuid references auth.users (id)
+);
+
+create index if not exists idx_promo_codes_code on public.promo_codes (code) where is_active;
+
+create table if not exists public.promo_code_redemptions (
+  id uuid primary key default uuid_generate_v4(),
+  code_id uuid not null references public.promo_codes (id),
+  user_id uuid not null references auth.users (id),
+  redeemed_at timestamptz not null default now(),
+  unique (code_id, user_id) -- empêche la réutilisation du même code par le même user
+);
+
+alter table public.promo_codes enable row level security;
+alter table public.promo_code_redemptions enable row level security;
+
+-- Volontairement aucune policy pour anon/authenticated : ces deux tables
+-- ne sont lues/écrites que depuis l'Edge Function redeem-promo-code (clé
+-- service_role, via la RPC security definer redeem_promo_code), jamais
+-- directement par le client.
