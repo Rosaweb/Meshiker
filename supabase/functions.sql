@@ -440,3 +440,67 @@ select cron.schedule(
   '*/15 * * * *',
   $$select public.purge_expired_trace_shares();$$
 );
+
+-- ---------- Rédemption de code promo (validation + insertion atomique) ----------
+-- Voir spec-codes-promo.md section 2. `for update` verrouille la ligne du
+-- code le temps de la transaction : évite qu'une course entre deux
+-- requêtes concurrentes sur un code à un seul usage restant ne les laisse
+-- toutes les deux passer. Ne fait QUE la validation et l'écriture
+-- Postgres — l'appel à l'API Grant de RevenueCat se fait ensuite, côté
+-- Edge Function `redeem-promo-code`, uniquement si `success = true`
+-- (jamais l'inverse : ne pas accorder l'entitlement avant confirmation
+-- Postgres, pour ne pas octroyer un accès sans trace côté DB).
+create or replace function public.redeem_promo_code(
+  p_code text,
+  p_user_id uuid
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_promo record;
+begin
+  select * into v_promo
+  from public.promo_codes
+  where code = p_code
+  for update;
+
+  if not found then
+    return jsonb_build_object('success', false, 'error', 'invalid_code');
+  end if;
+
+  if not v_promo.is_active then
+    return jsonb_build_object('success', false, 'error', 'code_inactive');
+  end if;
+
+  if v_promo.expires_at is not null and v_promo.expires_at < now() then
+    return jsonb_build_object('success', false, 'error', 'code_expired');
+  end if;
+
+  if v_promo.max_redemptions is not null
+     and v_promo.redemptions_count >= v_promo.max_redemptions then
+    return jsonb_build_object('success', false, 'error', 'quota_reached');
+  end if;
+
+  if exists (
+    select 1 from public.promo_code_redemptions
+    where code_id = v_promo.id and user_id = p_user_id
+  ) then
+    return jsonb_build_object('success', false, 'error', 'already_redeemed');
+  end if;
+
+  insert into public.promo_code_redemptions (code_id, user_id)
+  values (v_promo.id, p_user_id);
+
+  update public.promo_codes
+  set redemptions_count = redemptions_count + 1
+  where id = v_promo.id;
+
+  return jsonb_build_object(
+    'success', true,
+    'entitlement_id', v_promo.entitlement_id,
+    'duration', v_promo.duration
+  );
+end;
+$$;
