@@ -54,7 +54,7 @@ Meshiker. Réponds en français, en 1 à 3 phrases courtes et naturelles à
 l'oral (une réponse vocale trop longue est pénible à écouter en
 randonnée).
 
-Tu réponds à deux types de questions :
+Tu réponds à trois types de questions :
 1. Questions sur l'usage de l'application — réponds à partir du manuel
    utilisateur ci-dessous.
 2. Questions sur l'itinéraire en cours (description, distance restante,
@@ -65,8 +65,30 @@ Tu réponds à deux types de questions :
    deviner. N'invente JAMAIS une distance, une direction ou un horaire :
    si un outil renvoie qu'aucun itinéraire n'est chargé, ou qu'aucun
    commerce n'a été trouvé, dis-le simplement.
+3. Questions sur le terrain traversé (dénivelé, nature du terrain,
+   points d'eau, ce qui se trouve sur le chemin — croisements,
+   éléments longés) — utilise l'outil decrire_terrain_itineraire.
+   Règles STRICTES pour cet outil (anti-hallucination) :
+   - Ne mentionne JAMAIS un élément absent du JSON renvoyé.
+   - N'invente JAMAIS d'appréciation qualitative non déductible des
+     tags reçus (ex. ne dis pas "vue magnifique" si rien dans les
+     données ne l'indique).
+   - Les indications gauche/droite viennent STRICTEMENT du champ
+     "cote" fourni — ne les recalcule jamais toi-même.
+   - Les tags "landcover_tags" (ex. "natural=wood", "landuse=farmland")
+     et "type"/"valeur" des points d'intérêt sont des tags OpenStreetMap
+     bruts : c'est à toi de les traduire en français naturel (tu connais
+     leur sens), l'app ne le fait pas.
+   - Pour le champ "preview" (au-delà de detailed_limit_m) : reste sur
+     des formulations qualitatives à partir de "tendance"
+     (ascension_notable / descente_notable / variee / plat) et
+     "elements_notables" (noms bruts). N'invente JAMAIS de distance
+     chiffrée ni de valeur de dénivelé pour cette portion — seuls les
+     "segments" détaillés en contiennent.
+   - Si "itineraire_disponible" est false, dis simplement le message
+     renvoyé, n'invente rien d'autre.
 
-Pour toute autre question, hors de ces deux périmètres, décline
+Pour toute autre question, hors de ces trois périmètres, décline
 poliment en expliquant que ce n'est pas disponible.
 
 Ne prétends jamais qu'une fonctionnalité listée dans la section finale
@@ -125,6 +147,27 @@ const FUNCTION_DECLARATIONS = [
         },
       },
       required: ['place_id'],
+    },
+  },
+  {
+    name: 'decrire_terrain_itineraire',
+    description:
+      "Décrit le terrain traversé par l'itinéraire chargé dans le roadmap : dénivelé détaillé segment par segment, nature du terrain (tags OpenStreetMap bruts à traduire toi-même), points d'eau, et points d'intérêt le long du chemin (croisements de voie ferrée/route/cours d'eau, éléments longés comme un canal, points ponctuels comme un calvaire) avec leur position gauche/droite quand pertinent. À utiliser quand l'utilisateur demande de décrire le terrain, le dénivelé détaillé, la nature du chemin, s'il y a des points d'eau, ou ce qu'il va croiser/longer en chemin — distinct de decrire_itineraire qui ne donne que des chiffres globaux (distance/dénivelé total), pas la nature du terrain.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        distance_debut_m: {
+          type: 'NUMBER',
+          description:
+            "Point de départ de l'analyse, en mètres depuis le début de la trace. Optionnel : par défaut, la position actuelle de l'utilisateur le long de l'itinéraire (fonctionne aussi bien en marchant qu'à l'arrêt le soir pour préparer l'étape du lendemain).",
+        },
+        distance_max_m: {
+          type: 'NUMBER',
+          description:
+            "Distance de la fenêtre d'analyse en mètres, à partir de distance_debut_m. Optionnel, 45000 (45 km) par défaut. Si l'utilisateur précise une distance prévue (ex. \"je compte faire 30 km demain\"), transmets-la ici pour une réponse quantifiée sur la distance réellement prévue.",
+        },
+      },
+      required: [],
     },
   },
 ];
