@@ -15,6 +15,7 @@ import '../utils/geo_utils.dart';
 import '../utils/supabase_bootstrap_service.dart';
 import 'gemini_live_client.dart';
 import 'places_service.dart';
+import 'terrain_analysis_service.dart';
 
 /// Noms des outils exposés au modèle (v2, navigation) — doivent matcher
 /// EXACTEMENT les `functionDeclarations` verrouillées côté serveur dans
@@ -25,6 +26,7 @@ abstract final class _ToolNames {
   static const nextDirection = 'obtenir_prochaine_direction';
   static const searchNearbyPlaces = 'rechercher_commerces_proximite';
   static const placeHours = 'horaires_commerce';
+  static const describeTerrain = 'decrire_terrain_itineraire';
 }
 
 /// États d'une session assistant, exposés à l'UI (page Aide et volet
@@ -71,6 +73,7 @@ class AssistantService {
     required this.supabaseBootstrap,
     required this.recordingService,
     required this.placesService,
+    required this.terrainAnalysisService,
     Connectivity? connectivity,
   }) : _connectivity = connectivity ?? Connectivity();
 
@@ -81,6 +84,9 @@ class AssistantService {
   // annonces vocales (§2 du plan) et réutilisés tels quels.
   final RecordingService recordingService;
   final PlacesService placesService;
+  // Lecture terrain/topo à la demande (spec-assistant-terrain-topo.md) —
+  // dénivelé + POI OSM classés le long de la trace active du roadmap.
+  final TerrainAnalysisService terrainAnalysisService;
   final Connectivity _connectivity;
 
   final ValueNotifier<AssistantSessionState> state = ValueNotifier(AssistantSessionState.idle);
@@ -416,6 +422,8 @@ class AssistantService {
           return await _searchNearbyPlaces(args);
         case _ToolNames.placeHours:
           return await _placeHours(args);
+        case _ToolNames.describeTerrain:
+          return await _describeTerrain(args);
         default:
           return {'erreur': 'outil_inconnu'};
       }
@@ -510,6 +518,31 @@ class AssistantService {
       return {'erreur': 'parametre_place_id_manquant'};
     }
     return placesService.placeHours(placeId: placeId);
+  }
+
+  /// `decrire_terrain_itineraire` : dénivelé détaillé + nature du terrain +
+  /// points d'intérêt/points d'eau OSM le long de la trace active du
+  /// roadmap (spec-assistant-terrain-topo.md). `distance_debut_m` par
+  /// défaut = position actuelle le long de la trace (même logique que
+  /// `_describeRoute`, §3.1 de la spec : pas de notion de "jour" côté
+  /// données, une fenêtre glissante depuis la position suffit que la
+  /// question soit posée en marchant ou le soir à l'étape).
+  Future<Map<String, dynamic>> _describeTerrain(Map<String, dynamic> args) async {
+    final trace = recordingService.activeRoadmapTrace;
+    if (trace == null) {
+      return {
+        'itineraire_disponible': false,
+        'message': "Aucun itinéraire n'est actuellement chargé dans le roadmap.",
+      };
+    }
+    final fromDistanceM =
+        (args['distance_debut_m'] as num?)?.toDouble() ?? recordingService.trackDistanceDoneMeters.value;
+    final maxDistanceM = (args['distance_max_m'] as num?)?.toDouble();
+    return terrainAnalysisService.describeRouteSegment(
+      trace: trace,
+      fromDistanceM: fromDistanceM,
+      maxDistanceM: maxDistanceM,
+    );
   }
 
   Future<void> _startMicStreaming() async {

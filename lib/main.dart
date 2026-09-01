@@ -22,6 +22,7 @@ import 'navigation/waypoint_announcement_service.dart';
 import 'sharing/trace_share_service.dart';
 import 'assistant/assistant_service.dart';
 import 'assistant/places_service.dart';
+import 'assistant/terrain_analysis_service.dart';
 
 void main() async {
   // Capture les erreurs Flutter (UI, etc.)
@@ -88,10 +89,12 @@ void main() async {
       // chargés dans le Roadmap directement depuis ce service (lecture
       // seule, cf. RecordingService.activeRoadmapTrace).
       final placesService = PlacesService(supabaseBootstrap: supabaseBootstrap);
+      final terrainAnalysisService = TerrainAnalysisService(isarService: isarService);
       final assistantService = AssistantService(
         supabaseBootstrap: supabaseBootstrap,
         recordingService: recordingService,
         placesService: placesService,
+        terrainAnalysisService: terrainAnalysisService,
       );
       final waypointAnnouncementService = WaypointAnnouncementService(
         mapViewModel: mapViewModel,
