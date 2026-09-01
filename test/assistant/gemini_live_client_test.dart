@@ -28,6 +28,24 @@ void main() {
       expect(message['realtimeInput']['audio']['data'], base64Encode([1, 2, 3, 4]));
     });
 
+    test('tool response carries id, name and response per function call', () {
+      final message = GeminiLiveClient.buildToolResponse([
+        const GeminiFunctionResponse(
+          id: 'call-1',
+          name: 'decrire_itineraire',
+          response: {'itineraire_charge': false},
+        ),
+      ]);
+
+      expect(message['toolResponse']['functionResponses'], [
+        {
+          'id': 'call-1',
+          'name': 'decrire_itineraire',
+          'response': {'itineraire_charge': false},
+        },
+      ]);
+    });
+
     test('encode produces valid JSON', () {
       final encoded = GeminiLiveClient.encode(GeminiLiveClient.buildTextTurn('test'));
 
@@ -97,9 +115,54 @@ void main() {
     });
 
     test('falls back to an unknown event for unrecognized payloads', () {
+      final events = GeminiLiveClient.parseServerMessage({'somethingElse': {}});
+
+      expect(events, [isA<GeminiLiveUnknownEvent>()]);
+    });
+
+    test('a toolCall with no functionCalls falls back to unknown', () {
       final events = GeminiLiveClient.parseServerMessage({'toolCall': {}});
 
       expect(events, [isA<GeminiLiveUnknownEvent>()]);
+    });
+
+    test('parses a single function call from toolCall', () {
+      final events = GeminiLiveClient.parseServerMessage({
+        'toolCall': {
+          'functionCalls': [
+            {
+              'id': 'call-1',
+              'name': 'decrire_itineraire',
+              'args': <String, dynamic>{},
+            },
+          ],
+        },
+      });
+
+      expect(events, hasLength(1));
+      final call = (events.single as GeminiLiveToolCall).functionCalls.single;
+      expect(call.id, 'call-1');
+      expect(call.name, 'decrire_itineraire');
+      expect(call.args, isEmpty);
+    });
+
+    test('parses multiple function calls grouped in one toolCall message', () {
+      final events = GeminiLiveClient.parseServerMessage({
+        'toolCall': {
+          'functionCalls': [
+            {'id': 'call-1', 'name': 'decrire_itineraire', 'args': <String, dynamic>{}},
+            {
+              'id': 'call-2',
+              'name': 'rechercher_commerces_proximite',
+              'args': {'type': 'boulangerie'},
+            },
+          ],
+        },
+      });
+
+      final calls = (events.single as GeminiLiveToolCall).functionCalls;
+      expect(calls, hasLength(2));
+      expect(calls[1].args['type'], 'boulangerie');
     });
 
     test('ignores text parts (no transcript UI in v1) without dropping the audio', () {

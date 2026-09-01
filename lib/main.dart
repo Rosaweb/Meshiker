@@ -21,6 +21,7 @@ import 'gpx/gpx_scanner_service.dart';
 import 'navigation/waypoint_announcement_service.dart';
 import 'sharing/trace_share_service.dart';
 import 'assistant/assistant_service.dart';
+import 'assistant/places_service.dart';
 
 void main() async {
   // Capture les erreurs Flutter (UI, etc.)
@@ -65,8 +66,7 @@ void main() async {
       final subscriptionService = SubscriptionService();
       final tileCacheService = TileCacheService(settingsService: settingsService);
       final supabaseBootstrap = SupabaseBootstrapService();
-      final authService = AuthService(isarService: isarService);
-      final assistantService = AssistantService(supabaseBootstrap: supabaseBootstrap);
+      final authService = AuthService(isarService: isarService, supabaseBootstrap: supabaseBootstrap);
       final searchEngine = LocalSearchEngine();
       final importService = GpxImportService(isarService: isarService, searchEngine: searchEngine);
       final traceShareService = TraceShareService(
@@ -82,6 +82,16 @@ void main() async {
         isarService: isarService,
         pedometerService: pedometerService,
         settingsService: settingsService,
+      );
+      // Doit être construit après `recordingService` : l'assistant IA de
+      // navigation (v2, function calling) lit l'itinéraire/waypoints
+      // chargés dans le Roadmap directement depuis ce service (lecture
+      // seule, cf. RecordingService.activeRoadmapTrace).
+      final placesService = PlacesService(supabaseBootstrap: supabaseBootstrap);
+      final assistantService = AssistantService(
+        supabaseBootstrap: supabaseBootstrap,
+        recordingService: recordingService,
+        placesService: placesService,
       );
       final waypointAnnouncementService = WaypointAnnouncementService(
         mapViewModel: mapViewModel,

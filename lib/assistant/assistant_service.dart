@@ -9,42 +9,92 @@ import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../models/waypoint.dart';
+import '../recording/recording_service.dart';
+import '../utils/geo_utils.dart';
 import '../utils/supabase_bootstrap_service.dart';
 import 'gemini_live_client.dart';
+import 'places_service.dart';
+
+/// Noms des outils exposés au modèle (v2, navigation) — doivent matcher
+/// EXACTEMENT les `functionDeclarations` verrouillées côté serveur dans
+/// `supabase/functions/assistant-token/index.ts` (la Live API identifie
+/// l'outil par ce nom, pas par position).
+abstract final class _ToolNames {
+  static const describeRoute = 'decrire_itineraire';
+  static const nextDirection = 'obtenir_prochaine_direction';
+  static const searchNearbyPlaces = 'rechercher_commerces_proximite';
+  static const placeHours = 'horaires_commerce';
+}
 
 /// États d'une session assistant, exposés à l'UI (page Aide et volet
-/// Navigation, cf. plan-implementation-assistant-ia-v1.md section 3) :
-/// question/réponse ponctuelle, pas de conversation continue en v1.
+/// Navigation, cf. plan-implementation-assistant-ia.md section 3). `idle`
+/// couvre aussi bien "aucune conversation ouverte" que "conversation
+/// ouverte, en attente de la prochaine question" — cf.
+/// [AssistantService.hasActiveConversation] pour distinguer les deux.
 enum AssistantSessionState {
   idle,
   connecting,
   listening,
   responding,
+  usingTool,
   offline,
   error,
 }
 
-/// Orchestrateur d'une session assistant IA (manuel d'aide, v1). Récupère un
-/// token éphémère via l'Edge Function `assistant-token`, ouvre une connexion
-/// WebSocket directe vers Gemini Live (aucun audio ne transite par
-/// Supabase), envoie la question de l'utilisateur (texte ou flux micro) et
-/// joue la réponse audio. La session se referme une fois la réponse reçue —
-/// pas de session longue façon appel (décision actée avec l'utilisateur,
-/// voir le plan).
+/// Orchestrateur d'une session assistant IA (manuel d'aide v1, navigation
+/// v2). Récupère un token éphémère via l'Edge Function `assistant-token`,
+/// ouvre une connexion WebSocket directe vers Gemini Live (aucun audio ne
+/// transite par Supabase), envoie la question de l'utilisateur (texte ou
+/// flux micro), exécute les appels de fonction que le modèle demande en
+/// cours de route (v2 — lecture d'itinéraire/waypoints via
+/// [RecordingService], recherche de commerces via [PlacesService]) et joue
+/// la réponse audio.
+///
+/// Une même session Gemini Live reste ouverte pour plusieurs questions
+/// successives (texte et/ou micro, dans n'importe quel ordre) : le modèle
+/// garde ainsi le contexte des tours précédents — nécessaire par exemple
+/// pour qu'une question de suivi sur les horaires d'un commerce réutilise
+/// le `place_id` trouvé par une recherche précédente sans le redemander.
+/// Décision révisée le 2026-08-31 (le v1 initial rouvrait une session par
+/// question — voir l'historique dans plan-implementation-assistant-ia.md
+/// section 3.1 — ce qui perdait tout contexte d'une question à l'autre).
+/// La session ne se ferme que sur action explicite ([endConversation]) ou
+/// fermeture naturelle par le serveur (durée max d'une session Live,
+/// ~15 min en audio) — dans ce dernier cas, la question suivante rouvre
+/// silencieusement une nouvelle conversation (cf. [_startSession]).
 ///
 /// Suit le même style que `RecordingService` : classe simple (pas un
 /// `ChangeNotifier`), état exposé via des `ValueNotifier` individuels.
 class AssistantService {
   AssistantService({
     required this.supabaseBootstrap,
+    required this.recordingService,
+    required this.placesService,
     Connectivity? connectivity,
   }) : _connectivity = connectivity ?? Connectivity();
 
   final SupabaseBootstrapService supabaseBootstrap;
+  // Source de vérité pour la trace/waypoints chargés dans le Roadmap (v2,
+  // function calling) — lecture seule ici, cf. `RecordingService.
+  // activeRoadmapTrace`/`activeRoadmapWaypoints`, déjà calculés pour les
+  // annonces vocales (§2 du plan) et réutilisés tels quels.
+  final RecordingService recordingService;
+  final PlacesService placesService;
   final Connectivity _connectivity;
 
   final ValueNotifier<AssistantSessionState> state = ValueNotifier(AssistantSessionState.idle);
   final ValueNotifier<String?> lastErrorMessage = ValueNotifier(null);
+
+  /// Vrai dès qu'une session Gemini Live est ouverte (conversation en
+  /// cours, contexte des tours précédents conservé) — sert à afficher le
+  /// bouton "Terminer la conversation" dans l'UI. Notifier séparé de
+  /// [state] : `state` repasse à `idle` entre deux tours même quand une
+  /// conversation reste ouverte, et `ValueNotifier` ne notifie pas quand
+  /// la valeur assignée est égale à la précédente (idle -> idle), ce qui
+  /// aurait raté des mises à jour de ce booléen si on l'avait dérivé de
+  /// `state` au lieu de le suivre indépendamment.
+  final ValueNotifier<bool> hasActiveConversation = ValueNotifier(false);
 
   final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   final FlutterSoundPlayer _player = FlutterSoundPlayer();
@@ -111,6 +161,13 @@ class AssistantService {
     lastErrorMessage.value = null;
   }
 
+  /// Met fin explicitement à la conversation en cours (bouton dédié dans
+  /// l'UI, à côté du champ de saisie) : ferme la session Gemini Live
+  /// proprement. La question suivante ouvrira une toute nouvelle
+  /// conversation (nouveau token, plus de mémoire des tours précédents) —
+  /// un choix de l'utilisateur, pas une erreur.
+  Future<void> endConversation() => cancelSession();
+
   /// À appeler quand l'app n'a plus besoin de l'assistant (ex. fermeture
   /// définitive), pas entre deux questions — `cancelSession` suffit pour ça.
   Future<void> dispose() async {
@@ -126,6 +183,19 @@ class AssistantService {
     if (state.value != AssistantSessionState.idle) return;
 
     lastErrorMessage.value = null;
+
+    if (_channel != null) {
+      // Conversation déjà ouverte (question précédente dans le même
+      // échange) : on réutilise la même session Gemini Live au lieu d'en
+      // ouvrir une nouvelle, pour que le modèle garde le contexte des
+      // tours précédents. `connecting` sert ici de repli visuel générique
+      // ("en cours") le temps que la réponse arrive, exactement comme
+      // pour une nouvelle session entre `setupComplete` et le premier
+      // événement de réponse.
+      state.value = AssistantSessionState.connecting;
+      onReady();
+      return;
+    }
 
     final connectivityResults = await _connectivity.checkConnectivity();
     if (connectivityResults.every((r) => r == ConnectivityResult.none)) {
@@ -183,6 +253,7 @@ class AssistantService {
   }) {
     final channel = WebSocketChannel.connect(_liveUri(token));
     _channel = channel;
+    hasActiveConversation.value = true;
 
     var setupDone = false;
     _wsSub = channel.stream.listen(
@@ -192,12 +263,58 @@ class AssistantService {
           onSetupComplete();
         }
       }),
-      onError: (Object e) => _fail('Connexion assistant interrompue.'),
+      onError: (Object e) {
+        debugPrint('AssistantService: WebSocket error: $e');
+        _fail('Connexion assistant interrompue.');
+      },
       onDone: () {
-        if (state.value == AssistantSessionState.connecting ||
+        // `usingTool` manquait ici à l'origine (oubli lors de l'ajout de
+        // cet état v2) : une fermeture pendant l'exécution d'un outil
+        // passait inaperçue, la session restait bloquée sans message
+        // d'erreur.
+        final wasMidTurn = state.value == AssistantSessionState.connecting ||
             state.value == AssistantSessionState.listening ||
-            state.value == AssistantSessionState.responding) {
-          _fail('Connexion assistant fermée de façon inattendue.');
+            state.value == AssistantSessionState.responding ||
+            state.value == AssistantSessionState.usingTool;
+
+        // `closeCode`/`closeReason` ne sont renseignés par le WebSocket
+        // natif qu'une fois le flux réellement terminé — les lire ici,
+        // dans `onDone`, est le seul moment fiable pour ça.
+        final code = channel.closeCode;
+        final reason = channel.closeReason;
+
+        // Toujours nettoyer la référence au canal ici, que la fermeture
+        // soit attendue (conversation terminée par `endConversation()`,
+        // ou fermeture naturelle du serveur entre deux tours — durée max
+        // d'une session Live, ~15 min en audio) ou non : sans ça,
+        // `_startSession` croirait pouvoir réutiliser un canal déjà mort
+        // à la question suivante (`hasActiveConversation` resterait aussi
+        // bloqué à `true` à tort).
+        _channel = null;
+        _wsSub = null;
+        hasActiveConversation.value = false;
+
+        if (wasMidTurn) {
+          // Utile pour distinguer un vrai problème réseau (code 1006, pas
+          // de reason) d'un rejet explicite du serveur Gemini (ex. 1008
+          // avec une reason qui nomme le champ en cause) — cf.
+          // l'historique de debug du nom de modèle, retrouvé de cette
+          // façon.
+          debugPrint('AssistantService: WebSocket closed unexpectedly (code=$code, reason=$reason)');
+          // Affiché tel quel à l'utilisateur (pas seulement en log) : ce
+          // détail technique est ce qui a permis de diagnostiquer le
+          // précédent faux suspect de nom de modèle sans accès aux logs
+          // Android — plus utile ici qu'un message générique tant que
+          // cette fonctionnalité n'est pas stabilisée.
+          final detail = (code != null || reason != null) ? ' (code=$code, reason=$reason)' : '';
+          _fail('Connexion assistant fermée de façon inattendue.$detail');
+        } else {
+          // Fermeture pendant `idle` (entre deux tours, conversation
+          // ouverte en attente de la prochaine question) : traité comme
+          // une fin de conversation normale, pas une erreur — la question
+          // suivante rouvrira silencieusement une nouvelle conversation
+          // (`_startSession` voit `_channel == null`).
+          debugPrint('AssistantService: session Live terminée (code=$code, reason=$reason)');
         }
       },
       cancelOnError: true,
@@ -254,12 +371,145 @@ class AssistantService {
           break;
         case GeminiLiveTurnComplete():
           unawaited(_finishSession());
+        case GeminiLiveToolCall(functionCalls: final calls):
+          if (state.value == AssistantSessionState.listening) {
+            // Comme pour un premier fragment audio : le modèle a fini
+            // d'écouter et passe à l'action, plus la peine de streamer le
+            // micro pour ce tour.
+            unawaited(_stopMicStreaming());
+          }
+          state.value = AssistantSessionState.usingTool;
+          unawaited(_handleToolCalls(calls));
         case GeminiLiveError(raw: final errorBody):
           _fail('Erreur assistant : ${errorBody['message'] ?? errorBody}');
         case GeminiLiveUnknownEvent():
           break;
       }
     }
+  }
+
+  /// Exécute chaque appel de fonction demandé par le modèle puis renvoie
+  /// toutes les réponses groupées dans un seul message `toolResponse` — la
+  /// Live API accepte un groupe de réponses par message, pas d'obligation de
+  /// répondre un par un (cf. `GeminiLiveClient.buildToolResponse`).
+  Future<void> _handleToolCalls(List<GeminiFunctionCall> calls) async {
+    final responses = <GeminiFunctionResponse>[];
+    for (final call in calls) {
+      final result = await _executeTool(call.name, call.args);
+      responses.add(GeminiFunctionResponse(id: call.id, name: call.name, response: result));
+    }
+    if (_channel == null) return; // session annulée pendant l'exécution
+    _sendClientMessage(GeminiLiveClient.buildToolResponse(responses));
+    // La réponse du modèle (audio) va suivre — pas de nouvel état
+    // intermédiaire nécessaire, `responding` sera posé par le premier
+    // fragment audio reçu comme d'habitude.
+  }
+
+  Future<Map<String, dynamic>> _executeTool(String name, Map<String, dynamic> args) async {
+    try {
+      switch (name) {
+        case _ToolNames.describeRoute:
+          return _describeRoute();
+        case _ToolNames.nextDirection:
+          return _nextDirection();
+        case _ToolNames.searchNearbyPlaces:
+          return await _searchNearbyPlaces(args);
+        case _ToolNames.placeHours:
+          return await _placeHours(args);
+        default:
+          return {'erreur': 'outil_inconnu'};
+      }
+    } catch (e) {
+      return {'erreur': 'echec_outil'};
+    }
+  }
+
+  /// `decrire_itineraire` : lecture seule de la trace/waypoints déjà chargés
+  /// dans le Roadmap (aucun appel réseau, mêmes données que les annonces
+  /// vocales, §2 du plan).
+  Map<String, dynamic> _describeRoute() {
+    final trace = recordingService.activeRoadmapTrace;
+    if (trace == null) {
+      return {
+        'itineraire_charge': false,
+        'message': "Aucun itinéraire n'est actuellement chargé dans le roadmap.",
+      };
+    }
+    return {
+      'itineraire_charge': true,
+      'nom': trace.name,
+      'description': trace.description,
+      'distance_totale_m': trace.totalDistanceMeters.round(),
+      'denivele_positif_m': trace.totalElevationGainMeters.round(),
+      'denivele_negatif_m': trace.totalElevationLossMeters.round(),
+      'distance_parcourue_m': recordingService.trackDistanceDoneMeters.value.round(),
+      'distance_restante_m': recordingService.trackDistanceRemainingMeters.value.round(),
+      'noms_waypoints': recordingService.activeRoadmapWaypoints.map((w) => w.name).toList(),
+    };
+  }
+
+  /// `obtenir_prochaine_direction` : même source que ci-dessus, complétée
+  /// par la position courante pour donner un cap (point cardinal) vers le
+  /// prochain waypoint et vers la destination choisie, si il y en a une.
+  Map<String, dynamic> _nextDirection() {
+    final next = recordingService.nextWaypoint.value;
+    final destination = recordingService.destinationWaypoint.value;
+    final position = recordingService.currentPosition.value;
+
+    Map<String, dynamic>? describe(Waypoint? waypoint, double distanceMeters) {
+      if (waypoint == null) return null;
+      String? cap;
+      if (position != null) {
+        final bearing = GeoUtils.bearingDegrees(
+          position.latitude,
+          position.longitude,
+          waypoint.latitude,
+          waypoint.longitude,
+        );
+        cap = GeoUtils.compassPoint(bearing);
+      }
+      return {
+        'nom': waypoint.name,
+        'distance_m': distanceMeters.round(),
+        'direction_cardinale': cap,
+      };
+    }
+
+    return {
+      'prochain_waypoint': describe(next, recordingService.distanceToNextWaypointMeters.value),
+      'destination': describe(destination, recordingService.distanceToDestinationMeters.value),
+    };
+  }
+
+  /// `rechercher_commerces_proximite` : proxy Google Places via l'Edge
+  /// Function `assistant-places` (coût/clé serveur, jamais côté client —
+  /// même principe que `assistant-token` pour Gemini).
+  Future<Map<String, dynamic>> _searchNearbyPlaces(Map<String, dynamic> args) async {
+    final query = args['type'] as String?;
+    if (query == null || query.trim().isEmpty) {
+      return {'erreur': 'parametre_type_manquant'};
+    }
+    final position = recordingService.currentPosition.value;
+    if (position == null) {
+      return {'erreur': 'position_inconnue'};
+    }
+    final radius = (args['rayon_metres'] as num?)?.toInt() ?? 2000;
+    return placesService.searchNearby(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      query: query,
+      radiusMeters: radius,
+    );
+  }
+
+  /// `horaires_commerce` : détail d'un commerce déjà renvoyé par
+  /// `rechercher_commerces_proximite` (identifié par son `place_id`).
+  Future<Map<String, dynamic>> _placeHours(Map<String, dynamic> args) async {
+    final placeId = args['place_id'] as String?;
+    if (placeId == null || placeId.trim().isEmpty) {
+      return {'erreur': 'parametre_place_id_manquant'};
+    }
+    return placesService.placeHours(placeId: placeId);
   }
 
   Future<void> _startMicStreaming() async {
@@ -352,13 +602,19 @@ class AssistantService {
 
   Future<void> _finishSession() async {
     await _stopMicStreaming();
-    await _closeChannel();
-    // Ne pas couper le lecteur ici : `feedUint8FromStream` met en file
-    // d'attente, la lecture réelle peut se terminer après la réception du
-    // dernier fragment. Le flux de lecture est réutilisé/arrêté au début
-    // de la session suivante (`_startPlayerStream`/`_teardownSession`),
-    // pas coupé net à la fin de celle-ci — comportement à valider sur
-    // device (cf. plan, fiabilité multiplateforme de flutter_sound).
+    // Le canal WebSocket reste OUVERT ici (changement du 2026-08-31) :
+    // c'est ce qui permet à la conversation de continuer sur plusieurs
+    // questions avec mémoire des tours précédents, cf. le commentaire de
+    // classe. Il ne se ferme que sur `endConversation()` explicite ou
+    // fermeture naturelle par le serveur (`onDone`).
+    //
+    // Ne pas couper le lecteur ici non plus : `feedUint8FromStream` met en
+    // file d'attente, la lecture réelle peut se terminer après la
+    // réception du dernier fragment. Le flux de lecture est
+    // réutilisé/arrêté au début de la session suivante
+    // (`_startPlayerStream`/`_teardownSession`), pas coupé net à la fin de
+    // celle-ci — comportement à valider sur device (cf. plan, fiabilité
+    // multiplateforme de flutter_sound).
     state.value = AssistantSessionState.idle;
   }
 
@@ -379,6 +635,7 @@ class AssistantService {
     _wsSub = null;
     await _channel?.sink.close();
     _channel = null;
+    hasActiveConversation.value = false;
   }
 
   void _fail(String message) {

@@ -337,6 +337,18 @@ class GeoUtils {
 
   static double _radToDeg(double rad) => rad * 180 / pi;
 
+  /// Convertit un azimut ([bearingDegrees]) en point cardinal français à 8
+  /// directions (N, NE, E, SE, S, SO, O, NO) — utilisé par l'assistant IA de
+  /// navigation (v2) pour formuler des directions compréhensibles à l'oral
+  /// plutôt qu'un nombre de degrés brut.
+  static const _compassPoints = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+
+  static String compassPoint(double bearingDegrees) {
+    final normalized = ((bearingDegrees % 360) + 360) % 360;
+    final index = ((normalized / 45) + 0.5).floor() % 8;
+    return _compassPoints[index];
+  }
+
   // Ellipsoïde WGS84, utilisé par le GPS -- cohérent avec les coordonnées
   // lat/lon manipulées partout ailleurs dans l'app.
   static const _utmA = 6378137.0;

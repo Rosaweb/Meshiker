@@ -116,6 +116,22 @@ class _AssistantPromptBarState extends State<AssistantPromptBar> {
                   tooltip: 'Envoyer',
                   onPressed: idle ? () => _send(assistant) : null,
                 ),
+                // Une conversation reste ouverte sur plusieurs questions
+                // (mémoire des tours précédents, cf. AssistantService) :
+                // ce bouton ne sert qu'à la clôturer explicitement pour en
+                // démarrer une toute nouvelle — masqué tant qu'aucune
+                // conversation n'est en cours.
+                ValueListenableBuilder<bool>(
+                  valueListenable: assistant.hasActiveConversation,
+                  builder: (context, hasActiveConversation, _) {
+                    if (!hasActiveConversation) return const SizedBox.shrink();
+                    return IconButton(
+                      icon: const Icon(Icons.stop_circle_outlined, color: Colors.white38),
+                      tooltip: 'Terminer la conversation',
+                      onPressed: assistant.endConversation,
+                    );
+                  },
+                ),
               ],
             ),
           ],
@@ -130,6 +146,7 @@ class _AssistantPromptBarState extends State<AssistantPromptBar> {
       AssistantSessionState.connecting => ('Connexion à l\'assistant...', Colors.white38),
       AssistantSessionState.listening => ('Je vous écoute...', Colors.greenAccent),
       AssistantSessionState.responding => ('L\'assistant répond...', Colors.greenAccent),
+      AssistantSessionState.usingTool => ('Recherche en cours...', Colors.greenAccent),
       AssistantSessionState.offline => ('Assistant indisponible sans connexion.', Colors.white38),
       AssistantSessionState.error => (null, Colors.redAccent),
     };

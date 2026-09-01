@@ -2,7 +2,8 @@ import 'dart:convert';
 
 /// Encodage/décodage des messages JSON du protocole `BidiGenerateContent`
 /// de la Live API Gemini (https://ai.google.dev/api/live), utilisé par
-/// l'assistant IA conversationnel (manuel d'aide, v1).
+/// l'assistant IA conversationnel (manuel d'aide v1, navigation/function
+/// calling v2).
 ///
 /// Volontairement sans dépendance à une connexion WebSocket ni à un package
 /// audio : ne fait que construire/interpréter des messages JSON, testable
@@ -57,6 +58,25 @@ class GeminiLiveClient {
     };
   }
 
+  /// Réponse à un appel de fonction du modèle (v2, navigation — cf.
+  /// `AssistantService._handleToolCalls`). Chaque [GeminiFunctionResponse]
+  /// doit reprendre l'`id` de l'appel correspondant, la Live API n'apparie
+  /// pas les réponses par nom seul quand plusieurs appels de fonction sont
+  /// groupés dans le même message.
+  static Map<String, dynamic> buildToolResponse(List<GeminiFunctionResponse> responses) {
+    return {
+      'toolResponse': {
+        'functionResponses': responses
+            .map((r) => {
+                  'id': r.id,
+                  'name': r.name,
+                  'response': r.response,
+                })
+            .toList(),
+      },
+    };
+  }
+
   /// Interprète un message serveur déjà décodé en JSON. Un seul message
   /// peut porter plusieurs événements à la fois (ex. un dernier fragment
   /// audio ET la fin de tour dans le même `serverContent`), d'où une liste
@@ -66,6 +86,29 @@ class GeminiLiveClient {
 
     if (json.containsKey('setupComplete')) {
       events.add(const GeminiLiveSetupComplete());
+    }
+
+    // `json['toolCall']`/`['args']` sont typés `Map` en général plutôt que
+    // `Map<String, dynamic>` : un littéral `{}` côté test (ou une valeur
+    // décodée par `jsonDecode`, selon le chemin) n'est pas garanti
+    // `Map<String, dynamic>` au runtime — un cast direct plante avec
+    // "_Map<dynamic, dynamic> is not a subtype". `is Map`/`.cast<...>()`
+    // évite le problème dans les deux cas.
+    final toolCall = json['toolCall'];
+    if (toolCall is Map) {
+      final rawCalls = toolCall['functionCalls'];
+      if (rawCalls is List && rawCalls.isNotEmpty) {
+        events.add(GeminiLiveToolCall(rawCalls
+            .map((c) {
+              final call = c as Map;
+              return GeminiFunctionCall(
+                id: call['id'] as String,
+                name: call['name'] as String,
+                args: (call['args'] as Map?)?.cast<String, dynamic>() ?? const {},
+              );
+            })
+            .toList()));
+      }
     }
 
     final serverContent = json['serverContent'] as Map<String, dynamic>?;
@@ -136,9 +179,35 @@ final class GeminiLiveError extends GeminiLiveServerEvent {
   const GeminiLiveError(this.raw);
 }
 
-/// Message reçu mais non reconnu par ce client (champ futur non géré en
-/// v1, ex. tool calls — différés en v2).
+/// Message reçu mais non reconnu par ce client (champ futur non géré).
 final class GeminiLiveUnknownEvent extends GeminiLiveServerEvent {
   final Map<String, dynamic> raw;
   const GeminiLiveUnknownEvent(this.raw);
+}
+
+/// Le modèle demande l'exécution d'une ou plusieurs fonctions (v2,
+/// navigation — cf. `AssistantService._handleToolCalls`) avant de pouvoir
+/// continuer sa réponse. Une session peut recevoir plusieurs `toolCall`
+/// successifs pour une même question (le modèle peut enchaîner un appel
+/// après avoir lu le résultat du précédent).
+final class GeminiLiveToolCall extends GeminiLiveServerEvent {
+  final List<GeminiFunctionCall> functionCalls;
+  const GeminiLiveToolCall(this.functionCalls);
+}
+
+/// Un appel de fonction individuel demandé par le modèle.
+class GeminiFunctionCall {
+  final String id;
+  final String name;
+  final Map<String, dynamic> args;
+  const GeminiFunctionCall({required this.id, required this.name, required this.args});
+}
+
+/// Résultat d'un appel de fonction, à renvoyer via
+/// [GeminiLiveClient.buildToolResponse].
+class GeminiFunctionResponse {
+  final String id;
+  final String name;
+  final Map<String, dynamic> response;
+  const GeminiFunctionResponse({required this.id, required this.name, required this.response});
 }

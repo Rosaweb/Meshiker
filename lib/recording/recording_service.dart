@@ -113,6 +113,16 @@ class RecordingService {
   Trace? _activeTrace;
   List<({double lat, double lon})> _activePolyline = [];
   List<Waypoint> _traceWaypoints = [];
+
+  /// Trace actuellement chargée dans le Roadmap (`null` si aucune) —
+  /// exposée pour l'assistant IA de navigation (v2, function calling :
+  /// `decrire_itineraire`), qui n'a besoin que de lecture, jamais d'écriture.
+  Trace? get activeRoadmapTrace => _activeTrace;
+
+  /// Waypoints associés à la trace du Roadmap ci-dessus, mêmes données que
+  /// celles utilisées pour les annonces vocales (§2 du plan) — même remarque
+  /// que ci-dessus, lecture seule pour l'assistant IA.
+  List<Waypoint> get activeRoadmapWaypoints => List.unmodifiable(_traceWaypoints);
   String? _lastKnownRoadmapTraceName;
 
   int _dailyPointsCount = 0;
@@ -279,6 +289,16 @@ class RecordingService {
     }
 
     await _initDailyDistance();
+
+    // Charge `_activeTrace`/`_traceWaypoints` dès le démarrage si une trace
+    // était déjà chargée dans le Roadmap lors d'une session précédente : le
+    // bloc ci-dessus ne déclenche `refreshNavigationStats()` que sur un
+    // CHANGEMENT du nom de trace pendant la session en cours, jamais pour
+    // une trace déjà active au lancement — sans cet appel, `activeRoadmapTrace`
+    // (assistant IA v2, `decrire_itineraire`) et l'affichage "Prochain
+    // Waypoint" restent vides tant qu'aucun fix GPS n'est arrivé (repéré en
+    // testant l'assistant en intérieur, sans GPS actif).
+    unawaited(refreshNavigationStats());
   }
 
   void startPositionMonitoring() {
