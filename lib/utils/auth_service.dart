@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../database/isar_service.dart';
 import '../models/enums.dart';
 import '../models/utilisateur.dart';
+import 'supabase_bootstrap_service.dart';
 
 /// Web Client ID Google Cloud Console (config manuelle, cf. plan
 /// d'implémentation section M5) transmis au SDK natif via `--dart-define`,
@@ -50,14 +51,36 @@ enum SecureAccountOutcome {
 ///
 /// Voir `spec-authentification-paywall.md` pour l'architecture complète.
 class AuthService extends ChangeNotifier {
-  AuthService({required this.isarService});
+  AuthService({required this.isarService, required this.supabaseBootstrap});
 
   final IsarService isarService;
+  final SupabaseBootstrapService supabaseBootstrap;
 
-  SupabaseClient get _client => Supabase.instance.client;
+  // `Supabase.instance` lève une exception (pas un simple retour null) tant
+  // que `Supabase.initialize()` n'a jamais réussi (ex. pas de réseau/DNS
+  // bloqué par un VPN au démarrage) — passer par `clientOrNull`
+  // (`SupabaseBootstrapService`, déjà utilisé ailleurs, ex. AssistantService)
+  // au lieu d'un accès direct est ce qui évite le crash "You must
+  // initialize the supabase instance before calling Supabase.instance"
+  // observé sur l'écran "Mon compte" en zone blanche/réseau instable.
+  SupabaseClient? get _client => supabaseBootstrap.clientOrNull;
 
-  User? get currentUser => _client.auth.currentUser;
+  User? get currentUser => _client?.auth.currentUser;
   bool get isAnonymous => currentUser?.isAnonymous ?? true;
+
+  /// À utiliser dans toute méthode qui a vraiment besoin d'un client (les
+  /// actions de connexion ci-dessous) — lève une [AuthException] "propre"
+  /// (déjà gérée par l'UI existante, cf. `LoginScreen._showError`) plutôt
+  /// que de laisser `Supabase.instance` planter avec un message obscur.
+  SupabaseClient _requireClient() {
+    final client = _client;
+    if (client == null) {
+      throw const AuthException(
+        'Connexion au serveur indisponible. Vérifiez votre connexion réseau et réessayez.',
+      );
+    }
+    return client;
+  }
 
   StreamSubscription<AuthState>? _authSub;
   bool _googleInitialized = false;
@@ -65,8 +88,18 @@ class AuthService extends ChangeNotifier {
   /// À appeler une fois qu'une session Supabase (anonyme ou non) existe,
   /// typiquement juste après `SupabaseBootstrapService.init()` au démarrage.
   Future<void> init() async {
+    final client = _client;
+    if (client == null) {
+      // Pas de session Supabase disponible au démarrage (pas de réseau,
+      // `SupabaseBootstrapService.init()` a déjà échoué en amont sans lever
+      // — voir son propre commentaire) : rien à synchroniser pour l'instant,
+      // repli "zone blanche" plutôt qu'un crash. `currentUser`/`isAnonymous`
+      // restent utilisables (null/true) tant que ça dure.
+      debugPrint('AuthService.init(): pas de client Supabase disponible, abandon (non fatal).');
+      return;
+    }
     await _syncLocalUser();
-    _authSub ??= _client.auth.onAuthStateChange.listen(
+    _authSub ??= client.auth.onAuthStateChange.listen(
       (_) => unawaited(_syncLocalUser().then((_) => notifyListeners())),
       // gotrue pousse une erreur sur ce stream (notifyException) quand son
       // rafraîchissement de token automatique en arrière-plan échoue (ex:
@@ -129,8 +162,9 @@ class AuthService extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    await _client.auth.signOut();
-    final response = await _client.auth.signInWithPassword(
+    final client = _requireClient();
+    await client.auth.signOut();
+    final response = await client.auth.signInWithPassword(
       email: email,
       password: password,
     );
@@ -146,7 +180,7 @@ class AuthService extends ChangeNotifier {
     final tokens = await _googleIdToken();
     if (tokens == null) return false;
 
-    final response = await _client.auth.signInWithIdToken(
+    final response = await _requireClient().auth.signInWithIdToken(
       provider: OAuthProvider.google,
       idToken: tokens.idToken,
       accessToken: tokens.accessToken,
@@ -170,8 +204,9 @@ class AuthService extends ChangeNotifier {
     required String password,
   }) async {
     try {
-      await _client.auth.updateUser(UserAttributes(email: email));
-      await _client.auth.updateUser(UserAttributes(password: password));
+      final client = _requireClient();
+      await client.auth.updateUser(UserAttributes(email: email));
+      await client.auth.updateUser(UserAttributes(password: password));
       await _syncLocalUser();
       return SecureAccountOutcome.linked;
     } on AuthException catch (e) {
@@ -186,7 +221,8 @@ class AuthService extends ChangeNotifier {
     if (tokens == null) return SecureAccountOutcome.cancelled;
 
     try {
-      await _client.auth.linkIdentityWithIdToken(
+      final client = _requireClient();
+      await client.auth.linkIdentityWithIdToken(
         provider: OAuthProvider.google,
         idToken: tokens.idToken,
         accessToken: tokens.accessToken,
@@ -198,8 +234,9 @@ class AuthService extends ChangeNotifier {
       // Repli section 4.1 : ce compte Google est déjà lié à un compte
       // permanent existant -> connexion classique dessus, abandon de la
       // session anonyme.
-      await _client.auth.signOut();
-      final response = await _client.auth.signInWithIdToken(
+      final client = _requireClient();
+      await client.auth.signOut();
+      final response = await client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: tokens.idToken,
         accessToken: tokens.accessToken,
