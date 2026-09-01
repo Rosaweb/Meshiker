@@ -617,7 +617,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               child: _buildCoordinatesContent(),
             ),
           const SizedBox(height: 12),
-          const AssistantPromptBar(showMicButton: false),
+          Text('ASSISTANT DE NAVIGATION',
+              style: TextStyle(
+                  color: settings.accentColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          const AssistantPromptBar(),
         ],
       ),
     );
