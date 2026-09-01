@@ -323,6 +323,68 @@ class GeoUtils {
     return dist;
   }
 
+  /// Simplifie un polyligne par l'algorithme de Douglas-Peucker (distance
+  /// perpendiculaire au segment, projection sur plan tangent local comme
+  /// [distancePointToPolylineMeters]) : ne conserve que les sommets dont
+  /// l'écart à la corde qu'ils remplaceraient dépasse [toleranceMeters].
+  /// Les deux extrémités sont toujours conservées.
+  ///
+  /// Utilisé par l'assistant IA (analyse terrain, `spec-assistant-terrain-topo.md`)
+  /// pour réduire une trace de plusieurs milliers de points GPS à quelques
+  /// dizaines de sommets avant de construire une requête Overpass
+  /// `around:` — indispensable, sous peine de requêtes trop lourdes ou
+  /// rejetées côté serveur (cf. §3.3 de cette spec).
+  ///
+  /// Implémentation itérative (pile explicite) plutôt que récursive : une
+  /// polyligne de plusieurs milliers de points en récursif risquerait un
+  /// stack overflow sur un cas adversarial (ex. une trace en ligne quasi
+  /// droite où presque aucun point n'est éliminé).
+  static List<({double lat, double lon})> simplifyDouglasPeucker(
+    List<({double lat, double lon})> polyline,
+    double toleranceMeters,
+  ) {
+    if (polyline.length < 3) return polyline;
+
+    final originLat = polyline.first.lat;
+    final originLon = polyline.first.lon;
+    const mPerDegLat = 111320.0;
+    final mPerDegLon = 111320.0 * cos(_degToRad(originLat));
+
+    ({double x, double y}) toPlane(double la, double lo) => (
+          x: (lo - originLon) * mPerDegLon,
+          y: (la - originLat) * mPerDegLat,
+        );
+
+    final plane = polyline.map((p) => toPlane(p.lat, p.lon)).toList();
+    final keep = List<bool>.filled(polyline.length, false);
+    keep[0] = true;
+    keep[polyline.length - 1] = true;
+
+    final stack = <(int, int)>[(0, polyline.length - 1)];
+    while (stack.isNotEmpty) {
+      final (start, end) = stack.removeLast();
+      if (end - start < 2) continue;
+
+      var maxDist = -1.0;
+      var maxIndex = -1;
+      for (var i = start + 1; i < end; i++) {
+        final d = _distancePointToSegmentPlane(plane[i], plane[start], plane[end]);
+        if (d > maxDist) {
+          maxDist = d;
+          maxIndex = i;
+        }
+      }
+
+      if (maxIndex != -1 && maxDist > toleranceMeters) {
+        keep[maxIndex] = true;
+        stack.add((start, maxIndex));
+        stack.add((maxIndex, end));
+      }
+    }
+
+    return [for (var i = 0; i < polyline.length; i++) if (keep[i]) polyline[i]];
+  }
+
   /// Calcule l'azimut (relèvement) entre deux points en degrés (0-360).
   /// 0 = Nord, 90 = Est, 180 = Sud, 270 = Ouest.
   static double bearingDegrees(double lat1, double lon1, double lat2, double lon2) {

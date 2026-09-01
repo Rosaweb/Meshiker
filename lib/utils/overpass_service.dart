@@ -36,6 +36,36 @@ bool _fragmentMatches(Map<String, String> tags, String fragment) {
 }
 
 class OverpassService {
+  /// Exécute une requête Overpass QL brute et renvoie le JSON décodé, ou
+  /// `null` en cas d'échec (timeout, réseau, statut HTTP non-200) — échec
+  /// silencieux volontaire, à l'appelant de décider du repli (liste vide,
+  /// message "indisponible"...), cohérent avec le reste du pipeline OSM de
+  /// l'app.
+  ///
+  /// Point d'entrée HTTP partagé par [fetchPois] (POI carte, requête bbox)
+  /// et `TerrainOverpassService` (analyse terrain assistant IA, requête
+  /// corridor `around:` — cf. `spec-assistant-terrain-topo.md` §2) : les
+  /// deux besoins construisent des requêtes très différentes, mais aucune
+  /// raison de dupliquer l'appel réseau lui-même.
+  static Future<Map<String, dynamic>?> runQuery(
+    String query, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('https://overpass-api.de/api/interpreter'),
+            headers: {'User-Agent': 'Meshiker/1.0'},
+            body: query,
+          )
+          .timeout(timeout);
+      if (response.statusCode != 200) return null;
+      return json.decode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<List<OsmPoi>> fetchPois({
     required double minLat,
     required double minLon,
@@ -56,33 +86,23 @@ class OverpassService {
     if (clauses.isEmpty) return [];
 
     final query = '[out:json][timeout:25];(${clauses.join()});out body;';
+    final data = await runQuery(query, timeout: const Duration(seconds: 25));
+    if (data == null) return [];
 
-    try {
-      final response = await http.post(
-        Uri.parse('https://overpass-api.de/api/interpreter'),
-        headers: {'User-Agent': 'Meshiker/1.0'},
-        body: query,
+    final elements = data['elements'] as List;
+    return elements.map((e) {
+      final tags = Map<String, String>.from(e['tags'] ?? {});
+      final matched = kOsmPoiCategories.firstWhere(
+        (c) => c.overpassFilters.any((f) => _fragmentMatches(tags, f)),
+        orElse: () => kOsmPoiCategories.first,
       );
-      if (response.statusCode != 200) return [];
-
-      final data = json.decode(response.body);
-      final elements = data['elements'] as List;
-      return elements.map((e) {
-        final tags = Map<String, String>.from(e['tags'] ?? {});
-        final matched = kOsmPoiCategories.firstWhere(
-          (c) => c.overpassFilters.any((f) => _fragmentMatches(tags, f)),
-          orElse: () => kOsmPoiCategories.first,
-        );
-        return OsmPoi(
-          id: e['id'].toString(),
-          categoryId: matched.id,
-          name: tags['name'] ?? matched.label,
-          location: LatLng(e['lat'], e['lon']),
-          tags: tags,
-        );
-      }).toList();
-    } catch (_) {
-      return []; // échec silencieux, cohérent avec le reste du pipeline
-    }
+      return OsmPoi(
+        id: e['id'].toString(),
+        categoryId: matched.id,
+        name: tags['name'] ?? matched.label,
+        location: LatLng(e['lat'], e['lon']),
+        tags: tags,
+      );
+    }).toList();
   }
 }
