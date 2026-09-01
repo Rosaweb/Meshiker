@@ -1,6 +1,7 @@
 // Émet un token éphémère Gemini Live pour l'assistant IA conversationnel
-// (manuel d'aide, v1 — voir plan-implementation-assistant-ia-v1.md côté
-// client). Le flux audio ne transite jamais par cette fonction : son seul
+// (manuel d'aide v1 + navigation/function calling v2 — voir
+// plan-implementation-assistant-ia.md côté client). Le flux audio ne
+// transite jamais par cette fonction : son seul
 // rôle est de vérifier le statut premium puis de verrouiller et renvoyer un
 // token à usage unique, que le client utilise pour ouvrir une connexion
 // WebSocket directe avec l'API Gemini (aucune donnée audio ne passe par
@@ -49,21 +50,84 @@ const SESSION_START_WINDOW_MS = 3 * 60 * 1000;
 
 const FALLBACK_INSTRUCTION = `
 Tu es l'assistant vocal intégré à l'application mobile de randonnée
-Meshiker. Tu réponds UNIQUEMENT aux questions sur l'usage de
-l'application, à partir du manuel utilisateur ci-dessous. Réponds en
-français, en 1 à 3 phrases courtes et naturelles à l'oral (une réponse
-vocale trop longue est pénible à écouter en randonnée).
+Meshiker. Réponds en français, en 1 à 3 phrases courtes et naturelles à
+l'oral (une réponse vocale trop longue est pénible à écouter en
+randonnée).
 
-Si une question porte sur autre chose que l'usage de l'application —
-par exemple décrire l'itinéraire en cours, donner des instructions de
-direction, ou chercher un commerce à proximité — décline poliment en
-expliquant que ce n'est pas encore disponible et sera ajouté dans une
-prochaine version. N'invente jamais de réponse sur ces sujets.
+Tu réponds à deux types de questions :
+1. Questions sur l'usage de l'application — réponds à partir du manuel
+   utilisateur ci-dessous.
+2. Questions sur l'itinéraire en cours (description, distance restante,
+   prochaine direction) ou sur les commerces à proximité (recherche,
+   horaires d'ouverture) — utilise les outils mis à ta disposition
+   (decrire_itineraire, obtenir_prochaine_direction,
+   rechercher_commerces_proximite, horaires_commerce) plutôt que de
+   deviner. N'invente JAMAIS une distance, une direction ou un horaire :
+   si un outil renvoie qu'aucun itinéraire n'est chargé, ou qu'aucun
+   commerce n'a été trouvé, dis-le simplement.
+
+Pour toute autre question, hors de ces deux périmètres, décline
+poliment en expliquant que ce n'est pas disponible.
 
 Ne prétends jamais qu'une fonctionnalité listée dans la section finale
 du manuel ("fonctionnalités mentionnées dans l'interface mais pas
 encore disponibles") fonctionne.
 `.trim();
+
+// v2 (navigation) : déclarations de fonctions verrouillées côté token
+// éphémère, comme le modèle et les system instructions — le client ne
+// choisit jamais quels outils sont exposés. Les noms doivent matcher
+// EXACTEMENT les constantes `_ToolNames` de
+// `lib/assistant/assistant_service.dart` (la Live API identifie l'outil
+// appelé par son nom).
+const FUNCTION_DECLARATIONS = [
+  {
+    name: 'decrire_itineraire',
+    description:
+      "Décrit l'itinéraire actuellement chargé dans le roadmap de l'utilisateur : nom, distance totale, dénivelé, distance déjà parcourue et restante, liste des waypoints. À utiliser dès que l'utilisateur demande de décrire son itinéraire, son parcours, ou où il en est.",
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'obtenir_prochaine_direction',
+    description:
+      "Donne la distance et la direction (point cardinal) vers le prochain waypoint de l'itinéraire en cours, ainsi que vers la destination choisie le cas échéant. À utiliser quand l'utilisateur demande où aller, quelle direction prendre, ou combien de distance il reste avant le prochain point.",
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'rechercher_commerces_proximite',
+    description:
+      "Recherche des commerces ou services à proximité de la position actuelle de l'utilisateur (ex: boulangerie, restaurant, pharmacie, épicerie, refuge). À utiliser quand l'utilisateur cherche un commerce ou un service proche de lui.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        type: {
+          type: 'STRING',
+          description: 'Type de commerce recherché, en français, ex: "boulangerie", "pharmacie de garde".',
+        },
+        rayon_metres: {
+          type: 'INTEGER',
+          description: 'Rayon de recherche en mètres. Optionnel, 2000 par défaut.',
+        },
+      },
+      required: ['type'],
+    },
+  },
+  {
+    name: 'horaires_commerce',
+    description:
+      "Donne les horaires d'ouverture détaillés d'un commerce déjà trouvé via rechercher_commerces_proximite, à partir de son place_id.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        place_id: {
+          type: 'STRING',
+          description: "Identifiant Google Places du commerce (champ place_id renvoyé par rechercher_commerces_proximite).",
+        },
+      },
+      required: ['place_id'],
+    },
+  },
+];
 
 let cachedManuel: string | null = null;
 
@@ -143,9 +207,10 @@ Deno.serve(async (req) => {
           responseModalities: ['AUDIO'],
         },
         systemInstruction: { parts: [{ text: systemInstruction }] },
-        // Aucun tool en v1 (function calling différé en v2, cf.
-        // spec-assistant-vocal-ia.md section 3.4).
-        tools: [],
+        // v2 : function calling pour la navigation (lecture d'itinéraire,
+        // recherche de commerces) — cf. FUNCTION_DECLARATIONS ci-dessus et
+        // plan-implementation-assistant-ia.md section 4.
+        tools: [{ functionDeclarations: FUNCTION_DECLARATIONS }],
       },
     }),
   });
