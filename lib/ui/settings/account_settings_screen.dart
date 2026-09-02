@@ -36,13 +36,11 @@ class AccountSettingsScreen extends StatelessWidget {
                 return ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    _buildUserHeader(user),
+                    _buildUserHeader(context, user, authService),
                     const SizedBox(height: 32),
                     _buildSubscriptionSection(context, subService),
                     const SizedBox(height: 16),
                     _buildIgnSubscriptionPlaceholder(),
-                    const SizedBox(height: 32),
-                    _buildSyncSection(context, authService),
                     const SizedBox(height: 32),
                     const Divider(color: Colors.white12),
                     ListTile(
@@ -71,7 +69,13 @@ class AccountSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUserHeader(Utilisateur? user) {
+  Widget _buildUserHeader(
+      BuildContext context, Utilisateur? user, AuthService authService) {
+    final isAnonymous = authService.isAnonymous;
+    // L'e-mail affiché : celui de l'utilisateur local, sinon celui de la
+    // session Supabase (compte permanent sans profil Isar encore synchronisé).
+    final email = user?.email ?? authService.currentUser?.email;
+
     return Column(
       children: [
         CircleAvatar(
@@ -84,10 +88,45 @@ class AccountSettingsScreen extends StatelessWidget {
           user?.pseudo ?? 'Utilisateur local',
           style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
         ),
-        if (user?.email != null)
+        if (email != null)
           Text(
-            user!.email!,
+            email,
             style: const TextStyle(color: Colors.white70),
+          ),
+        const SizedBox(height: 12),
+        // Statut du compte, autrefois dans la section « SYNCHRONISATION » :
+        // fusionné ici pour éviter la redondance avec l'e-mail de l'entête.
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isAnonymous ? Icons.warning_amber : Icons.check_circle,
+              size: 16,
+              color: isAnonymous ? Colors.orangeAccent : Colors.greenAccent,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              isAnonymous ? 'Mode anonyme (non récupérable)' : 'Compte permanent synchronisé',
+              style: TextStyle(
+                color: isAnonymous ? Colors.orangeAccent : Colors.white60,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        if (isAnonymous)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: OutlinedButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white24),
+                minimumSize: const Size(double.infinity, 40),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Déjà un compte ? Se connecter'),
+            ),
           ),
       ],
     );
@@ -230,43 +269,4 @@ class AccountSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSyncSection(BuildContext context, AuthService authService) {
-    final isAnonymous = authService.isAnonymous;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'SYNCHRONISATION',
-          style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 16),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.cloud_queue, color: Colors.white70),
-          title: const Text('Statut du compte', style: TextStyle(color: Colors.white)),
-          subtitle: Text(
-            isAnonymous ? 'Mode anonyme (non récupérable)' : 'Connecté (${authService.currentUser?.email ?? "compte permanent"})',
-            style: const TextStyle(color: Colors.white38),
-          ),
-          trailing: isAnonymous
-            ? const Icon(Icons.warning_amber, color: Colors.orangeAccent)
-            : const Icon(Icons.check_circle, color: Colors.greenAccent),
-        ),
-        if (isAnonymous)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: OutlinedButton(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white24),
-                minimumSize: const Size(double.infinity, 40),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: const Text('Déjà un compte ? Se connecter'),
-            ),
-          ),
-      ],
-    );
-  }
 }

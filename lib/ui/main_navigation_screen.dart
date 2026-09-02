@@ -15,6 +15,7 @@ import '../utils/settings_service.dart';
 import '../utils/geo_utils.dart';
 import '../utils/pedometer_service.dart';
 import '../utils/weather_service.dart';
+import '../utils/subscription_service.dart';
 import 'weather_screen.dart';
 import 'settings/maps_settings_screen.dart';
 import 'settings/display_settings_screen.dart';
@@ -428,10 +429,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Row(children: [
-          Icon(Icons.terrain, color: Colors.greenAccent, size: 28),
-          SizedBox(width: 12),
-          Text('Meshiker', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Row(children: [
+          const Icon(Icons.terrain, color: Colors.greenAccent, size: 28),
+          const SizedBox(width: 12),
+          Text(
+            context.watch<SubscriptionService>().isPremium ? 'Meshiker Pro' : 'Meshiker',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
         ]),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -617,13 +621,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               child: _buildCoordinatesContent(),
             ),
           const SizedBox(height: 12),
-          Text('ASSISTANT DE NAVIGATION',
-              style: TextStyle(
-                  color: settings.accentColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          const AssistantPromptBar(),
+          const AssistantPromptBar(title: 'ASSISTANT DE NAVIGATION'),
         ],
       ),
     );

@@ -19,7 +19,14 @@ import '../../utils/subscription_service.dart';
 class AssistantPromptBar extends StatefulWidget {
   final bool showMicButton;
 
-  const AssistantPromptBar({super.key, this.showMicButton = true});
+  /// Titre optionnel affiché *à l'intérieur* du cadre, au-dessus du contenu,
+  /// pour rester homogène avec les autres blocs d'outils du volet Navigation
+  /// (cf. `_buildToolBlock` dans main_navigation_screen.dart). Null = pas de
+  /// titre (cas de la page Aide).
+  final String? title;
+
+  const AssistantPromptBar(
+      {super.key, this.showMicButton = true, this.title});
 
   @override
   State<AssistantPromptBar> createState() => _AssistantPromptBarState();
@@ -60,7 +67,20 @@ class _AssistantPromptBarState extends State<AssistantPromptBar> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
       ),
-      child: offline ? _buildOfflineMessage() : _buildPrompt(assistant),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.title != null) ...[
+            Text(widget.title!,
+                style: TextStyle(
+                    color: settings.accentColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+          ],
+          offline ? _buildOfflineMessage() : _buildPrompt(assistant),
+        ],
+      ),
     );
   }
 
