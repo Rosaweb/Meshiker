@@ -52,6 +52,14 @@ class PedometerService extends ChangeNotifier {
   bool get permissionDenied => _permissionDenied;
   bool get sensorUnavailable => _sensorUnavailable;
 
+  /// Profils de calibrage (lecture seule), exposés pour l'écran de détail
+  /// podomètre. Triés du plus raide en montée au plus raide en descente.
+  List<PedometerProfile> get profiles => _profiles.values.toList(growable: false);
+
+  /// Distance estimée pour les pas de la session courante (pente supposée
+  /// plate, faute de mieux hors enregistrement).
+  double get sessionDistanceMeters => estimateDistanceMeters(_steps);
+
   final Map<String, PedometerProfile> _profiles = {
     'steep_uphill': PedometerProfile(id: 'steep_uphill', minSlope: 0.15, maxSlope: 1.0, metersPerStep: 0.5),
     'uphill': PedometerProfile(id: 'uphill', minSlope: 0.05, maxSlope: 0.15, metersPerStep: 0.65),

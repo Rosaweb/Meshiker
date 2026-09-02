@@ -16,6 +16,7 @@ import '../utils/geo_utils.dart';
 import '../utils/pedometer_service.dart';
 import '../utils/weather_service.dart';
 import 'weather_screen.dart';
+import 'pedometer_screen.dart';
 import 'settings/maps_settings_screen.dart';
 import 'settings/display_settings_screen.dart';
 import 'settings/account_settings_screen.dart';
@@ -906,7 +907,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                                 'Aucun capteur de pas détecté sur cet appareil.')),
                       );
                     }
-                  })),
+                  },
+                  onDoubleTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const PedometerScreen())))),
         if (settings.navShowSatellites)
           ValueListenableBuilder<String>(
               valueListenable: recording.gpsStatus,
