@@ -36,10 +36,13 @@ class PedometerProfile {
 }
 
 class PedometerService extends ChangeNotifier {
-  late Stream<StepCount> _stepCountStream;
-  late Stream<PedestrianStatus> _pedestrianStatusStream;
-  
+  Stream<StepCount>? _stepCountStream;
+  Stream<PedestrianStatus>? _pedestrianStatusStream;
+  StreamSubscription<StepCount>? _stepCountSub;
+  StreamSubscription<PedestrianStatus>? _pedestrianStatusSub;
+
   int _steps = 0;
+  int _totalStepsAllTime = 0;
   int _lastEventSteps = 0;
   String _status = '?';
   bool _isActive = false;
@@ -47,6 +50,12 @@ class PedometerService extends ChangeNotifier {
   bool _sensorUnavailable = false;
 
   int get steps => _steps;
+
+  /// Cumul de pas persistant, toutes activations confondues (survit aux
+  /// redémarrages de l'app, contrairement à [steps] qui ne compte que
+  /// depuis la dernière activation).
+  int get totalStepsAllTime => _totalStepsAllTime;
+
   String get status => _status;
   bool get isActive => _isActive;
   bool get permissionDenied => _permissionDenied;
@@ -70,6 +79,25 @@ class PedometerService extends ChangeNotifier {
 
   PedometerService() {
     _loadCalibration();
+    _loadTotalSteps();
+  }
+
+  Future<void> _loadTotalSteps() async {
+    final prefs = await SharedPreferences.getInstance();
+    _totalStepsAllTime = prefs.getInt('pedometer_total_steps_all_time') ?? 0;
+    notifyListeners();
+  }
+
+  Future<void> _persistTotalSteps() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('pedometer_total_steps_all_time', _totalStepsAllTime);
+  }
+
+  /// Remise à zéro du compteur à vie (action destructive, confirmée côté UI).
+  Future<void> resetTotalSteps() async {
+    _totalStepsAllTime = 0;
+    await _persistTotalSteps();
+    notifyListeners();
   }
 
   Future<void> _loadCalibration() async {
@@ -113,6 +141,18 @@ class PedometerService extends ChangeNotifier {
         }
       }
       _initPedometer();
+    } else {
+      // Sans ce désabonnement explicite, le capteur continue d'émettre en
+      // arrière-plan malgré la carte "inactive" à l'écran, et les pas pris
+      // pendant cette période "off" seraient comptés à la réactivation.
+      await _stepCountSub?.cancel();
+      await _pedestrianStatusSub?.cancel();
+      _stepCountSub = null;
+      _pedestrianStatusSub = null;
+      // Invalide le baseline : le premier événement après réactivation ne
+      // fera que re-caler _lastEventSteps sans ajouter de delta (même
+      // garde-fou que pour un redémarrage d'app).
+      _lastEventSteps = 0;
     }
     notifyListeners();
   }
@@ -131,10 +171,12 @@ class PedometerService extends ChangeNotifier {
   void _initPedometer() {
     runZonedGuarded(() {
       _pedestrianStatusStream = Pedometer.pedestrianStatusStream;
-      _pedestrianStatusStream.listen(_onPedestrianStatus).onError(_onPedestrianStatusError);
+      _pedestrianStatusSub = _pedestrianStatusStream!
+          .listen(_onPedestrianStatus, onError: _onPedestrianStatusError);
 
       _stepCountStream = Pedometer.stepCountStream;
-      _stepCountStream.listen(_onStepCount).onError(_onStepCountError);
+      _stepCountSub =
+          _stepCountStream!.listen(_onStepCount, onError: _onStepCountError);
     }, (error, stack) {
       debugPrint('PedometerService: capteur indisponible: $error');
       _isActive = false;
@@ -146,7 +188,10 @@ class PedometerService extends ChangeNotifier {
 
   void _onStepCount(StepCount event) {
     if (_lastEventSteps > 0) {
-      _steps += (event.steps - _lastEventSteps);
+      final delta = event.steps - _lastEventSteps;
+      _steps += delta;
+      _totalStepsAllTime += delta;
+      _persistTotalSteps();
     }
     _lastEventSteps = event.steps;
     notifyListeners();
@@ -157,11 +202,11 @@ class PedometerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _onPedestrianStatusError(error) {
+  void _onPedestrianStatusError(Object error) {
     _status = 'Pedestrian Status not available';
   }
 
-  void _onStepCountError(error) {
+  void _onStepCountError(Object error) {
     _status = 'Step Count not available';
   }
 
