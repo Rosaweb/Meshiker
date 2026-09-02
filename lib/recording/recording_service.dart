@@ -270,12 +270,19 @@ class RecordingService {
 
     if (settingsService != null) {
       _lastKnownRoadmapTraceName = settingsService!.roadmapTraceName;
+      pedometerService?.calibrationEnabled =
+          settingsService!.pedometerCalibrationEnabled;
       settingsService!.addListener(() {
         final enabled = settingsService!.locationEnabled;
         debugPrint('RecordingService: In-app location toggle changed: $enabled');
         if (enabled) {
           startPositionMonitoring();
         }
+
+        // Répercute le réglage "calibrage podomètre actif" sur le service
+        // podomètre (qui n'a pas de référence vers SettingsService).
+        pedometerService?.calibrationEnabled =
+            settingsService!.pedometerCalibrationEnabled;
 
         // Dès qu'une trace est chargée/déchargée du Roadmap, on recalcule
         // tout de suite le prochain waypoint plutôt que d'attendre le
