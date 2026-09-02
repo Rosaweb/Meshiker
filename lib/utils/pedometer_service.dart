@@ -118,13 +118,29 @@ class PedometerService extends ChangeNotifier {
   bool get permissionDenied => _permissionDenied;
   bool get sensorUnavailable => _sensorUnavailable;
 
-  /// Profils de calibrage (lecture seule), exposés pour l'écran de détail
-  /// podomètre. Triés du plus raide en montée au plus raide en descente.
-  List<PedometerProfile> get profiles => _profiles.values.toList(growable: false);
+  /// Profils de calibrage (lecture seule), triés du plus raide en montée au
+  /// plus raide en descente, pour l'affichage détaillé (métrique 4).
+  List<PedometerProfile> get profilesSortedBySlope =>
+      _profiles.values.toList()..sort((a, b) => b.minSlope.compareTo(a.minSlope));
 
   /// Distance estimée pour les pas de la session courante (pente supposée
   /// plate, faute de mieux hors enregistrement).
   double get sessionDistanceMeters => estimateDistanceMeters(_steps);
+
+  /// Total de pas comptabilisés lors d'un calibrage (tous profils confondus).
+  int get totalCalibratedSteps =>
+      _profiles.values.fold(0, (sum, p) => sum + p.totalSteps);
+
+  /// Distance cumulée correspondante, tous profils confondus.
+  double get totalCalibratedDistanceMeters =>
+      _profiles.values.fold(0.0, (sum, p) => sum + p.totalDistance);
+
+  /// Pas moyen pour 100 m, tous profils confondus. `null` tant qu'aucune
+  /// donnée n'a été calibrée.
+  double? get avgStepsPer100m {
+    if (totalCalibratedDistanceMeters <= 0) return null;
+    return totalCalibratedSteps / totalCalibratedDistanceMeters * 100;
+  }
 
   final Map<String, PedometerProfile> _profiles = {
     'steep_uphill': PedometerProfile(id: 'steep_uphill', minSlope: 0.15, maxSlope: 1.0, metersPerStep: 0.5),
