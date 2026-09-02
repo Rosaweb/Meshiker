@@ -744,4 +744,41 @@ class IsarService {
     }
     return trackPoints;
   }
+
+  /// Recalcule et met en cache le dénivelé +/- des traces qui référencent
+  /// [segmentUuid], après enrichissement altimétrique de ce segment (comblage
+  /// des altitudes manquantes via un modèle de terrain).
+  ///
+  /// La géométrie de la trace ne change pas — seuls ses agrégats de dénivelé,
+  /// habituellement figés à l'import (cf. [reverseTraceDirection]), sont
+  /// corrigés. C'est une correction de cache **locale** : `syncStatus` reste
+  /// inchangé, rien n'est repoussé vers Supabase.
+  ///
+  /// Le nombre de traces reste faible (les randonnées de l'utilisateur), donc
+  /// un balayage complet filtré en Dart est acceptable pour un événement
+  /// ponctuel par segment.
+  Future<void> recomputeTraceElevationTotals(String segmentUuid) async {
+    final allTraces = await isar.traces.where().findAll();
+    final affected = allTraces
+        .where((t) => t.segments.any((e) => e.segmentUuid == segmentUuid))
+        .toList();
+    if (affected.isEmpty) return;
+
+    final updates = <(Trace, double, double)>[];
+    for (final trace in affected) {
+      final points = await getTraceTrackPoints(trace);
+      final r = GeoUtils.elevationGainLoss(
+          points.map((p) => p.elevation).toList());
+      updates.add((trace, r.gain, r.loss));
+    }
+
+    await isar.writeTxn(() async {
+      for (final (trace, gain, loss) in updates) {
+        trace.totalElevationGainMeters = gain;
+        trace.totalElevationLossMeters = loss;
+        trace.updatedAt = DateTime.now();
+        await isar.traces.put(trace);
+      }
+    });
+  }
 }

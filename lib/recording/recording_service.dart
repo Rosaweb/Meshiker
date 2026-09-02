@@ -19,12 +19,15 @@ import '../gpx/segmentation_persistence.dart';
 import '../models/enums.dart';
 import '../models/gps_point.dart';
 import '../models/recording_draft.dart';
+import '../models/segment.dart';
 import '../models/trace.dart';
 import '../models/waypoint.dart';
 import '../search/local_search_engine.dart';
+import '../utils/elevation_service.dart';
 import '../utils/geo_utils.dart';
 import '../utils/pedometer_service.dart';
 import '../utils/settings_service.dart';
+import 'on_trace_detector.dart';
 import 'recording_config.dart';
 
 const _uuid = Uuid();
@@ -73,6 +76,19 @@ class RecordingService {
   
   int _lastCalibrationSteps = 0;
   geo.Position? _lastCalibrationPosition;
+  // Altitude retenue au dernier point de calibrage : plus nécessairement
+  // `position.altitude` (peut venir d'une trace suivie, cf. §4.1 du spec).
+  double _lastCalibrationElevation = 0;
+
+  final _onTraceDetector = OnTraceDetector();
+  // localUuid des segments dont on a déjà tenté l'enrichissement altimétrique
+  // pendant cette session (évite de re-solliciter le DEM tant que l'app tourne
+  // et qu'ils restent hors-ligne). Vidé au redémarrage de l'app.
+  final Set<String> _elevationEnrichmentAttempted = {};
+  // Cache des Segment d'une trace chargée dans le Roadmap (source d'altitude
+  // prioritaire et immédiate), keyé par `Trace.localUuid`.
+  String? _roadmapSegmentsCacheKey;
+  List<Segment> _roadmapSegmentsCache = const [];
 
   final ValueNotifier<RecordingStatus> status =
       ValueNotifier(RecordingStatus.idle);
@@ -270,12 +286,19 @@ class RecordingService {
 
     if (settingsService != null) {
       _lastKnownRoadmapTraceName = settingsService!.roadmapTraceName;
+      pedometerService?.calibrationEnabled =
+          settingsService!.pedometerCalibrationEnabled;
       settingsService!.addListener(() {
         final enabled = settingsService!.locationEnabled;
         debugPrint('RecordingService: In-app location toggle changed: $enabled');
         if (enabled) {
           startPositionMonitoring();
         }
+
+        // Répercute le réglage "calibrage podomètre actif" sur le service
+        // podomètre (qui n'a pas de référence vers SettingsService).
+        pedometerService?.calibrationEnabled =
+            settingsService!.pedometerCalibrationEnabled;
 
         // Dès qu'une trace est chargée/déchargée du Roadmap, on recalcule
         // tout de suite le prochain waypoint plutôt que d'attendre le
@@ -324,7 +347,7 @@ class RecordingService {
 
       try {
         _positionSub = geo.Geolocator.getPositionStream(
-          locationSettings: _buildLocationSettings(),
+          locationSettings: _buildLocationSettings(isRecording: false),
         ).listen(
           (pos) {
             debugPrint('RecordingService: NEW POINT: ${pos.latitude}, ${pos.longitude}');
@@ -346,7 +369,7 @@ class RecordingService {
         
         // On récupère une position immédiate
         geo.Geolocator.getCurrentPosition(
-          locationSettings: _buildLocationSettings()
+          locationSettings: _buildLocationSettings(isRecording: false)
         ).then((pos) {
           debugPrint('RecordingService: Initial fix point: ${pos.latitude}, ${pos.longitude}');
           _onPosition(pos);
@@ -435,7 +458,10 @@ class RecordingService {
     status.value = RecordingStatus.recording;
   }
 
-  geo.LocationSettings _buildLocationSettings() {
+  /// [isRecording] : `false` quand seule la localisation est active (aucune
+  /// trace en cours d'enregistrement) — la notification persistante Android
+  /// doit alors refléter ce contexte plutôt que d'annoncer un enregistrement.
+  geo.LocationSettings _buildLocationSettings({bool isRecording = true}) {
     if (Platform.isAndroid) {
       return geo.AndroidSettings(
         accuracy: geo.LocationAccuracy.best, // Passage en 'best' pour forcer Xiaomi à utiliser le GPS
@@ -443,8 +469,11 @@ class RecordingService {
         intervalDuration: const Duration(seconds: 2),
         // Important : spécifier explicitement le mode de notification
         foregroundNotificationConfig: geo.ForegroundNotificationConfig(
-          notificationTitle: config.notificationTitle,
-          notificationText: config.notificationText,
+          notificationTitle:
+              isRecording ? config.notificationTitle : 'Localisation active',
+          notificationText: isRecording
+              ? config.notificationText
+              : 'Meshiker utilise votre position pour la navigation.',
           enableWakeLock: true,
         ),
       );
@@ -508,31 +537,16 @@ class RecordingService {
     _updateNavigationStats(position);
     _updateSolarInfo(position);
 
-    if (status.value == RecordingStatus.recording) {
-      // Calibrage podomètre si actif
-      if (pedometerService != null && _lastCalibrationPosition != null) {
-        final dist = geo.Geolocator.distanceBetween(
-          _lastCalibrationPosition!.latitude, 
-          _lastCalibrationPosition!.longitude, 
-          position.latitude, 
-          position.longitude
-        );
-        
-        // On calibre tous les ~50m pour avoir une pente significative
-        if (dist >= 50) {
-          final stepsDelta = pedometerService!.steps - _lastCalibrationSteps;
-          final elevationDelta = position.altitude - _lastCalibrationPosition!.altitude;
-          
-          pedometerService!.calibrateWithSlope(dist, elevationDelta, stepsDelta);
-          
-          _lastCalibrationPosition = position;
-          _lastCalibrationSteps = pedometerService!.steps;
-        }
-      } else if (pedometerService != null) {
-        _lastCalibrationPosition = position;
-        _lastCalibrationSteps = pedometerService!.steps;
-      }
+    // Calibrage podomètre : indépendant de l'enregistrement d'une trace
+    // (trop peu d'utilisateurs enregistrent réellement) — il suffit que la
+    // localisation soit active (on est dans `_onPosition`), que le podomètre
+    // tourne et que le réglage de calibrage soit actif.
+    if (pedometerService?.isActive == true &&
+        (settingsService?.pedometerCalibrationEnabled ?? true)) {
+      unawaited(_updatePedometerCalibration(position));
+    }
 
+    if (status.value == RecordingStatus.recording) {
       _pendingBatch.add(PointGPS.create(
         latitude: position.latitude,
         longitude: position.longitude,
@@ -551,6 +565,156 @@ class RecordingService {
         unawaited(_flushBatch());
       }
     }
+  }
+
+  /// Met à jour le calibrage du podomètre tous les ~50 m parcourus, en
+  /// privilégiant une altitude de trace (statique, stable) sur le
+  /// différentiel d'altitude GPS live (deux fixs bruités) — cf.
+  /// `spec-calibrage-podometre-elevation.md` §4.
+  Future<void> _updatePedometerCalibration(geo.Position position) async {
+    final ped = pedometerService;
+    if (ped == null) return;
+
+    // Source d'altitude, par priorité : trace chargée dans le Roadmap →
+    // détection passive d'une trace suivie → altitude GPS live (repli).
+    final segment = await _roadmapSegmentAt(position) ??
+        await _onTraceDetector.checkPosition(
+            position.latitude, position.longitude, isarService);
+
+    double? elevationSource;
+    if (segment != null) {
+      // Comble les altitudes manquantes du segment en tâche de fond : la
+      // passe courante utilise ce qui est déjà connu (repli GPS si tout est
+      // `null`), les passes suivantes profiteront de l'enrichissement.
+      unawaited(_tryEnrichSegmentElevation(segment));
+      elevationSource = _nearestAltitudeOnSegment(segment, position);
+    }
+    elevationSource ??= position.altitude;
+
+    if (_lastCalibrationPosition == null) {
+      _lastCalibrationPosition = position;
+      _lastCalibrationSteps = ped.steps;
+      _lastCalibrationElevation = elevationSource;
+      return;
+    }
+
+    final dist = geo.Geolocator.distanceBetween(
+      _lastCalibrationPosition!.latitude,
+      _lastCalibrationPosition!.longitude,
+      position.latitude,
+      position.longitude,
+    );
+    if (dist < 50) return;
+
+    final stepsDelta = ped.steps - _lastCalibrationSteps;
+    final elevationDelta = elevationSource - _lastCalibrationElevation;
+    ped.calibrateWithSlope(dist, elevationDelta, stepsDelta);
+
+    _lastCalibrationPosition = position;
+    _lastCalibrationSteps = ped.steps;
+    _lastCalibrationElevation = elevationSource;
+  }
+
+  /// Si une trace est chargée dans le Roadmap, retourne le segment de cette
+  /// trace sur lequel se trouve [position] (à moins de 30 m), sinon `null`.
+  /// Prioritaire et immédiat : pas d'attente de confirmation contrairement à
+  /// [OnTraceDetector].
+  Future<Segment?> _roadmapSegmentAt(geo.Position position) async {
+    final trace = _activeTrace;
+    if (trace == null) return null;
+
+    if (_roadmapSegmentsCacheKey != trace.localUuid) {
+      final entries = trace.segments.toList()
+        ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      final segs = <Segment>[];
+      for (final e in entries) {
+        final s = await isarService.segmentByUuid(e.segmentUuid);
+        if (s != null) segs.add(s);
+      }
+      _roadmapSegmentsCache = segs;
+      _roadmapSegmentsCacheKey = trace.localUuid;
+    }
+
+    for (final s in _roadmapSegmentsCache) {
+      if (s.points.length < 2) continue;
+      final poly =
+          s.points.map((p) => (lat: p.latitude, lon: p.longitude)).toList();
+      if (GeoUtils.snapToPolyline(
+              position.latitude, position.longitude, poly, 30.0) !=
+          null) {
+        return s;
+      }
+    }
+    return null;
+  }
+
+  /// Altitude interpolée au point de [segment] le plus proche de [position]
+  /// (`null` si la position n'est pas sur le segment, ou si les deux points
+  /// encadrants n'ont pas d'altitude).
+  double? _nearestAltitudeOnSegment(Segment segment, geo.Position position) {
+    final poly = segment.points
+        .map((p) => (lat: p.latitude, lon: p.longitude))
+        .toList();
+    final snap = GeoUtils.snapToPolyline(
+        position.latitude, position.longitude, poly, 30.0);
+    if (snap == null) return null;
+
+    final a = segment.points[snap.segmentIndex].altitude;
+    final b = segment.points[snap.segmentIndex + 1].altitude;
+    if (a == null && b == null) return null;
+    if (a == null) return b;
+    if (b == null) return a;
+    return a + (b - a) * snap.t;
+  }
+
+  /// Comble les altitudes `null` d'un segment via un modèle de terrain
+  /// ([ElevationService]), recalcule son dénivelé et celui des traces qui le
+  /// référencent. Événement unique par segment et par exécution de l'app
+  /// (garde-fou mémoire [_elevationEnrichmentAttempted]). Correction de cache
+  /// locale : ne touche jamais `syncStatus`.
+  Future<void> _tryEnrichSegmentElevation(Segment segment) async {
+    if (_elevationEnrichmentAttempted.contains(segment.localUuid)) return;
+
+    final missing = <int>[
+      for (var i = 0; i < segment.points.length; i++)
+        if (segment.points[i].altitude == null) i
+    ];
+    if (missing.isEmpty) return;
+
+    _elevationEnrichmentAttempted.add(segment.localUuid);
+
+    final coords = missing
+        .map((i) => (
+              lat: segment.points[i].latitude,
+              lon: segment.points[i].longitude
+            ))
+        .toList();
+    final elevations = await ElevationService.fetchElevations(coords);
+
+    var anyFilled = false;
+    for (var j = 0; j < missing.length; j++) {
+      final ele = elevations[j];
+      if (ele != null) {
+        segment.points[missing[j]].altitude = ele;
+        anyFilled = true;
+      }
+    }
+    if (!anyFilled) {
+      // Tout a échoué (hors-ligne...) : on autorise une nouvelle tentative
+      // plus tard plutôt que de figer l'échec pour la session.
+      _elevationEnrichmentAttempted.remove(segment.localUuid);
+      return;
+    }
+
+    final elev = GeoUtils.elevationGainLoss(
+        segment.points.map((p) => p.altitude).toList());
+    segment.elevationGainMeters = elev.gain;
+    segment.elevationLossMeters = elev.loss;
+    segment.updatedAt = DateTime.now();
+
+    await isarService.isar
+        .writeTxn(() => isarService.isar.segments.put(segment));
+    await isarService.recomputeTraceElevationTotals(segment.localUuid);
   }
 
   void _updateSolarInfo(geo.Position position) {

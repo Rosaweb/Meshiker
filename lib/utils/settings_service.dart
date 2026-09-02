@@ -101,6 +101,11 @@ class SettingsService extends ChangeNotifier {
   bool _navShowDestination = true;
   bool _navShowPois = true;
   bool _navShowMeasureTools = true;
+
+  /// Calibrage podomètre par pente actif : quand `false`, aucun profil
+  /// n'intègre plus de nouvelle mesure (les stats de calibrage restent
+  /// figées à leur dernière valeur).
+  bool _pedometerCalibrationEnabled = true;
   double _edgeSwipeWidth = 40.0;
   String? _gpxStoragePath;
   String? _recordingSubPath; // Nouveau : dossier d'enregistrement par défaut
@@ -212,6 +217,7 @@ class SettingsService extends ChangeNotifier {
   bool get navShowDestination => _navShowDestination;
   bool get navShowPois => _navShowPois;
   bool get navShowMeasureTools => _navShowMeasureTools;
+  bool get pedometerCalibrationEnabled => _pedometerCalibrationEnabled;
   double get edgeSwipeWidth => _edgeSwipeWidth;
   String? get gpxStoragePath => _gpxStoragePath;
   String? get recordingSubPath => _recordingSubPath;
@@ -318,6 +324,8 @@ class SettingsService extends ChangeNotifier {
     _navShowDestination = _prefs.getBool('nav_show_destination') ?? true;
     _navShowPois = _prefs.getBool('nav_show_pois') ?? true;
     _navShowMeasureTools = _prefs.getBool('nav_show_measure_tools') ?? true;
+    _pedometerCalibrationEnabled =
+        _prefs.getBool('pedometer_calibration_enabled') ?? true;
 
     _edgeSwipeWidth = _prefs.getDouble('edge_swipe_width') ?? 40.0;
     _gpxStoragePath = _prefs.getString('gpx_storage_path');
@@ -597,6 +605,12 @@ class SettingsService extends ChangeNotifier {
       case 'measureTools': _navShowMeasureTools = value; break;
     }
     await _prefs.setBool('nav_show_$key', value);
+    notifyListeners();
+  }
+
+  Future<void> setPedometerCalibrationEnabled(bool value) async {
+    _pedometerCalibrationEnabled = value;
+    await _prefs.setBool('pedometer_calibration_enabled', value);
     notifyListeners();
   }
 
