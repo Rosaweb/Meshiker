@@ -324,7 +324,7 @@ class RecordingService {
 
       try {
         _positionSub = geo.Geolocator.getPositionStream(
-          locationSettings: _buildLocationSettings(),
+          locationSettings: _buildLocationSettings(isRecording: false),
         ).listen(
           (pos) {
             debugPrint('RecordingService: NEW POINT: ${pos.latitude}, ${pos.longitude}');
@@ -346,7 +346,7 @@ class RecordingService {
         
         // On récupère une position immédiate
         geo.Geolocator.getCurrentPosition(
-          locationSettings: _buildLocationSettings()
+          locationSettings: _buildLocationSettings(isRecording: false)
         ).then((pos) {
           debugPrint('RecordingService: Initial fix point: ${pos.latitude}, ${pos.longitude}');
           _onPosition(pos);
@@ -435,7 +435,10 @@ class RecordingService {
     status.value = RecordingStatus.recording;
   }
 
-  geo.LocationSettings _buildLocationSettings() {
+  /// [isRecording] : `false` quand seule la localisation est active (aucune
+  /// trace en cours d'enregistrement) — la notification persistante Android
+  /// doit alors refléter ce contexte plutôt que d'annoncer un enregistrement.
+  geo.LocationSettings _buildLocationSettings({bool isRecording = true}) {
     if (Platform.isAndroid) {
       return geo.AndroidSettings(
         accuracy: geo.LocationAccuracy.best, // Passage en 'best' pour forcer Xiaomi à utiliser le GPS
@@ -443,8 +446,11 @@ class RecordingService {
         intervalDuration: const Duration(seconds: 2),
         // Important : spécifier explicitement le mode de notification
         foregroundNotificationConfig: geo.ForegroundNotificationConfig(
-          notificationTitle: config.notificationTitle,
-          notificationText: config.notificationText,
+          notificationTitle:
+              isRecording ? config.notificationTitle : 'Localisation active',
+          notificationText: isRecording
+              ? config.notificationText
+              : 'Meshiker utilise votre position pour la navigation.',
           enableWakeLock: true,
         ),
       );
