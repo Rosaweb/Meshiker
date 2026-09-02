@@ -123,10 +123,6 @@ class PedometerService extends ChangeNotifier {
   List<PedometerProfile> get profilesSortedBySlope =>
       _profiles.values.toList()..sort((a, b) => b.minSlope.compareTo(a.minSlope));
 
-  /// Distance estimée pour les pas de la session courante (pente supposée
-  /// plate, faute de mieux hors enregistrement).
-  double get sessionDistanceMeters => estimateDistanceMeters(_steps);
-
   /// Total de pas comptabilisés lors d'un calibrage (tous profils confondus).
   int get totalCalibratedSteps =>
       _profiles.values.fold(0, (sum, p) => sum + p.totalSteps);

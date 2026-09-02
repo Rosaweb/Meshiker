@@ -6,9 +6,9 @@ import '../utils/settings_service.dart';
 
 /// Écran podomètre plein écran, accessible par un double tap sur la carte
 /// « Podomètre » du volet Navigation. Reprend la charte des autres écrans de
-/// détail (fond noir, cartes translucides, couleur d'accent) et regroupe les
-/// 4 métriques : compteur de pas à vie, total calibré avec GPS, pas moyen
-/// pour 100 m, et le détail du calibrage par pente.
+/// détail (fond noir, cartes translucides, couleur d'accent) : nombre total
+/// de pas, rapport pas / distance GPS, pas moyen pour 100 m, les 5 profils de
+/// foulée par pente, et les réglages de calibrage en bas de page.
 class PedometerScreen extends StatelessWidget {
   const PedometerScreen({super.key});
 
@@ -29,11 +29,9 @@ class PedometerScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _sectionTitle('NOMBRE TOTAL DE PAS', accent),
+          const SizedBox(height: 8),
           _buildLifetimeCard(context, pedometer, accent),
-          const SizedBox(height: 12),
-          _buildHeroCard(pedometer, settings, accent),
-          const SizedBox(height: 12),
-          _buildToggleButton(context, pedometer, accent),
           if (pedometer.permissionDenied)
             const _Hint(
               icon: Icons.lock_outline,
@@ -47,11 +45,12 @@ class PedometerScreen extends StatelessWidget {
               color: Colors.orangeAccent,
               text: 'Aucun capteur de pas détecté sur cet appareil.',
             ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
+          _sectionTitle('RAPPORT PAS / DISTANCE GPS', accent),
+          const SizedBox(height: 8),
           _buildMetricCard(
             icon: Icons.route,
             accent: accent,
-            label: 'Calibré avec le GPS',
             value: pedometer.totalCalibratedSteps > 0
                 ? '${_thousands(pedometer.totalCalibratedSteps)} pas'
                   ' / ${_formatDistance(pedometer.totalCalibratedDistanceMeters, settings.unitSystem)}'
@@ -67,16 +66,20 @@ class PedometerScreen extends StatelessWidget {
                 : '${pedometer.avgStepsPer100m!.round()} pas / 100 m',
           ),
           const SizedBox(height: 28),
+          _sectionTitle('PROFILS DE FOULÉE', accent),
+          const SizedBox(height: 8),
+          const Text(
+            'Nombre de pas pour 100 m appris selon la pente du terrain.',
+            style: TextStyle(color: Colors.white38, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          ...pedometer.profilesSortedBySlope
+              .map((p) => _buildProfileCard(context, pedometer, p, accent)),
+          const SizedBox(height: 28),
           Row(
             children: [
               Expanded(
-                child: Text(
-                  'CALIBRAGE PAR PENTE',
-                  style: TextStyle(
-                      color: accent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold),
-                ),
+                child: _sectionTitle('Calibrage des profils de foulée', accent),
               ),
               TextButton(
                 onPressed: () async {
@@ -99,27 +102,25 @@ class PedometerScreen extends StatelessWidget {
             activeThumbColor: accent,
             value: calibrationOn,
             onChanged: settings.setPedometerCalibrationEnabled,
-            title: const Text('Calibrage automatique',
+            title: const Text('Activation du calibrage',
                 style: TextStyle(color: Colors.white)),
             subtitle: Text(
               calibrationOn
-                  ? 'La longueur de pas s\'affine pendant vos sorties GPS.'
-                  : 'Gelé : les stats ci-dessous ne bougent plus.',
+                  ? 'La foulée s\'affine pendant vos sorties GPS.'
+                  : 'Gelé : les profils ci-dessus ne bougent plus.',
               style: const TextStyle(color: Colors.white38, fontSize: 12),
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Longueur de pas apprise selon la pente du terrain.',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
-          ...pedometer.profilesSortedBySlope
-              .map((p) => _buildProfileCard(context, pedometer, p, settings, accent)),
         ],
       ),
     );
   }
+
+  Widget _sectionTitle(String text, Color accent) => Text(
+        text,
+        style: TextStyle(
+            color: accent, fontSize: 12, fontWeight: FontWeight.bold),
+      );
 
   Widget _buildLifetimeCard(
       BuildContext context, PedometerService pedometer, Color accent) {
@@ -166,82 +167,11 @@ class PedometerScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeroCard(
-      PedometerService pedometer, SettingsService settings, Color accent) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: pedometer.isActive ? accent : accent.withValues(alpha: 0.2),
-            width: pedometer.isActive ? 2.0 : 1.0),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.directions_walk, color: accent, size: 32),
-          const SizedBox(height: 12),
-          Text(
-            '${pedometer.steps}',
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 48,
-                fontWeight: FontWeight.bold),
-          ),
-          const Text('pas depuis l\'activation',
-              style: TextStyle(color: Colors.white38, fontSize: 12)),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _Metric(label: 'État', value: _statusLabel(pedometer.status)),
-              _Metric(
-                label: 'Distance estimée',
-                value: _formatDistance(
-                    pedometer.sessionDistanceMeters, settings.unitSystem),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToggleButton(
-      BuildContext context, PedometerService pedometer, Color accent) {
-    final active = pedometer.isActive;
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () async {
-          await pedometer.togglePedometer();
-          if (!context.mounted) return;
-          if (pedometer.permissionDenied) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text(
-                    'Autorisez « Activité physique » dans les paramètres Android pour utiliser le podomètre.')));
-          } else if (pedometer.sensorUnavailable) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content:
-                    Text('Aucun capteur de pas détecté sur cet appareil.')));
-          }
-        },
-        icon: Icon(active ? Icons.pause : Icons.play_arrow),
-        label: Text(active ? 'Désactiver le podomètre' : 'Activer le podomètre'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: active ? Colors.white10 : accent,
-          foregroundColor: active ? Colors.white : Colors.black,
-          minimumSize: const Size(double.infinity, 46),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMetricCard({
     required IconData icon,
     required Color accent,
-    required String label,
     required String value,
+    String? label,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -255,21 +185,29 @@ class PedometerScreen extends StatelessWidget {
           Icon(icon, color: accent, size: 22),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(label,
-                style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            child: label != null
+                ? Text(label,
+                    style:
+                        const TextStyle(color: Colors.white70, fontSize: 13))
+                : Text(value,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15)),
           ),
-          Text(value,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15)),
+          if (label != null)
+            Text(value,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15)),
         ],
       ),
     );
   }
 
   Widget _buildProfileCard(BuildContext context, PedometerService pedometer,
-      PedometerProfile profile, SettingsService settings, Color accent) {
+      PedometerProfile profile, Color accent) {
     final calibrated = profile.totalSteps > 0;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -319,7 +257,7 @@ class PedometerScreen extends StatelessWidget {
             ),
           ),
           Text(
-            _formatStepLength(profile.metersPerStep, settings.unitSystem),
+            _stepsPer100m(profile.metersPerStep),
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
           ),
@@ -381,19 +319,6 @@ class PedometerScreen extends StatelessWidget {
     return result == true;
   }
 
-  static String _statusLabel(String status) {
-    switch (status) {
-      case 'walking':
-        return 'En marche';
-      case 'stopped':
-        return 'Arrêté';
-      case 'unknown':
-        return 'Inconnu';
-      default:
-        return status;
-    }
-  }
-
   static String _profileLabel(String id) {
     switch (id) {
       case 'steep_uphill':
@@ -424,12 +349,18 @@ class PedometerScreen extends StatelessWidget {
     }
   }
 
+  /// Nombre de pas pour parcourir 100 m (« 186 pas / 100 m »).
+  static String _stepsPer100m(double metersPerStep) {
+    if (metersPerStep <= 0) return '—';
+    return '${(100 / metersPerStep).round()} pas / 100 m';
+  }
+
   /// Sépare les milliers par une espace fine insécable (« 12 430 »).
   static String _thousands(int n) {
     final s = n.abs().toString();
     final buf = StringBuffer(n < 0 ? '-' : '');
     for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write(' ');
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(' ');
       buf.write(s[i]);
     }
     return buf.toString();
@@ -445,36 +376,6 @@ class PedometerScreen extends StatelessWidget {
     return feet >= 5280
         ? '${(feet / 5280).toStringAsFixed(2)} mi'
         : '${feet.round()} ft';
-  }
-
-  static String _formatStepLength(double metersPerStep, UnitSystem unit) {
-    if (unit == UnitSystem.metric) {
-      return '${metersPerStep.toStringAsFixed(2)} m/pas';
-    }
-    return '${(metersPerStep * 3.28084).toStringAsFixed(2)} ft/pas';
-  }
-}
-
-class _Metric extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _Metric({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(value,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(color: Colors.white38, fontSize: 12)),
-      ],
-    );
   }
 }
 
