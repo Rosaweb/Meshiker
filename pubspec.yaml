@@ -54,7 +54,9 @@ dependencies:
   url_launcher: ^6.3.1
   web_socket_channel: ^3.0.3
   flutter_sound: ^9.30.0
+  sentry_flutter: 9.28.0
 dev_dependencies:
+  sentry_dart_plugin: ^3.4.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
@@ -63,3 +65,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+sentry:
+  upload_debug_symbols: true
+  upload_source_maps: true
+  project: meshiker
+  org: rosaweb

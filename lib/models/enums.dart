@@ -89,3 +89,18 @@ enum POIType {
   danger,
   other,
 }
+
+/// État d'un [PendingCrashReport] dans la file d'attente locale (rapports
+/// de crash différés, réservés aux comptes premium — voir
+/// spec-crash-reporting.md §5.2/§6).
+enum CrashReportStatus {
+  /// En attente d'envoi automatique (compte à rebours en cours) ou de
+  /// décision utilisateur (envoi manuel / suppression).
+  pending,
+
+  /// Envoyé à Sentry (auto après N lancements, ou manuellement).
+  sent,
+
+  /// Supprimé par l'utilisateur sans envoi.
+  deleted,
+}

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/auth_service.dart';
+import '../../utils/settings_service.dart';
 import '../../utils/subscription_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/utilisateur.dart';
 import '../auth/login_screen.dart';
 import '../auth/secure_account_screen.dart';
 import 'about_screen.dart';
+import 'bug_report_list_screen.dart';
 import 'promo_code_bottom_sheet.dart';
 
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
@@ -32,6 +34,7 @@ class AccountSettingsScreen extends StatelessWidget {
               future: isar.currentDeviceUser(),
               builder: (context, snapshot) {
                 final user = snapshot.data;
+                final crashReportingEnabled = context.watch<SettingsService>().crashReportingEnabled;
 
                 return ListView(
                   padding: const EdgeInsets.all(16),
@@ -43,6 +46,29 @@ class AccountSettingsScreen extends StatelessWidget {
                     _buildIgnSubscriptionPlaceholder(),
                     const SizedBox(height: 32),
                     const Divider(color: Colors.white12),
+                    // Visibilité liée uniquement au toggle système (spec
+                    // §9), pas à l'état de la file : reste affichée, état
+                    // vide inclus, pour apprendre passivement à
+                    // l'utilisateur où regarder en cas de souci.
+                    if (crashReportingEnabled) ...[
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.bug_report_outlined, color: Colors.greenAccent),
+                        title: const Text('Rapport de bug', style: TextStyle(color: Colors.white)),
+                        subtitle: const Text('Rapports de plantage en attente d\'envoi', style: TextStyle(color: Colors.white60)),
+                        trailing: const Icon(Icons.chevron_right, color: Colors.white24),
+                        onTap: () => Navigator.push(context, PageRouteBuilder(
+                          pageBuilder: (context, animation, secondaryAnimation) => const BugReportListScreen(),
+                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                            return SlideTransition(
+                              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+                              child: child,
+                            );
+                          },
+                        )),
+                      ),
+                      const Divider(color: Colors.white12),
+                    ],
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.info_outline, color: Colors.greenAccent),

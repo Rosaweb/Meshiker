@@ -62,3 +62,8 @@ android/key.properties
 
 # État local de `supabase link` (CLI), régénéré par machine
 supabase/.temp/
+
+sentry.properties
+
+# Binaire téléchargé par l'utilisateur pour la config initiale Sentry, pas un artefact du projet
+sentry-wizard.exe

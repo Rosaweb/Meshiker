@@ -114,6 +114,15 @@ class SettingsService extends ChangeNotifier {
   bool _aiAssistantDisabled = false;
   List<String> _favoriteMapIds = ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
 
+  // Rapports de crash (spec-crash-reporting.md)
+  bool _crashReportingEnabled = true;
+  // Copie persistée du dernier statut premium connu (RevenueCat), mise à
+  // jour à chaque résolution de `SubscriptionService` : sert de "cache
+  // local synchrone" pour `CrashReportingService.beforeSend`, car
+  // l'initialisation RevenueCat elle-même est asynchrone et réseau (donc
+  // pas encore résolue si un crash survient tôt au démarrage).
+  bool _lastKnownPremiumStatus = false;
+
   // État de navigation
   List<String> _activeGpxNames = []; // Traces actuellement suivies
   String? _navigationWaypointUuid; // Destination choisie
@@ -228,6 +237,8 @@ class SettingsService extends ChangeNotifier {
   /// waypoints, fonctionnalité déterministe indépendante (voir
   /// `waypoint_announcement_settings_section.dart`).
   bool get aiAssistantDisabled => _aiAssistantDisabled;
+  bool get crashReportingEnabled => _crashReportingEnabled;
+  bool get lastKnownPremiumStatus => _lastKnownPremiumStatus;
   List<String> get favoriteMapIds => _favoriteMapIds;
   List<String> get activeGpxNames => _activeGpxNames;
   String? get navigationWaypointUuid => _navigationWaypointUuid;
@@ -333,6 +344,8 @@ class SettingsService extends ChangeNotifier {
     _tileCacheLimitMb = _prefs.getDouble('tile_cache_limit_mb') ?? 500.0;
     _wifiOnlyDownload = _prefs.getBool('wifi_only_download') ?? true;
     _aiAssistantDisabled = _prefs.getBool('ai_assistant_disabled') ?? false;
+    _crashReportingEnabled = _prefs.getBool('crash_reporting_enabled') ?? true;
+    _lastKnownPremiumStatus = _prefs.getBool('last_known_premium_status') ?? false;
     _favoriteMapIds = _prefs.getStringList('favorite_maps') ?? ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
     
     _activeGpxNames = _prefs.getStringList('active_gpx_list') ?? [];
@@ -720,6 +733,26 @@ class SettingsService extends ChangeNotifier {
     _aiAssistantDisabled = value;
     await _prefs.setBool('ai_assistant_disabled', value);
     notifyListeners();
+  }
+
+  /// Toggle système de désactivation des rapports de crash (spec §4). Le
+  /// SDK Sentry n'étant (dés)activé qu'au prochain cold start (spec §3.1),
+  /// c'est à l'appelant UI de déclencher la purge silencieuse de la file
+  /// en attente quand `value == false` (voir `CrashReportingService`).
+  Future<void> setCrashReportingEnabled(bool value) async {
+    _crashReportingEnabled = value;
+    await _prefs.setBool('crash_reporting_enabled', value);
+    notifyListeners();
+  }
+
+  /// Mis à jour par `SubscriptionService` à chaque résolution du statut
+  /// RevenueCat (succès réseau ou lecture de son propre cache), pour que
+  /// `CrashReportingService.beforeSend` dispose d'une valeur synchrone même
+  /// avant que RevenueCat n'ait fini de s'initialiser dans cette session.
+  Future<void> setLastKnownPremiumStatus(bool value) async {
+    if (_lastKnownPremiumStatus == value) return;
+    _lastKnownPremiumStatus = value;
+    await _prefs.setBool('last_known_premium_status', value);
   }
 
   void startMapCreation() {

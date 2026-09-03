@@ -17,6 +17,14 @@ class SubscriptionService extends ChangeNotifier {
   Offerings? _offerings;
   Offerings? get offerings => _offerings;
 
+  /// Appelé à chaque résolution du statut premium (init, listener
+  /// RevenueCat, achat, restauration, refresh promo), avec l'ancien et le
+  /// nouveau statut — permet à `main.dart` de brancher la persistance du
+  /// cache local (`SettingsService.lastKnownPremiumStatus`) et le flush des
+  /// rapports de crash en attente lors d'un downgrade premium → non-premium
+  /// (spec-crash-reporting.md §5.2/§8), sans coupler ce service à Isar/Sentry.
+  void Function(bool wasPremium, bool isPremiumNow)? onPremiumStatusChanged;
+
   /// Clés API RevenueCat, une par store (SDK key publique, embarquable côté
   /// client par conception RevenueCat). La clé iOS n'est pas encore
   /// disponible (à remplacer par la clé 'appl_' une fois créée côté
@@ -70,8 +78,12 @@ class SubscriptionService extends ChangeNotifier {
   /// Met à jour l'état local à partir des infos RevenueCat.
   void _updateFromCustomerInfo(CustomerInfo info) {
     _customerInfo = info;
+    final wasPremium = _isPremium;
     // Vérification de l'entitlement 'Meshiker Pro'
     _isPremium = info.entitlements.active.containsKey('Meshiker Pro');
+    if (wasPremium != _isPremium) {
+      onPremiumStatusChanged?.call(wasPremium, _isPremium);
+    }
     notifyListeners();
   }
 
