@@ -1,9 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../assistant/assistant_prompt_bar.dart';
 
-class HelpScreen extends StatelessWidget {
+/// Écran "Aide" : affiche `docs/manuel_utilisateur.md` (embarqué en asset),
+/// seule et unique source du contenu d'aide — également celle lue par
+/// l'assistant IA (copie synchronisée dans
+/// `supabase/functions/assistant-token/`), pour ne jamais avoir à
+/// maintenir la même explication à deux endroits.
+class HelpScreen extends StatefulWidget {
   const HelpScreen({super.key});
+
+  @override
+  State<HelpScreen> createState() => _HelpScreenState();
+}
+
+class _HelpScreenState extends State<HelpScreen> {
+  late final Future<String> _manual = _loadManual();
+
+  Future<String> _loadManual() async {
+    final raw = await rootBundle.loadString('docs/manuel_utilisateur.md');
+    // Les commentaires HTML sont des notes à destination des développeurs/de
+    // l'assistant IA (cf. en-tête du fichier), pas du contenu pour
+    // l'utilisateur final.
+    return raw.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,39 +39,26 @@ class HelpScreen extends StatelessWidget {
           elevation: 0,
           foregroundColor: Colors.white,
         ),
-        // Section assistant ancrée en bas, hors du ListView : ne scrolle
-        // pas avec le reste du manuel (contrairement au contenu d'aide),
-        // cf. IA interface utilisateur.txt.
+        // Section assistant ancrée en bas, hors du manuel scrollable : ne
+        // scrolle pas avec le reste du contenu, cf. IA interface utilisateur.txt.
         body: Column(
           children: [
             Expanded(
-              child: ListView(
-                padding: EdgeInsets.all(16),
-                children: [
-                  _HelpTopic(
-                    icon: Icons.location_on_outlined,
-                    title: 'Affichage des waypoints',
-                    paragraphs: [
-                      'Quand une trace GPX est chargée dans le Roadmap, seuls les '
-                          'waypoints de cette trace sont affichés par défaut. Le '
-                          'bouton d\'affichage des waypoints masque ou réaffiche '
-                          'uniquement les waypoints de la trace chargée.',
-                      'Quand aucune trace n\'est chargée dans le Roadmap, ce sont '
-                          'les waypoints de toutes les traces GPX actuellement '
-                          'affichées sur la carte qui apparaissent, et le bouton '
-                          'masque ou réaffiche les waypoints de l\'ensemble de ces '
-                          'traces. Si aucune trace n\'est affichée, aucun waypoint '
-                          'n\'apparaît.',
-                      'Dans les deux cas, un appui long sur le bouton affiche '
-                          'l\'intégralité des waypoints existants dans le Waypoint '
-                          'Manager (dossiers personnels compris), et un appui simple '
-                          'suivant revient à l\'affichage de départ.',
-                    ],
-                  ),
-                ],
+              child: FutureBuilder<String>(
+                future: _manual,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator(color: Colors.greenAccent));
+                  }
+                  return Markdown(
+                    data: snapshot.data!,
+                    padding: const EdgeInsets.all(16),
+                    styleSheet: _manualStyleSheet(context),
+                  );
+                },
               ),
             ),
-            Padding(
+            const Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: AssistantPromptBar(),
             ),
@@ -58,51 +67,27 @@ class HelpScreen extends StatelessWidget {
       ),
     );
   }
-}
 
-class _HelpTopic extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final List<String> paragraphs;
-
-  const _HelpTopic({
-    required this.icon,
-    required this.title,
-    required this.paragraphs,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+  MarkdownStyleSheet _manualStyleSheet(BuildContext context) {
+    return MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+      h1: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+      h2: const TextStyle(color: Colors.greenAccent, fontSize: 16, fontWeight: FontWeight.bold),
+      h3: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+      p: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+      strong: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      em: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic),
+      listBullet: const TextStyle(color: Colors.white70, fontSize: 13),
+      blockquote: const TextStyle(color: Colors.white54, fontSize: 13, fontStyle: FontStyle.italic),
+      blockquoteDecoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
+        borderRadius: BorderRadius.circular(8),
+        border: const Border(left: BorderSide(color: Colors.greenAccent, width: 3)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: Colors.greenAccent, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final p in paragraphs) ...[
-            Text(p, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
-            if (p != paragraphs.last) const SizedBox(height: 10),
-          ],
-        ],
+      blockquotePadding: const EdgeInsets.all(12),
+      horizontalRuleDecoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Colors.white10, width: 1)),
       ),
+      code: const TextStyle(color: Colors.greenAccent, backgroundColor: Colors.transparent, fontSize: 13),
     );
   }
 }

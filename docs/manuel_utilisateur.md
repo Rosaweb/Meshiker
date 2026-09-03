@@ -1,7 +1,7 @@
 # Manuel utilisateur — Meshiker
 
-> Ce document décrit toutes les fonctions de l'application Meshiker telles qu'elles existent actuellement (branche `Roadmap`). Il est structuré en questions/réponses courtes et autonomes, pensé pour servir de base à un assistant vocal : chaque section peut être lue indépendamment pour répondre à une question précise de l'utilisateur.
->
+<!-- Ce document décrit toutes les fonctions de l'application Meshiker telles qu'elles existent actuellement (branche `Roadmap`). Il est structuré en questions/réponses courtes et autonomes, pensé pour servir de base à un assistant vocal ainsi qu'à l'écran d'aide in-app (lib/ui/settings/help_screen.dart) : chaque section peut être lue indépendamment pour répondre à une question précise de l'utilisateur. -->
+
 > Meshiker est une application de randonnée conçue pour fonctionner **sans connexion internet** une fois les données locales chargées (traces, waypoints, toile de sentiers). Toutes les fonctions décrites ci-dessous sont utilisables hors réseau, sauf mention contraire explicite (chargement de tuiles de carte, abonnement).
 
 ---
@@ -53,6 +53,14 @@ En bas de la carte se trouve une barre d'outils. Elle peut être agrandie en gli
 - **RECALCULER** : relance le découpage de toutes les traces stockées contre la toile de sentiers.
 - **CRÉER TRACE** : fusionne les segments sélectionnés sur la carte en une nouvelle trace (nécessite d'avoir sélectionné au moins un segment en le touchant sur la carte).
 - Bouton pour vider la sélection de segments.
+
+### Comment fonctionne le bouton d'affichage des waypoints ?
+
+Son comportement dépend de ce qui est chargé dans le Roadmap :
+- **Une trace GPX est chargée dans le Roadmap** : seuls les waypoints de cette trace sont affichés par défaut ; le bouton masque ou réaffiche uniquement les waypoints de cette trace.
+- **Aucune trace n'est chargée dans le Roadmap** : les waypoints de toutes les traces GPX actuellement affichées sur la carte apparaissent, et le bouton masque ou réaffiche les waypoints de l'ensemble de ces traces. Si aucune trace n'est affichée, aucun waypoint n'apparaît.
+
+Dans les deux cas, un **appui long** sur le bouton affiche l'intégralité des waypoints existants dans le **Waypoint Manager** (dossiers personnels compris), et un appui simple suivant revient à l'affichage de départ.
 
 ### Comment sélectionner un segment du mesh sur la carte ?
 
@@ -296,7 +304,7 @@ Accessible via **Paramètres → Mon compte**.
 
 ## 13. Aide
 
-**Paramètres → Aide** : cette section est en cours de rédaction et sera enrichie prochainement.
+**Paramètres → Aide** affiche ce manuel utilisateur dans son intégralité. Pour un compte Premium avec l'assistant IA activé, une barre de question rapide reste ancrée en bas de l'écran pour poser directement une question à l'assistant sans quitter l'aide.
 
 ---
 
