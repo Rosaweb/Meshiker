@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../map/osm_poi_categories.dart';
 import '../models/enums.dart';
+import '../models/pending_crash_report.dart';
 import '../models/point_of_interest.dart';
 import '../models/recording_draft.dart';
 import '../models/segment.dart';
@@ -72,6 +73,7 @@ class IsarService {
         WaypointCategorySchema,
         WaypointFolderSchema,
         OfflineMapSchema,
+        PendingCrashReportSchema,
       ],
       directory: dir.path,
       // Un seul isolate d'écriture suffit ici : le service d'enregistrement
@@ -780,5 +782,68 @@ class IsarService {
         await isar.traces.put(trace);
       }
     });
+  }
+
+  // -----------------------------------------------------------------
+  // Rapports de crash différés (premium) — spec-crash-reporting.md §6/§7
+  // -----------------------------------------------------------------
+
+  /// Rapports en attente d'envoi (ou de décision utilisateur), les plus
+  /// récents d'abord — c'est l'ordre affiché dans la section "Rapport de
+  /// bug".
+  Future<List<PendingCrashReport>> pendingCrashReports() {
+    return isar.pendingCrashReports
+        .filter()
+        .statusEqualTo(CrashReportStatus.pending)
+        .sortByLastOccurredAtDesc()
+        .findAll();
+  }
+
+  Future<PendingCrashReport?> pendingCrashReportByFingerprint(
+      String fingerprint) {
+    return isar.pendingCrashReports
+        .filter()
+        .fingerprintEqualTo(fingerprint)
+        .statusEqualTo(CrashReportStatus.pending)
+        .findFirst();
+  }
+
+  Future<PendingCrashReport?> pendingCrashReportById(int id) {
+    return isar.pendingCrashReports.get(id);
+  }
+
+  Future<void> savePendingCrashReport(PendingCrashReport report) async {
+    await isar.writeTxn(() => isar.pendingCrashReports.put(report));
+  }
+
+  Future<void> deletePendingCrashReport(int id) async {
+    await isar.writeTxn(() => isar.pendingCrashReports.delete(id));
+  }
+
+  /// Décrémente `launchesRemaining` de tous les rapports en attente (à
+  /// appeler une fois par cold start réel) et renvoie ceux qui viennent
+  /// d'atteindre zéro, prêts pour l'envoi automatique.
+  Future<List<PendingCrashReport>> decrementLaunchesRemainingAndDue() async {
+    final pending = await isar.pendingCrashReports
+        .filter()
+        .statusEqualTo(CrashReportStatus.pending)
+        .findAll();
+    if (pending.isEmpty) return const [];
+
+    final due = <PendingCrashReport>[];
+    await isar.writeTxn(() async {
+      for (final report in pending) {
+        report.launchesRemaining -= 1;
+        await isar.pendingCrashReports.put(report);
+        if (report.launchesRemaining <= 0) due.add(report);
+      }
+    });
+    return due;
+  }
+
+  /// Purge silencieuse de toute la file (toggle désactivé, spec §4) : pas
+  /// d'envoi, suppression pure et simple.
+  Future<void> deleteAllPendingCrashReports() async {
+    await isar.writeTxn(() => isar.pendingCrashReports.clear());
   }
 }

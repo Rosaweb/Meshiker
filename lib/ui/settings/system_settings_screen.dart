@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
+import '../../database/isar_service.dart';
+import '../../utils/crash_reporting_service.dart';
 import '../../utils/settings_service.dart';
 import '../../utils/tile_cache_service.dart';
 import '../../utils/photo_scanner_service.dart';
@@ -50,6 +52,10 @@ class SystemSettingsScreen extends StatelessWidget {
                 const Text('ASSISTANT IA', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildAiAssistantSection(context, settings),
+                const SizedBox(height: 32),
+                const Text('RAPPORTS DE PLANTAGE', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                _buildCrashReportingSection(context, settings),
               ],
             );
           },
@@ -324,6 +330,38 @@ class SystemSettingsScreen extends StatelessWidget {
         ),
         value: settings.aiAssistantDisabled,
         onChanged: (v) => settings.setAiAssistantDisabled(v),
+        activeThumbColor: Colors.greenAccent,
+        contentPadding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildCrashReportingSection(BuildContext context, SettingsService settings) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: SwitchListTile(
+        title: const Text('Envoyer des rapports de plantage automatiques', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        subtitle: const Text(
+          'Aide à identifier et corriger les bugs. Les comptes Premium peuvent '
+          'relire, annoter ou annuler un rapport avant son envoi depuis '
+          '"Mon compte > Rapport de bug". Un changement ne prend effet qu\'au '
+          'prochain lancement de l\'app.',
+          style: TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+        value: settings.crashReportingEnabled,
+        onChanged: (v) async {
+          await settings.setCrashReportingEnabled(v);
+          if (!v && context.mounted) {
+            // Purge silencieuse immédiate des rapports premium en attente
+            // (spec-crash-reporting.md §4) : aucun envoi, aucune notification.
+            await CrashReportingService.purgeAllPending(context.read<IsarService>());
+          }
+        },
         activeThumbColor: Colors.greenAccent,
         contentPadding: EdgeInsets.zero,
       ),

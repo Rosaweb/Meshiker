@@ -5,6 +5,7 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("io.sentry.android.gradle")
 }
 
 // Clé de signature release (jamais commitée, cf. android/key.properties.example
@@ -68,6 +69,31 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+// Upload automatique du mapping ProGuard/R8 vers Sentry à chaque build
+// release (spec-crash-reporting.md §3.3). Le token est lu depuis
+// `sentry.properties` à la racine du repo Flutter (généré par le wizard
+// Sentry, jamais commité — cf. .gitignore), avec la même logique que
+// `key.properties` ci-dessus : sans ce fichier localement, l'upload est
+// simplement désactivé plutôt que de faire échouer `flutter build apk`.
+// Le format attendu (`auth_token=...`, sans préfixe) est celui lu par
+// `sentry_dart_plugin` (voir pubspec.yaml, bloc `sentry:` pour org/projet) ;
+// on le réutilise ici tel quel plutôt que de dépendre de la découverte
+// automatique du fichier par le plugin Gradle (chemin non garanti selon
+// le répertoire de travail de Gradle).
+val sentryProperties = Properties()
+val sentryPropertiesFile = rootProject.file("../sentry.properties")
+if (sentryPropertiesFile.exists()) {
+    sentryProperties.load(FileInputStream(sentryPropertiesFile))
+}
+val sentryAuthToken = sentryProperties.getProperty("auth_token")
+
+sentry {
+    org.set("rosaweb")
+    projectName.set("meshiker")
+    authToken.set(sentryAuthToken)
+    autoUploadProguardMapping.set(sentryAuthToken != null)
 }
 
 flutter {

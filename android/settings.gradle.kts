@@ -21,6 +21,10 @@ plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.13.2" apply false
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    // Upload du mapping ProGuard/R8 à chaque build release (spec-crash-reporting.md
+    // §3.3) : sans lui, les stack traces remontées par Sentry en prod sont
+    // obfusquées et inexploitables.
+    id("io.sentry.android.gradle") version "6.20.0" apply false
 }
 
 include(":app")

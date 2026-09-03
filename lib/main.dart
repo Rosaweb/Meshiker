@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'database/isar_service.dart';
 import 'map/map_view_model.dart';
 import 'recording/recording_service.dart';
@@ -13,6 +14,7 @@ import 'utils/settings_service.dart';
 import 'utils/pedometer_service.dart';
 import 'utils/weather_service.dart';
 import 'utils/auth_service.dart';
+import 'utils/crash_reporting_service.dart';
 import 'utils/subscription_service.dart';
 import 'utils/tile_cache_service.dart';
 import 'utils/supabase_bootstrap_service.dart';
@@ -57,6 +59,19 @@ void main() async {
       final settingsService = SettingsService();
       await settingsService.init();
 
+      // Doit être initialisé APRES le toggle système (spec-crash-reporting.md
+      // §3.1 : le toggle est lu avant l'appel à SentryFlutter.init(), sinon
+      // désactiver le réglage n'empêcherait pas la génération du rapport en
+      // cours de session) mais AVANT tout le reste, pour capter un maximum
+      // d'erreurs de démarrage. `FlutterError.onError`/`PlatformDispatcher
+      // .onError` étant déjà positionnés plus haut, Sentry vient s'y
+      // chaîner (capture puis appelle le handler existant) sans les
+      // remplacer : le fallback `_handleFatalError` reste inchangé.
+      await CrashReportingService.init(
+        settings: settingsService,
+        isarService: isarService,
+      );
+
       // Le reste (abonnements RevenueCat, cache de tuiles, index de
       // recherche, service d'enregistrement) est instancié tout de suite
       // mais initialisé APRES runApp(), en arrière-plan : ce sont tous des
@@ -65,6 +80,17 @@ void main() async {
       // l'interface attende des appels réseau (RevenueCat) qui peuvent
       // mettre plusieurs secondes à échouer en zone blanche.
       final subscriptionService = SubscriptionService();
+      // Persiste le statut premium résolu dans SettingsService (lu de façon
+      // synchrone par CrashReportingService.beforeSend, cf. son propre
+      // commentaire) et déclenche le flush immédiat des rapports de crash en
+      // attente lors d'un downgrade premium → non-premium (spec §8) — câblé
+      // AVANT `subscriptionService.init()` pour ne rater aucune résolution.
+      subscriptionService.onPremiumStatusChanged = (wasPremium, isPremiumNow) {
+        unawaited(settingsService.setLastKnownPremiumStatus(isPremiumNow));
+        if (wasPremium && !isPremiumNow) {
+          unawaited(CrashReportingService.flushAllOnDowngrade(isarService));
+        }
+      };
       final tileCacheService = TileCacheService(settingsService: settingsService);
       final supabaseBootstrap = SupabaseBootstrapService();
       final authService = AuthService(isarService: isarService, supabaseBootstrap: supabaseBootstrap);
@@ -109,6 +135,13 @@ void main() async {
         importService: importService,
         ownerUuid: ownerUuid,
       );
+
+      // Une fois par cold start réel : décrémente le compte à rebours des
+      // rapports de crash premium en attente et renvoie automatiquement
+      // ceux qui viennent d'atteindre zéro (spec-crash-reporting.md §5.2).
+      // Indépendant du statut premium résolu ou non cette session : la file
+      // n'est de toute façon jamais peuplée pour un compte non-premium.
+      unawaited(CrashReportingService.processColdStart(isarService));
 
       // Tâches subsidiaires : lancées sans attendre, jamais prioritaires
       // sur l'affichage de l'interface.
@@ -196,7 +229,13 @@ void main() async {
 void _handleFatalError(Object error, StackTrace stack) {
   debugPrint('FATAL ERROR: $error');
   debugPrint(stack.toString());
-  
+  // Filet de sécurité : les erreurs Flutter/PlatformDispatcher sont déjà
+  // captées par les intégrations Sentry qui se chaînent sur les handlers
+  // définis plus haut dans ce fichier, mais une erreur qui remonte jusqu'à
+  // ce point (hors de ces deux canaux) ne le serait pas sans cet appel
+  // explicite. No-op si Sentry n'a jamais été initialisé (toggle désactivé).
+  Sentry.captureException(error, stackTrace: stack);
+
   runApp(MaterialApp(
     home: Scaffold(
       backgroundColor: Colors.black,
