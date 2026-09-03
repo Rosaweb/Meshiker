@@ -26,6 +26,18 @@ import 'assistant/assistant_service.dart';
 import 'assistant/places_service.dart';
 import 'assistant/terrain_analysis_service.dart';
 
+// `runZonedGuarded`'s onError capte toute erreur async non interceptée
+// pendant TOUTE la durée de vie de l'app, pas seulement au démarrage —
+// alors que `_handleFatalError` ne doit remplacer l'UI que pour un échec
+// survenu AVANT le premier `runApp()` réussi (son fallback est un écran de
+// secours "l'app n'a jamais pu démarrer", pas un gestionnaire d'erreurs
+// générique). Sans ce garde-fou, une erreur asynchrone anodine survenant en
+// cours d'usage (bien après le démarrage) rappellerait `runApp()` sur un
+// binding Flutter déjà actif et déclencherait une seconde exception ("Zone
+// mismatch") par-dessus la première, remplaçant l'app entière par l'écran
+// d'erreur au lieu de laisser Flutter gérer l'erreur normalement.
+bool _appStarted = false;
+
 void main() async {
   // Capture les erreurs Flutter (UI, etc.)
   FlutterError.onError = (details) {
@@ -220,6 +232,7 @@ void main() async {
           ),
         ),
       );
+      _appStarted = true;
     } catch (e, stack) {
       _handleFatalError(e, stack);
     }
@@ -235,6 +248,12 @@ void _handleFatalError(Object error, StackTrace stack) {
   // ce point (hors de ces deux canaux) ne le serait pas sans cet appel
   // explicite. No-op si Sentry n'a jamais été initialisé (toggle désactivé).
   Sentry.captureException(error, stackTrace: stack);
+
+  // L'app tourne déjà (ce n'est pas un échec de démarrage) : ne PAS
+  // remplacer son UI par l'écran de secours, ni rappeler `runApp()` sur un
+  // binding déjà actif (cf. commentaire sur `_appStarted`). L'erreur reste
+  // néanmoins loguée et remontée à Sentry ci-dessus.
+  if (_appStarted) return;
 
   runApp(MaterialApp(
     home: Scaffold(
