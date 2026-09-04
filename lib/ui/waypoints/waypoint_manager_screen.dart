@@ -141,7 +141,16 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
           if (!_isMultiSelectMode) ...[
             IconButton(
               icon: const Icon(Icons.settings_outlined),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WaypointSettingsScreen())),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WaypointSettingsScreen()),
+              ).then((_) {
+                // "Afficher les waypoints GPX" agit sur ce que MapViewModel
+                // charge (voir MapViewModel._reload) -- sans ce refresh, le
+                // changement resterait invisible sur la carte jusqu'au
+                // prochain déplacement de viewport.
+                if (context.mounted) context.read<MapViewModel>().refreshNow();
+              }),
               tooltip: 'Gérer les types',
             ),
             IconButton(

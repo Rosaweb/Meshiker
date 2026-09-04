@@ -600,6 +600,25 @@ class IsarService {
     }).toList();
   }
 
+  /// Waypoints indépendants (créés directement sur la carte, non rattachés à
+  /// une trace GPX -- `associatedGpxName == null`) dans le viewport. À
+  /// l'inverse des filtres par trace de [searchWaypoints], ceux-ci doivent
+  /// toujours apparaître sur la carte quel que soit le contexte de trace
+  /// actif -- voir `MapViewModel._reload`.
+  Future<List<Waypoint>> independentWaypointsInViewport({
+    required double minLat,
+    required double maxLat,
+    required double minLon,
+    required double maxLon,
+  }) async {
+    final all = await isar.waypoints.where().findAll();
+    return all.where((w) {
+      return w.associatedGpxName == null &&
+          w.latitude >= minLat && w.latitude <= maxLat &&
+          w.longitude >= minLon && w.longitude <= maxLon;
+    }).toList();
+  }
+
   /// Récupère les waypoints groupés par dossier.
   /// Les waypoints sans dossier sont retournés avec la clé 'null'.
   Future<Map<WaypointFolder?, List<Waypoint>>> waypointsGroupedByFolder() async {

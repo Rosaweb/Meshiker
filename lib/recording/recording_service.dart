@@ -71,6 +71,10 @@ class RecordingService {
   String? _sessionUuid;
   ActivityType _activityType = ActivityType.hiking;
   final List<PointGPS> _pendingBatch = [];
+  // Historique complet de la session en cours, pour l'affichage de la trace
+  // live sur la carte -- distinct de `_pendingBatch`, qui est vidé à chaque
+  // flush vers Isar et ne doit pas piloter l'affichage.
+  final List<PointGPS> _liveTrackPoints = [];
   int _batchIndex = 0;
   bool _nextPointStartsNewSegment = false;
   
@@ -436,6 +440,7 @@ class RecordingService {
     _activityType = activityType;
     _batchIndex = 0;
     _pendingBatch.clear();
+    _liveTrackPoints.clear();
     _nextPointStartsNewSegment = false;
     pointCount.value = 0;
     livePoints.value = [];
@@ -559,7 +564,10 @@ class RecordingService {
       pointCount.value++;
 
       // Mise à jour des points "live" pour l'affichage dynamique sur la carte
-      livePoints.value = List.of(_pendingBatch);
+      // -- basée sur l'historique complet de la session, pas sur
+      // `_pendingBatch`, qui est vidé périodiquement par `_flushBatch`.
+      _liveTrackPoints.add(_pendingBatch.last);
+      livePoints.value = List.of(_liveTrackPoints);
 
       if (_pendingBatch.length >= config.pointsPerBatch) {
         unawaited(_flushBatch());
@@ -987,6 +995,7 @@ class RecordingService {
 
     _sessionUuid = null;
     status.value = RecordingStatus.idle;
+    _liveTrackPoints.clear();
     livePoints.value = [];
     return result;
   }
@@ -1130,6 +1139,7 @@ class RecordingService {
     });
     _sessionUuid = null;
     status.value = RecordingStatus.idle;
+    _liveTrackPoints.clear();
     livePoints.value = [];
   }
 

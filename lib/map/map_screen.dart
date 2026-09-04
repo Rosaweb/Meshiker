@@ -274,6 +274,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       osmPoiCategoryIds: widget.settingsService.enabledOsmPoiCategoryIds,
       roadmapTraceName: widget.settingsService.roadmapTraceName,
       showEveryWaypoint: widget.settingsService.showEveryWaypoint,
+      showGpxWaypoints: widget.settingsService.showGpxWaypoints,
     );
     if (widget.settingsService.mapCreationStep == MapCreationStep.stretchArea &&
         widget.settingsService.mapOrigin != null) {
@@ -1086,6 +1087,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     widget.settingsService.roadmapTraceName,
                                 showEveryWaypoint:
                                     widget.settingsService.showEveryWaypoint,
+                                showGpxWaypoints:
+                                    widget.settingsService.showGpxWaypoints,
                               );
                             },
                             onLongPressWaypoints: () {
@@ -1095,6 +1098,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 roadmapTraceName:
                                     widget.settingsService.roadmapTraceName,
                                 showEveryWaypoint: true,
+                                showGpxWaypoints:
+                                    widget.settingsService.showGpxWaypoints,
                               );
                             },
                             onToggleGpx: () {
