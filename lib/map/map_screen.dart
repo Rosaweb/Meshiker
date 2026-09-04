@@ -97,6 +97,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   MapCamera? _latestCamera;
 
   bool _tileLoadError = false;
+  // Délai de grâce avant d'afficher le bandeau "hors connexion" : une tuile
+  // isolée qui échoue (perte réseau très brève, DNS ponctuel...) pendant que
+  // le reste continue de charger normalement ne doit pas déclencher l'alerte
+  // -- voir _onTileError/_onTileLoaded.
+  Timer? _tileErrorDebounceTimer;
   final StreamController<void> _tileResetController =
       StreamController<void>.broadcast();
 
@@ -247,16 +252,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _compassSubscription?.cancel();
     _menuExpandController.dispose();
     _tileResetController.close();
+    _tileErrorDebounceTimer?.cancel();
     super.dispose();
   }
 
   void _onTileError(TileImage tile, Object error, StackTrace? stackTrace) {
-    if (mounted && !_tileLoadError) {
-      setState(() => _tileLoadError = true);
+    if (!mounted || _tileLoadError) return;
+    // Ne pas afficher le bandeau immédiatement sur une seule tuile en échec :
+    // avec plusieurs tuiles chargées en parallèle, une coupure réseau très
+    // brève (quelques centaines de ms) en fait facilement échouer une alors
+    // que les autres réussissent -- on attend de voir si l'échec persiste
+    // avant d'alerter. `_onTileLoaded` annule ce délai dès qu'une tuile
+    // charge avec succès entre-temps.
+    _tileErrorDebounceTimer ??= Timer(const Duration(seconds: 3), () {
+      _tileErrorDebounceTimer = null;
+      if (mounted) setState(() => _tileLoadError = true);
+    });
+  }
+
+  void _onTileLoaded() {
+    _tileErrorDebounceTimer?.cancel();
+    _tileErrorDebounceTimer = null;
+    if (mounted && _tileLoadError) {
+      setState(() => _tileLoadError = false);
     }
   }
 
   void _retryTiles() {
+    _tileErrorDebounceTimer?.cancel();
+    _tileErrorDebounceTimer = null;
     setState(() => _tileLoadError = false);
     _tileResetController.add(null);
   }
@@ -1218,7 +1242,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       urlTemplate: source.url,
       subdomains: const ['a', 'b', 'c'],
       userAgentPackageName: 'com.meshiker.app',
-      tileProvider: _buildTileProvider(source.id),
+      tileProvider: _buildTileProvider(source.id, onTileLoaded: _onTileLoaded),
       errorTileCallback: _onTileError,
       reset: _tileResetController.stream,
     );
@@ -1230,7 +1254,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// rend une zone téléchargée ("Créer une carte") réellement consultable
   /// hors connexion. Les tuiles réseau restantes passent par le cache disque
   /// de [TileCacheService] (voir [_OfflineAwareTileProvider]).
-  TileProvider _buildTileProvider(String sourceId) {
+  TileProvider _buildTileProvider(String sourceId, {required VoidCallback onTileLoaded}) {
     final headers = {'User-Agent': 'Meshiker/1.0'};
     final completedMaps = widget.isarService.isar.offlineMaps
         .filter()
@@ -1247,7 +1271,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         .toList();
 
     return _OfflineAwareTileProvider(
-        localDirs: localDirs, headers: headers, sourceId: sourceId);
+        localDirs: localDirs,
+        headers: headers,
+        sourceId: sourceId,
+        onTileLoaded: onTileLoaded);
   }
 }
 
@@ -1263,11 +1290,13 @@ class _OfflineAwareTileProvider extends TileProvider {
   _OfflineAwareTileProvider({
     required this.localDirs,
     required this.sourceId,
+    required this.onTileLoaded,
     super.headers,
   });
 
   final List<Directory> localDirs;
   final String sourceId;
+  final VoidCallback onTileLoaded;
 
   @override
   ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
@@ -1283,6 +1312,7 @@ class _OfflineAwareTileProvider extends TileProvider {
       x: coordinates.x,
       y: coordinates.y,
       headers: headers,
+      onLoaded: onTileLoaded,
     );
   }
 }
@@ -1301,6 +1331,7 @@ class _CachedTileImageProvider extends ImageProvider<_CachedTileImageProvider> {
     required this.x,
     required this.y,
     required this.headers,
+    required this.onLoaded,
   });
 
   final String url;
@@ -1309,6 +1340,7 @@ class _CachedTileImageProvider extends ImageProvider<_CachedTileImageProvider> {
   final int x;
   final int y;
   final Map<String, String>? headers;
+  final VoidCallback onLoaded;
 
   @override
   Future<_CachedTileImageProvider> obtainKey(ImageConfiguration configuration) {
@@ -1338,7 +1370,9 @@ class _CachedTileImageProvider extends ImageProvider<_CachedTileImageProvider> {
       final bytes = await cacheFile.readAsBytes();
       if (bytes.isNotEmpty) {
         try {
-          return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+          final codec = decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+          onLoaded();
+          return codec;
         } catch (_) {
           // Fichier cache corrompu (écriture interrompue, etc.) : on
           // l'ignore et retélécharge plutôt que de faire échouer la tuile.
@@ -1346,14 +1380,24 @@ class _CachedTileImageProvider extends ImageProvider<_CachedTileImageProvider> {
       }
     }
 
-    final response = await http.get(Uri.parse(url), headers: headers);
+    // Timeout court plutôt que d'attendre indéfiniment une connexion qui ne
+    // répondra pas : sans lui, une coupure réseau totale pouvait laisser la
+    // requête pendante bien au-delà du délai de grâce du bandeau "hors
+    // connexion" (voir MapScreen._onTileError), qui ne se déclenchait alors
+    // qu'au bout d'un temps très variable selon le timeout par défaut de la
+    // plateforme.
+    final response = await http
+        .get(Uri.parse(url), headers: headers)
+        .timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) {
       throw Exception(
           'Échec du téléchargement de la tuile ($url) : HTTP ${response.statusCode}');
     }
     final bytes = response.bodyBytes;
     unawaited(_writeToCache(cacheFile, bytes));
-    return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+    final codec = decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+    onLoaded();
+    return codec;
   }
 
   Future<void> _writeToCache(File cacheFile, Uint8List bytes) async {
