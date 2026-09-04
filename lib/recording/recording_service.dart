@@ -70,6 +70,10 @@ class RecordingService {
   
   String? _sessionUuid;
   ActivityType _activityType = ActivityType.hiking;
+  // Seuils du filtre anti-bruit de `dailyDistanceMeters` -- voir `_onPosition`.
+  static const double _kMaxAcceptableAccuracyMeters = 30.0;
+  static const double _kMinMovementMeters = 2.0;
+
   final List<PointGPS> _pendingBatch = [];
   // Historique complet de la session en cours, pour l'affichage de la trace
   // live sur la carte -- distinct de `_pendingBatch`, qui est vidé à chaque
@@ -526,13 +530,24 @@ class RecordingService {
           lastPos.timestamp.month == now.month &&
           lastPos.timestamp.day == now.day) {
         final dist = geo.Geolocator.distanceBetween(
-          lastPos.latitude, 
-          lastPos.longitude, 
-          position.latitude, 
+          lastPos.latitude,
+          lastPos.longitude,
+          position.latitude,
           position.longitude
         );
-        dailyDistanceMeters.value += dist;
-        _persistDailyDistance(dailyDistanceMeters.value);
+        // Filtre anti-bruit : un fix imprécis (couvert forestier, bâtiment)
+        // ou un micro-déplacement sous le bruit GPS typique à l'arrêt
+        // (véhicule stationné, téléphone posé) ne doit pas s'ajouter à la
+        // distance du jour -- sans ce filtre, `distanceBetween` étant
+        // toujours positif, la position "dérive" de quelques mètres à
+        // chaque fix et gonfle artificiellement le total sur une journée
+        // entière, y compris quand aucun trajet n'est en cours.
+        final accuracyOk = position.accuracy <= _kMaxAcceptableAccuracyMeters &&
+            lastPos.accuracy <= _kMaxAcceptableAccuracyMeters;
+        if (accuracyOk && dist >= _kMinMovementMeters) {
+          dailyDistanceMeters.value += dist;
+          _persistDailyDistance(dailyDistanceMeters.value);
+        }
       } else {
         dailyDistanceMeters.value = 0;
         _persistDailyDistance(0);
@@ -616,11 +631,20 @@ class RecordingService {
 
     final stepsDelta = ped.steps - _lastCalibrationSteps;
     final elevationDelta = elevationSource - _lastCalibrationElevation;
-    ped.calibrateWithSlope(dist, elevationDelta, stepsDelta);
+    final consumed = ped.calibrateWithSlope(dist, elevationDelta, stepsDelta);
 
-    _lastCalibrationPosition = position;
-    _lastCalibrationSteps = ped.steps;
-    _lastCalibrationElevation = elevationSource;
+    // Le point de référence n'avance que si la fenêtre a été intégrée : si
+    // le capteur de pas natif a calé sur ces ~50 m (stepsDelta <= 0 --
+    // montée lente, bâtons, téléphone dans le sac...), la distance GPS
+    // parcourue ne doit pas être perdue. En laissant le baseline en place,
+    // elle se cumule avec la fenêtre suivante jusqu'à ce que des pas soient
+    // de nouveau détectés, au lieu de disparaître du total affiché dans le
+    // rapport.
+    if (consumed) {
+      _lastCalibrationPosition = position;
+      _lastCalibrationSteps = ped.steps;
+      _lastCalibrationElevation = elevationSource;
+    }
   }
 
   /// Si une trace est chargée dans le Roadmap, retourne le segment de cette

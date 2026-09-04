@@ -293,10 +293,18 @@ class PedometerService extends ChangeNotifier {
     _status = 'Step Count not available';
   }
 
-  /// Calibrage intelligent basé sur la pente
-  void calibrateWithSlope(double distanceDelta, double elevationDelta, int stepsDelta) {
-    if (stepsDelta <= 0 || distanceDelta <= 0) return;
-    if (!calibrationEnabled) return;
+  /// Calibrage intelligent basé sur la pente. Retourne `true` si la fenêtre
+  /// a été intégrée -- l'appelant (RecordingService._updatePedometerCalibration)
+  /// n'avance son point de référence que dans ce cas, pour reporter sur la
+  /// fenêtre suivante la distance d'une fenêtre non exploitable (capteur de
+  /// pas calé) plutôt que de la perdre définitivement du total affiché.
+  bool calibrateWithSlope(double distanceDelta, double elevationDelta, int stepsDelta) {
+    if (distanceDelta <= 0) return false;
+    if (!calibrationEnabled) return false;
+    // Le capteur de pas natif (TYPE_STEP_COUNTER) peut caler sur une
+    // fenêtre de ~50 m (montée lente, bâtons, téléphone dans le sac...) :
+    // sans mesure de pas, on ne peut pas en tirer de longueur de pas.
+    if (stepsDelta <= 0) return false;
 
     final slope = elevationDelta / distanceDelta;
     PedometerProfile? target;
@@ -309,21 +317,28 @@ class PedometerService extends ChangeNotifier {
     }
 
     target ??= _profiles['flat'];
-    if (target == null || target.frozen) return;
+    if (target == null) return false;
 
+    // Le total affiché dans le rapport doit refléter toute la distance
+    // couverte, même une fois le profil figé (convergé) -- seul
+    // l'apprentissage de `metersPerStep` s'arrête alors, pas le décompte.
     target.totalDistance += distanceDelta;
     target.totalSteps += stepsDelta;
-    target.metersPerStep = target.totalDistance / target.totalSteps;
-    target.eventsSinceCheckpoint++;
-    target.totalCalibrationEvents++;
 
-    if (target.eventsSinceCheckpoint >= PedometerProfile.checkpointEvery) {
-      _evaluateCheckpoint(target);
-      target.eventsSinceCheckpoint = 0;
+    if (!target.frozen) {
+      target.metersPerStep = target.totalDistance / target.totalSteps;
+      target.eventsSinceCheckpoint++;
+      target.totalCalibrationEvents++;
+
+      if (target.eventsSinceCheckpoint >= PedometerProfile.checkpointEvery) {
+        _evaluateCheckpoint(target);
+        target.eventsSinceCheckpoint = 0;
+      }
     }
 
     _saveProfile(target);
     notifyListeners();
+    return true;
   }
 
   /// Compare la longueur de pas courante au dernier checkpoint : si elle n'a
