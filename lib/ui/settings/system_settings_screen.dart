@@ -37,6 +37,10 @@ class SystemSettingsScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 _buildGpxStorageSection(context, settings),
                 const SizedBox(height: 32),
+                const Text('ENREGISTREMENT DES TRACES', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                _buildRecordingSection(context, settings),
+                const SizedBox(height: 32),
                 const Text('CACHE DES CARTES', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 _buildCacheSection(context, settings, cacheService),
@@ -308,6 +312,112 @@ class SystemSettingsScreen extends StatelessWidget {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecordingSection(BuildContext context, SettingsService settings) {
+    const labelStyle = TextStyle(color: Colors.white, fontSize: 14);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            title: const Text('Enregistrer les pauses dans la trace', style: labelStyle),
+            subtitle: const Text(
+              'Désactivé par défaut : les points GPS pendant un arrêt prolongé '
+              'ne sont pas ajoutés à la trace. À activer pour que la trace '
+              'reflète fidèlement les pauses (repas, photo...).',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+            value: settings.recordPauses,
+            onChanged: (v) => settings.setRecordPauses(v),
+            activeThumbColor: Colors.greenAccent,
+            contentPadding: EdgeInsets.zero,
+          ),
+          const Divider(color: Colors.white12, height: 24),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Durée avant détection d\'une pause', style: labelStyle),
+            subtitle: Text(settings.stationaryWindowPreset.label, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+            onTap: () => _pickStationaryWindow(context, settings),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Rayon de détection d\'une pause', style: labelStyle),
+            subtitle: Text(settings.stationaryRadiusPreset.label, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+            onTap: () => _pickStationaryRadius(context, settings),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _pickStationaryWindow(BuildContext context, SettingsService settings) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Durée avant détection d\'une pause', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final preset in StationaryWindowPreset.values)
+              RadioListTile<StationaryWindowPreset>(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                activeColor: Colors.greenAccent,
+                title: Text(preset.label, style: const TextStyle(color: Colors.white)),
+                value: preset,
+                groupValue: settings.stationaryWindowPreset,
+                onChanged: (value) {
+                  if (value != null) settings.setStationaryWindowPreset(value);
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
+        ],
+      ),
+    );
+  }
+
+  void _pickStationaryRadius(BuildContext context, SettingsService settings) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Rayon de détection d\'une pause', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final preset in StationaryRadiusPreset.values)
+              RadioListTile<StationaryRadiusPreset>(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                activeColor: Colors.greenAccent,
+                title: Text(preset.label, style: const TextStyle(color: Colors.white)),
+                value: preset,
+                groupValue: settings.stationaryRadiusPreset,
+                onChanged: (value) {
+                  if (value != null) settings.setStationaryRadiusPreset(value);
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
         ],
       ),
     );

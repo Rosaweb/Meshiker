@@ -13,6 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../database/isar_service.dart';
+import '../gps/gps_fix_quality.dart';
+import '../gps/stationary_detector.dart';
 import '../gpx/gpx_models.dart';
 import '../gpx/segmentation_engine.dart';
 import '../gpx/segmentation_persistence.dart';
@@ -70,9 +72,15 @@ class RecordingService {
   
   String? _sessionUuid;
   ActivityType _activityType = ActivityType.hiking;
-  // Seuils du filtre anti-bruit de `dailyDistanceMeters` -- voir `_onPosition`.
-  static const double _kMaxAcceptableAccuracyMeters = 30.0;
-  static const double _kMinMovementMeters = 2.0;
+
+  // Filtrage centralisé du bruit GPS (spec-filtrage-gps-centralise.md),
+  // partagé par la distance journalière, le stockage de la trace et le
+  // calibrage podomètre -- voir `_onPosition`.
+  final StationaryDetector _stationaryDetector = StationaryDetector();
+  // Dernier fix ayant passé `GpsFixQuality` (distinct du dernier fix reçu,
+  // `currentPosition.value`, qui peut avoir été rejeté) : sert de référence
+  // pour évaluer le fix suivant et pour calculer la distance journalière.
+  geo.Position? _lastAcceptedFix;
 
   final List<PointGPS> _pendingBatch = [];
   // Historique complet de la session en cours, pour l'affichage de la trace
@@ -517,34 +525,49 @@ class RecordingService {
 
     currentSpeedMps.value = position.speed;
     gpsAccuracyMeters.value = position.accuracy;
-    
+
     _updateSpeedAverages(position.speed);
 
     if (!_isDailyDistanceInitialized) {
       _initDailyDistance();
     }
 
+    // Filtrage centralisé du bruit GPS (spec-filtrage-gps-centralise.md) :
+    // qualité du fix par rapport au dernier fix accepté, et détection de
+    // stationnarité sur fenêtre glissante (seuils configurables par
+    // l'utilisateur). `accepted`/`isStationary` gouvernent ensuite les
+    // trois branches dégradées par le bruit GPS ci-dessous ; tout le reste
+    // de cette méthode continue de voir chaque fix brut sans filtre.
+    final isStationary = _stationaryDetector.update(
+      position,
+      windowDuration:
+          settingsService?.stationaryWindowPreset.duration ?? StationaryWindowPreset.s30.duration,
+      radiusMeters:
+          settingsService?.stationaryRadiusPreset.meters ?? StationaryRadiusPreset.m10.meters,
+    );
+    final previousAcceptedFix = _lastAcceptedFix;
+    final accepted = previousAcceptedFix == null
+        ? GpsFixQuality.isAcceptableFirstFix(position)
+        : GpsFixQuality.isAcceptableFix(previous: previousAcceptedFix, current: position);
+    if (accepted) _lastAcceptedFix = position;
+
     if (lastPos != null) {
       final now = DateTime.now();
       if (lastPos.timestamp.year == now.year &&
           lastPos.timestamp.month == now.month &&
           lastPos.timestamp.day == now.day) {
-        final dist = geo.Geolocator.distanceBetween(
-          lastPos.latitude,
-          lastPos.longitude,
-          position.latitude,
-          position.longitude
-        );
-        // Filtre anti-bruit : un fix imprécis (couvert forestier, bâtiment)
-        // ou un micro-déplacement sous le bruit GPS typique à l'arrêt
-        // (véhicule stationné, téléphone posé) ne doit pas s'ajouter à la
-        // distance du jour -- sans ce filtre, `distanceBetween` étant
-        // toujours positif, la position "dérive" de quelques mètres à
-        // chaque fix et gonfle artificiellement le total sur une journée
-        // entière, y compris quand aucun trajet n'est en cours.
-        final accuracyOk = position.accuracy <= _kMaxAcceptableAccuracyMeters &&
-            lastPos.accuracy <= _kMaxAcceptableAccuracyMeters;
-        if (accuracyOk && dist >= _kMinMovementMeters) {
+        // Un fix rejeté (précision/mouvement/vitesse implausible) ou une
+        // pause détectée ne doit pas s'ajouter à la distance du jour --
+        // sans ce filtre, la position "dérive" de quelques mètres à chaque
+        // fix et gonfle artificiellement le total sur une journée entière,
+        // y compris quand aucun trajet n'est en cours.
+        if (accepted && !isStationary && previousAcceptedFix != null) {
+          final dist = geo.Geolocator.distanceBetween(
+            previousAcceptedFix.latitude,
+            previousAcceptedFix.longitude,
+            position.latitude,
+            position.longitude,
+          );
           dailyDistanceMeters.value += dist;
           _persistDailyDistance(dailyDistanceMeters.value);
         }
@@ -563,29 +586,36 @@ class RecordingService {
     // tourne et que le réglage de calibrage soit actif.
     if (pedometerService?.isActive == true &&
         (settingsService?.pedometerCalibrationEnabled ?? true)) {
-      unawaited(_updatePedometerCalibration(position));
+      unawaited(_updatePedometerCalibration(position, accepted: accepted, isStationary: isStationary));
     }
 
     if (status.value == RecordingStatus.recording) {
-      _pendingBatch.add(PointGPS.create(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        altitude: position.altitude,
-        timestamp: position.timestamp,
-        accuracyMeters: position.accuracy,
-        speedMps: position.speed,
-        headingDegrees: position.heading,
-      ));
-      pointCount.value++;
+      // Un fix rejeté n'est jamais stocké. Un point de pause (`isStationary`)
+      // n'est stocké que si l'utilisateur a explicitement activé
+      // `recordPauses` (spec-filtrage-gps-centralise.md §6.1) -- par défaut,
+      // la trace ne contient pas les positions d'un arrêt prolongé.
+      final recordPauses = settingsService?.recordPauses ?? false;
+      if (accepted && (!isStationary || recordPauses)) {
+        _pendingBatch.add(PointGPS.create(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          altitude: position.altitude,
+          timestamp: position.timestamp,
+          accuracyMeters: position.accuracy,
+          speedMps: position.speed,
+          headingDegrees: position.heading,
+        ));
+        pointCount.value++;
 
-      // Mise à jour des points "live" pour l'affichage dynamique sur la carte
-      // -- basée sur l'historique complet de la session, pas sur
-      // `_pendingBatch`, qui est vidé périodiquement par `_flushBatch`.
-      _liveTrackPoints.add(_pendingBatch.last);
-      livePoints.value = List.of(_liveTrackPoints);
+        // Mise à jour des points "live" pour l'affichage dynamique sur la
+        // carte -- basée sur l'historique complet de la session, pas sur
+        // `_pendingBatch`, qui est vidé périodiquement par `_flushBatch`.
+        _liveTrackPoints.add(_pendingBatch.last);
+        livePoints.value = List.of(_liveTrackPoints);
 
-      if (_pendingBatch.length >= config.pointsPerBatch) {
-        unawaited(_flushBatch());
+        if (_pendingBatch.length >= config.pointsPerBatch) {
+          unawaited(_flushBatch());
+        }
       }
     }
   }
@@ -594,9 +624,20 @@ class RecordingService {
   /// privilégiant une altitude de trace (statique, stable) sur le
   /// différentiel d'altitude GPS live (deux fixs bruités) — cf.
   /// `spec-calibrage-podometre-elevation.md` §4.
-  Future<void> _updatePedometerCalibration(geo.Position position) async {
+  ///
+  /// [accepted]/[isStationary] viennent du filtrage centralisé du bruit GPS
+  /// (spec-filtrage-gps-centralise.md §6) : un fix rejeté est ignoré (aucun
+  /// changement d'état), et une pause détectée réinitialise la référence de
+  /// la fenêtre sans appeler `calibrateWithSlope` -- les pas comptés
+  /// pendant une pause (piétinement, ajustement du sac) ne correspondent à
+  /// aucune distance GPS réelle et fausseraient le ratio distance/pas.
+  Future<void> _updatePedometerCalibration(
+    geo.Position position, {
+    required bool accepted,
+    required bool isStationary,
+  }) async {
     final ped = pedometerService;
-    if (ped == null) return;
+    if (ped == null || !accepted) return;
 
     // Source d'altitude, par priorité : trace chargée dans le Roadmap →
     // détection passive d'une trace suivie → altitude GPS live (repli).
@@ -614,7 +655,7 @@ class RecordingService {
     }
     elevationSource ??= position.altitude;
 
-    if (_lastCalibrationPosition == null) {
+    if (_lastCalibrationPosition == null || isStationary) {
       _lastCalibrationPosition = position;
       _lastCalibrationSteps = ped.steps;
       _lastCalibrationElevation = elevationSource;

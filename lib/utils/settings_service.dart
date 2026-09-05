@@ -25,6 +25,47 @@ enum WaypointLocateOrigin { map, trackManager, roadmap }
 /// `large`/`extraLarge` sont les deux niveaux de grossissement.
 enum FontScaleLevel { normal, large, extraLarge }
 
+/// Durée d'immobilité avant qu'un arrêt soit considéré comme une "pause"
+/// par `StationaryDetector` (cf. `spec-filtrage-gps-centralise.md` §6.1).
+/// En dessous, ce n'est pas une pause, juste du bruit GPS filtré
+/// normalement.
+enum StationaryWindowPreset { s30, min1, min2, min3 }
+
+extension StationaryWindowPresetX on StationaryWindowPreset {
+  Duration get duration => switch (this) {
+        StationaryWindowPreset.s30 => const Duration(seconds: 30),
+        StationaryWindowPreset.min1 => const Duration(minutes: 1),
+        StationaryWindowPreset.min2 => const Duration(minutes: 2),
+        StationaryWindowPreset.min3 => const Duration(minutes: 3),
+      };
+
+  String get label => switch (this) {
+        StationaryWindowPreset.s30 => '30 secondes',
+        StationaryWindowPreset.min1 => '1 minute',
+        StationaryWindowPreset.min2 => '2 minutes',
+        StationaryWindowPreset.min3 => '3 minutes',
+      };
+}
+
+/// Rayon utilisé par `StationaryDetector` pour regrouper les fixes d'une
+/// fenêtre comme "au même endroit" (cf. `spec-filtrage-gps-centralise.md`
+/// §6.1).
+enum StationaryRadiusPreset { m10, m25, m50 }
+
+extension StationaryRadiusPresetX on StationaryRadiusPreset {
+  double get meters => switch (this) {
+        StationaryRadiusPreset.m10 => 10.0,
+        StationaryRadiusPreset.m25 => 25.0,
+        StationaryRadiusPreset.m50 => 50.0,
+      };
+
+  String get label => switch (this) {
+        StationaryRadiusPreset.m10 => '10 mètres',
+        StationaryRadiusPreset.m25 => '25 mètres',
+        StationaryRadiusPreset.m50 => '50 mètres',
+      };
+}
+
 class AppSettings {
   final double barOpacity;
   final UnitSystem unitSystem;
@@ -106,6 +147,15 @@ class SettingsService extends ChangeNotifier {
   /// n'intègre plus de nouvelle mesure (les stats de calibrage restent
   /// figées à leur dernière valeur).
   bool _pedometerCalibrationEnabled = true;
+
+  // Filtrage centralisé du bruit GPS (spec-filtrage-gps-centralise.md §6.1).
+  // Par défaut, les points détectés `isStationary` sont exclus du stockage
+  // de la trace enregistrée -- `recordPauses` permet de les inclure pour
+  // que la trace reflète fidèlement les pauses (repas, photo...).
+  bool _recordPauses = false;
+  StationaryWindowPreset _stationaryWindowPreset = StationaryWindowPreset.s30;
+  StationaryRadiusPreset _stationaryRadiusPreset = StationaryRadiusPreset.m10;
+
   double _edgeSwipeWidth = 40.0;
   String? _gpxStoragePath;
   String? _recordingSubPath; // Nouveau : dossier d'enregistrement par défaut
@@ -227,6 +277,9 @@ class SettingsService extends ChangeNotifier {
   bool get navShowPois => _navShowPois;
   bool get navShowMeasureTools => _navShowMeasureTools;
   bool get pedometerCalibrationEnabled => _pedometerCalibrationEnabled;
+  bool get recordPauses => _recordPauses;
+  StationaryWindowPreset get stationaryWindowPreset => _stationaryWindowPreset;
+  StationaryRadiusPreset get stationaryRadiusPreset => _stationaryRadiusPreset;
   double get edgeSwipeWidth => _edgeSwipeWidth;
   String? get gpxStoragePath => _gpxStoragePath;
   String? get recordingSubPath => _recordingSubPath;
@@ -337,6 +390,12 @@ class SettingsService extends ChangeNotifier {
     _navShowMeasureTools = _prefs.getBool('nav_show_measure_tools') ?? true;
     _pedometerCalibrationEnabled =
         _prefs.getBool('pedometer_calibration_enabled') ?? true;
+
+    _recordPauses = _prefs.getBool('record_pauses_enabled') ?? false;
+    _stationaryWindowPreset = StationaryWindowPreset
+        .values[_prefs.getInt('stationary_min_duration_preset') ?? 0];
+    _stationaryRadiusPreset = StationaryRadiusPreset
+        .values[_prefs.getInt('stationary_radius_preset') ?? 0];
 
     _edgeSwipeWidth = _prefs.getDouble('edge_swipe_width') ?? 40.0;
     _gpxStoragePath = _prefs.getString('gpx_storage_path');
@@ -624,6 +683,24 @@ class SettingsService extends ChangeNotifier {
   Future<void> setPedometerCalibrationEnabled(bool value) async {
     _pedometerCalibrationEnabled = value;
     await _prefs.setBool('pedometer_calibration_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setRecordPauses(bool value) async {
+    _recordPauses = value;
+    await _prefs.setBool('record_pauses_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setStationaryWindowPreset(StationaryWindowPreset preset) async {
+    _stationaryWindowPreset = preset;
+    await _prefs.setInt('stationary_min_duration_preset', preset.index);
+    notifyListeners();
+  }
+
+  Future<void> setStationaryRadiusPreset(StationaryRadiusPreset preset) async {
+    _stationaryRadiusPreset = preset;
+    await _prefs.setInt('stationary_radius_preset', preset.index);
     notifyListeners();
   }
 
