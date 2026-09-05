@@ -198,7 +198,7 @@ Le Roadmap affiche, dans l'ordre du parcours, tous les waypoints de la trace act
 
 Une ligne verte matérialise votre progression dans la liste et descend automatiquement à mesure que vous dépassez les waypoints (dépassés = grisés).
 
-### Comment choisir ma destination sur la trace ?
+### Comment choisir un point d'étape sur la trace ?
 
 Depuis le volet Navigation, bouton **Choisir un point** (section Destination) : ouvre le Roadmap en mode sélection — touchez un waypoint pour en faire votre destination.
 
