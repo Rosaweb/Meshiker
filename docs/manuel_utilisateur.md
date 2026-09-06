@@ -31,7 +31,7 @@ Dans **Paramètres → Paramètres d'affichage**, le curseur **Zones de swipe** 
 
 En bas du volet Paramètres, un sélecteur à deux positions change le mode d'affichage de la carte :
 - **GPX** : affiche vos traces GPX/KML importées.
-- **MESH** : affiche la toile de sentiers partagée (voir section 7) et bascule la carte en mode édition du mesh.
+- **MESH** : affiche la toile de sentiers partagée (voir section 8) et bascule la carte en mode édition du mesh.
 
 ---
 
@@ -45,7 +45,7 @@ En bas de la carte se trouve une barre d'outils. Elle peut être agrandie en gli
 - Icône de **boussole** : verrouille la rotation de la carte sur le cap du téléphone. Un nouvel appui désactive la rotation et remet la carte au nord.
 - **Recentrer** (icône de ciblage) : recentre la carte sur votre position GPS actuelle et réactive le suivi automatique (désactivé dès que vous déplacez la carte manuellement).
 - **GPS** : active ou désactive la localisation (texte bleu = activée, rouge = désactivée).
-- **MAP** : fait défiler vos fonds de carte favoris (voir section 9).
+- **MAP** : fait défiler vos fonds de carte favoris (voir section 10).
 - **Zoom −/+**.
 - En rangée étendue : **afficher/masquer les waypoints**, **afficher/masquer les traces GPX**, et le bouton d'**enregistrement GPS** (voir section 3).
 
@@ -208,7 +208,35 @@ Aucune trace n'est chargée. Ouvrez une trace depuis le Track Manager et choisis
 
 ---
 
-## 7. Le mode Mesh (toile de sentiers partagée)
+## 7. La météo
+
+### Comment consulter la météo ?
+
+Dans le volet Navigation, la carte **Météo** fonctionne comme le podomètre :
+
+- **Un appui** l'active (et lance le premier chargement) ou la rafraîchit. Le cadre s'épaissit quand elle est active. L'icône affichée résume la **tendance des 4 prochaines heures** : s'il fait beau maintenant mais qu'une averse arrive dans 2 h, c'est l'icône de pluie qui s'affiche.
+- **Un double appui** ouvre la **page Météo** en plein écran.
+
+### Qu'affiche la page Météo ?
+
+- **Aujourd'hui** : heure par heure jusqu'à minuit, avec icône, risque de pluie, millimètres, vent, température (et ressenti) et pression.
+- **4 jours suivants** : une ligne par jour (icône, mini/maxi, risque de pluie). Touchez une ligne pour dérouler le détail **jour (7 h–19 h) / nuit (19 h–7 h)**.
+
+### Prévisions le long d'une trace (Premium)
+
+Avec un abonnement Premium **et** une trace chargée via « Naviguer », la section « Aujourd'hui » ne se limite plus à votre position : elle place un point de prévision par heure restante **le long du parcours**, en tenant compte de votre vitesse (celle de la sortie en cours si disponible, sinon votre moyenne historique, sinon 4,5 km/h), et affiche le kilométrage de chaque point. Sans trace chargée, la page reste centrée sur votre position actuelle.
+
+### La météo est indisponible
+
+La météo nécessite une connexion internet : en zone blanche, la page l'indique et aucune donnée n'est chargée. Le reste de l'application fonctionne normalement hors-ligne.
+
+### Unités
+
+La météo suit le réglage **Unités météo** (Paramètres système), indépendant du réglage général métrique/impérial. La pression est toujours en hPa.
+
+---
+
+## 8. Le mode Mesh (toile de sentiers partagée)
 
 ### Qu'est-ce que le mesh ?
 
@@ -224,7 +252,7 @@ Basculez le sélecteur d'affichage sur **MESH** (bas du volet Paramètres). Les 
 
 ---
 
-## 8. Mesure de distance et d'azimut
+## 9. Mesure de distance et d'azimut
 
 ### Comment mesurer une distance depuis ma position ?
 
@@ -240,7 +268,7 @@ Appuyez sur la croix (✕) affichée à gauche de la barre d'outils pendant une 
 
 ---
 
-## 9. Les cartes hors-ligne
+## 10. Les cartes hors-ligne
 
 ### Comment choisir mon fond de carte ?
 
@@ -265,7 +293,7 @@ Un bouton **Importer** existe dans l'onglet Hors-ligne, mais cette fonction n'es
 
 ---
 
-## 10. Paramètres d'affichage
+## 11. Paramètres d'affichage
 
 Accessible via **Paramètres → Paramètres d'affichage**.
 
@@ -279,11 +307,11 @@ Accessible via **Paramètres → Paramètres d'affichage**.
 
 ---
 
-## 11. Paramètres système
+## 12. Paramètres système
 
 Accessible via **Paramètres → Paramètres système**.
 
-- **Unités de mesure** : métrique/impérial, et Celsius/Fahrenheit.
+- **Unités de mesure** : métrique/impérial pour les distances/altitudes, plus un réglage **Unités météo** distinct (métrique/impérial) pour la température, le vent et les précipitations. La pression reste en hPa.
 - **Stockage GPX/KML** : dossier source des traces et sous-dossier d'enregistrement (voir section 5).
 - **Cache des cartes** : limite de taille (100 à 5000 Mo) et bouton pour vider le cache de tuiles.
 - **Réseau et téléchargement** : option pour restreindre les téléchargements de cartes hors-ligne au Wi-Fi.
@@ -291,7 +319,7 @@ Accessible via **Paramètres → Paramètres système**.
 
 ---
 
-## 12. Mon compte et abonnement
+## 13. Mon compte et abonnement
 
 Accessible via **Paramètres → Mon compte**.
 
@@ -302,7 +330,7 @@ Accessible via **Paramètres → Mon compte**.
 
 ---
 
-## 13. Aide
+## 14. Aide
 
 **Paramètres → Aide** affiche ce manuel utilisateur dans son intégralité. Pour un compte Premium avec l'assistant IA activé, une barre de question rapide reste ancrée en bas de l'écran pour poser directement une question à l'assistant sans quitter l'aide.
 
