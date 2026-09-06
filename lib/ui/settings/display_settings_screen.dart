@@ -179,6 +179,28 @@ class DisplaySettingsScreen extends StatelessWidget {
                   ),
                 ),
 
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Couleur par défaut des traces', style: labelStyle),
+                  subtitle: const Text('Traces GPX/KML sans couleur propre',
+                      style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  trailing: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: settings.defaultTraceColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white24),
+                    ),
+                  ),
+                  onTap: () => _pickColor(
+                    context,
+                    title: 'Couleur par défaut des traces',
+                    initial: settings.defaultTraceColor,
+                    onApply: settings.setDefaultTraceColor,
+                  ),
+                ),
+
                 const SizedBox(height: 8),
                 const Text('Aperçu des traces GPX', style: labelStyle),
                 const SizedBox(height: 4),
@@ -305,14 +327,27 @@ class DisplaySettingsScreen extends StatelessWidget {
     );
   }
 
-  void _pickAccentColor(BuildContext context, SettingsService settings) {
-    Color selected = settings.accentColor;
+  void _pickAccentColor(BuildContext context, SettingsService settings) =>
+      _pickColor(
+        context,
+        title: 'Couleur du thème',
+        initial: settings.accentColor,
+        onApply: settings.setAccentColor,
+      );
+
+  void _pickColor(
+    BuildContext context, {
+    required String title,
+    required Color initial,
+    required ValueChanged<Color> onApply,
+  }) {
+    Color selected = initial;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('Couleur du thème', style: TextStyle(color: Colors.white)),
+          title: Text(title, style: const TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: ColorPicker(
               pickerColor: selected,
@@ -327,7 +362,7 @@ class DisplaySettingsScreen extends StatelessWidget {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('ANNULER')),
             TextButton(
               onPressed: () {
-                settings.setAccentColor(selected);
+                onApply(selected);
                 Navigator.pop(context);
               },
               child: const Text('APPLIQUER', style: TextStyle(color: Colors.greenAccent)),

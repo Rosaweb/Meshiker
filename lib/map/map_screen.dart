@@ -834,6 +834,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     viewModel: widget.viewModel,
                     isarService: widget.isarService,
                     strokeWidth: widget.settingsService.traceStrokeWidth,
+                    defaultColor: widget.settingsService.defaultTraceColor,
                   ),
                 _PoisLayer(viewModel: widget.viewModel),
                 if (widget.settingsService.showAllWaypoints ||
@@ -1772,11 +1773,13 @@ class _ActiveTracesLayer extends StatelessWidget {
     required this.viewModel,
     required this.isarService,
     required this.strokeWidth,
+    required this.defaultColor,
   });
 
   final MapViewModel viewModel;
   final IsarService isarService;
   final double strokeWidth;
+  final Color defaultColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1806,7 +1809,7 @@ class _ActiveTracesLayer extends StatelessWidget {
                   points: points,
                   color: trace.colorHex != null
                       ? Color(trace.colorHex!)
-                      : Colors.red,
+                      : defaultColor,
                   strokeWidth: strokeWidth,
                 ));
               }

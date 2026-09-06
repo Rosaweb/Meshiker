@@ -134,6 +134,10 @@ class SettingsService extends ChangeNotifier {
   // Épaisseur du trait des traces GPX (et de la trace en cours
   // d'enregistrement) affichées sur la carte, en pixels logiques.
   double _traceStrokeWidth = 4.0;
+  // Couleur de repli des traces GPX/KML sur la carte : utilisée pour toute
+  // trace sans couleur propre (`Trace.colorHex`). Rouge par défaut, pour
+  // rester identique au comportement historique.
+  int _defaultTraceColorHex = 0xFFF44336;
   FontScaleLevel _fontScaleLevel = FontScaleLevel.normal;
   bool _showOsmPois = false;
   Set<String> _enabledOsmPoiCategoryIds = kOsmPoiCategories.map((c) => c.id).toSet();
@@ -260,6 +264,7 @@ class SettingsService extends ChangeNotifier {
   Color get accentColor => Color(_accentColorHex);
   double get waypointIconSize => _waypointIconSize;
   double get traceStrokeWidth => _traceStrokeWidth;
+  Color get defaultTraceColor => Color(_defaultTraceColorHex);
   FontScaleLevel get fontScaleLevel => _fontScaleLevel;
   bool get showOsmPois => _showOsmPois;
   Set<String> get enabledOsmPoiCategoryIds => _enabledOsmPoiCategoryIds;
@@ -385,6 +390,7 @@ class SettingsService extends ChangeNotifier {
     _accentColorHex = _prefs.getInt('accent_color') ?? 0xFF69F0AE;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
     _traceStrokeWidth = _prefs.getDouble('trace_stroke_width') ?? 4.0;
+    _defaultTraceColorHex = _prefs.getInt('default_trace_color') ?? 0xFFF44336;
     _fontScaleLevel = FontScaleLevel.values[_prefs.getInt('font_scale_level') ?? 0];
     _showOsmPois = _prefs.getBool('show_osm_pois') ?? false;
     final enabledOsmCats = _prefs.getStringList('enabled_osm_poi_categories');
@@ -728,6 +734,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setTraceStrokeWidth(double value) async {
     _traceStrokeWidth = value;
     await _prefs.setDouble('trace_stroke_width', value);
+    notifyListeners();
+  }
+
+  Future<void> setDefaultTraceColor(Color color) async {
+    _defaultTraceColorHex = color.toARGB32();
+    await _prefs.setInt('default_trace_color', _defaultTraceColorHex);
     notifyListeners();
   }
 

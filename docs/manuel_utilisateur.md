@@ -304,6 +304,7 @@ Accessible via **Paramètres → Paramètres d'affichage**.
 - **Taille icônes Waypoints** : ajuste la taille des marqueurs sur la carte.
 - **Ouverture de la carte** : choisissez si l'application rouvre sur la dernière position consultée, ou sur un point personnalisé que vous définissez en touchant la carte.
 - **Épaisseur du trait sur la carte** (section Traces) : de 1 à 10 pixels, s'applique aux traces GPX affichées et à la trace en cours d'enregistrement.
+- **Couleur par défaut des traces** (section Traces) : couleur appliquée aux traces GPX/KML qui n'ont pas de couleur propre définie dans le Track Manager.
 - **Personnaliser le volet de navigation** : active/désactive individuellement chaque bloc d'information du volet Navigation (vitesse, distance du jour, distances sur la trace, précision GPS, satellites, podomètre, prochain waypoint, destination, outils de mesure).
 
 ---
