@@ -158,6 +158,30 @@ class DisplaySettingsScreen extends StatelessWidget {
                   ),
                 ),
 
+                const SizedBox(height: 8),
+                const Text('Couleur du marqueur de position', style: labelStyle),
+                Row(
+                  children: [
+                    for (final c in LocationMarkerColor.values)
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Radio<LocationMarkerColor>(
+                              value: c,
+                              groupValue: settings.locationMarkerColor,
+                              onChanged: (v) => v != null
+                                  ? settings.setLocationMarkerColor(v)
+                                  : null,
+                              activeColor: Colors.greenAccent,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            Text(c.label, style: labelStyle),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+
                 const Divider(color: Colors.white12, height: 24),
                 const Text('TRACES', style: headerStyle),
                 const SizedBox(height: 8),

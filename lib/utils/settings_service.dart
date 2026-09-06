@@ -4,6 +4,21 @@ import '../map/osm_poi_categories.dart';
 
 enum UnitSystem { metric, imperial }
 
+/// Couleur du marqueur de position (flèche de cap / point) sur la carte.
+enum LocationMarkerColor { blue, red }
+
+extension LocationMarkerColorX on LocationMarkerColor {
+  Color get color => switch (this) {
+        LocationMarkerColor.blue => Colors.blue,
+        LocationMarkerColor.red => Colors.red,
+      };
+
+  String get label => switch (this) {
+        LocationMarkerColor.blue => 'Bleu',
+        LocationMarkerColor.red => 'Rouge',
+      };
+}
+
 enum MeasurementMode { none, fromGps, betweenPoints }
 
 enum MapCreationStep { none, selectOrigin, stretchArea, adjustArea, finalize }
@@ -136,6 +151,9 @@ class SettingsService extends ChangeNotifier {
   // trace sans couleur propre (`Trace.colorHex`). Rouge par défaut, pour
   // rester identique au comportement historique.
   int _defaultTraceColorHex = 0xFFF44336;
+  // Couleur du marqueur de position (flèche de cap, point, halo). Bleu par
+  // défaut.
+  LocationMarkerColor _locationMarkerColor = LocationMarkerColor.blue;
   FontScaleLevel _fontScaleLevel = FontScaleLevel.normal;
   bool _showOsmPois = false;
   Set<String> _enabledOsmPoiCategoryIds = kOsmPoiCategories.map((c) => c.id).toSet();
@@ -262,6 +280,7 @@ class SettingsService extends ChangeNotifier {
   double get waypointIconSize => _waypointIconSize;
   double get traceStrokeWidth => _traceStrokeWidth;
   Color get defaultTraceColor => Color(_defaultTraceColorHex);
+  LocationMarkerColor get locationMarkerColor => _locationMarkerColor;
   FontScaleLevel get fontScaleLevel => _fontScaleLevel;
   bool get showOsmPois => _showOsmPois;
   Set<String> get enabledOsmPoiCategoryIds => _enabledOsmPoiCategoryIds;
@@ -382,6 +401,8 @@ class SettingsService extends ChangeNotifier {
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
     _traceStrokeWidth = _prefs.getDouble('trace_stroke_width') ?? 4.0;
     _defaultTraceColorHex = _prefs.getInt('default_trace_color') ?? 0xFFF44336;
+    _locationMarkerColor = LocationMarkerColor
+        .values[_prefs.getInt('location_marker_color') ?? 0];
     _fontScaleLevel = FontScaleLevel.values[_prefs.getInt('font_scale_level') ?? 0];
     _showOsmPois = _prefs.getBool('show_osm_pois') ?? false;
     final enabledOsmCats = _prefs.getStringList('enabled_osm_poi_categories');
@@ -731,6 +752,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setDefaultTraceColor(Color color) async {
     _defaultTraceColorHex = color.toARGB32();
     await _prefs.setInt('default_trace_color', _defaultTraceColorHex);
+    notifyListeners();
+  }
+
+  Future<void> setLocationMarkerColor(LocationMarkerColor value) async {
+    _locationMarkerColor = value;
+    await _prefs.setInt('location_marker_color', value.index);
     notifyListeners();
   }
 

@@ -858,7 +858,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
                 _LocationMarkerLayer(
                     recordingService: widget.recordingService,
-                    heading: _currentHeading),
+                    heading: _currentHeading,
+                    color: widget.settingsService.locationMarkerColor.color),
                 if (widget.settingsService.measurementMode !=
                     MeasurementMode.none)
                   _MeasurementLayer(
@@ -2063,7 +2064,12 @@ class _MapScaleWidget extends StatelessWidget {
 class _LocationMarkerLayer extends StatelessWidget {
   final RecordingService recordingService;
   final double? heading;
-  const _LocationMarkerLayer({required this.recordingService, this.heading});
+  final Color color;
+  const _LocationMarkerLayer({
+    required this.recordingService,
+    required this.color,
+    this.heading,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2082,12 +2088,11 @@ class _LocationMarkerLayer extends StatelessWidget {
                 alignment: Alignment.center,
                 children: [
                   // Halo pulsant simplifié
-                  _PulsingHalo(),
+                  _PulsingHalo(color: color),
                   if (heading != null)
                     Transform.rotate(
                       angle: (heading! * (pi / 180)),
-                      child: const Icon(Icons.navigation,
-                          color: Colors.blue, size: 30),
+                      child: Icon(Icons.navigation, color: color, size: 30),
                     )
                   else
                     Container(
@@ -2095,7 +2100,7 @@ class _LocationMarkerLayer extends StatelessWidget {
                       height: 18,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.red,
+                        color: color,
                         border: Border.all(color: Colors.white, width: 3),
                         boxShadow: [
                           BoxShadow(
@@ -2116,6 +2121,9 @@ class _LocationMarkerLayer extends StatelessWidget {
 }
 
 class _PulsingHalo extends StatefulWidget {
+  final Color color;
+  const _PulsingHalo({required this.color});
+
   @override
   State<_PulsingHalo> createState() => _PulsingHaloState();
 }
@@ -2149,7 +2157,8 @@ class _PulsingHaloState extends State<_PulsingHalo>
           height: 20 + (40 * _controller.value),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.blue.withValues(alpha: 0.3 * (1 - _controller.value)),
+            color: widget.color
+                .withValues(alpha: 0.3 * (1 - _controller.value)),
           ),
         );
       },
