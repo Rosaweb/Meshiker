@@ -12,7 +12,7 @@ import 'search/local_search_engine.dart';
 import 'ui/main_navigation_screen.dart';
 import 'utils/settings_service.dart';
 import 'utils/pedometer_service.dart';
-import 'utils/weather_service.dart';
+import 'weather/weather_service.dart';
 import 'utils/auth_service.dart';
 import 'utils/crash_reporting_service.dart';
 import 'utils/subscription_service.dart';
@@ -116,7 +116,7 @@ void main() async {
       );
       final mapViewModel = MapViewModel(isarService: isarService);
       final pedometerService = PedometerService();
-      final weatherService = WeatherService();
+      final weatherService = WeatherService(settings: settingsService);
       final recordingService = RecordingService(
         isarService: isarService,
         pedometerService: pedometerService,

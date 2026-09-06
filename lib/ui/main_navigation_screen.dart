@@ -14,7 +14,8 @@ import '../search/local_search_engine.dart';
 import '../utils/settings_service.dart';
 import '../utils/geo_utils.dart';
 import '../utils/pedometer_service.dart';
-import '../utils/weather_service.dart';
+import '../weather/weather_service.dart';
+import '../weather/weather_conditions.dart';
 import '../utils/subscription_service.dart';
 import 'weather_screen.dart';
 import 'pedometer_screen.dart';
@@ -931,20 +932,25 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
           animation: widget.weatherService,
           builder: (context, _) {
             final weather = widget.weatherService;
-            final code = weather.next4HoursWeatherCode;
+            final condition = weather.next4HoursCondition;
             final label = !weather.isActive
                 ? 'Météo'
                 : (weather.isLoading
                     ? 'Chargement...'
                     : (weather.error ??
-                        (code != null ? weatherCodeLabel(code) : 'Météo')));
+                        (condition != null
+                            ? weatherConditionLabelFr(condition)
+                            : 'Météo')));
             return _buildStatCard(
               label,
               '',
-              code != null ? weatherCodeIcon(code) : Icons.cloud_outlined,
+              condition != null
+                  ? weatherConditionIcon(condition)
+                  : Icons.cloud_outlined,
               isActive: weather.isActive,
-              valueWidget: (weather.isActive && code != null)
-                  ? Icon(weatherCodeIcon(code), color: Colors.white, size: 30)
+              valueWidget: (weather.isActive && condition != null)
+                  ? Icon(weatherConditionIcon(condition),
+                      color: Colors.white, size: 30)
                   : null,
               onTap: () async {
                 final pos = widget.recordingService.currentPosition.value;
