@@ -159,12 +159,16 @@ class DisplaySettingsScreen extends StatelessWidget {
                 ),
 
                 const Divider(color: Colors.white12, height: 24),
-                const Text('APERÇU DES TRACES GPX', style: headerStyle),
+                const Text('TRACES', style: headerStyle),
+                const SizedBox(height: 8),
+
+                const Text('Aperçu des traces GPX', style: labelStyle),
                 const SizedBox(height: 4),
                 Row(
                   children: [
                     const Expanded(
-                      child: Text('Fond de carte des aperçus', style: labelStyle),
+                      child: Text('Fond de carte des aperçus',
+                          style: TextStyle(color: Colors.white38, fontSize: 11)),
                     ),
                     DropdownButton<String?>(
                       value: settings.tracePreviewMapSourceId,
