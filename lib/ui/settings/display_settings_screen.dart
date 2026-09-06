@@ -29,7 +29,7 @@ class DisplaySettingsScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               children: [
-                const Text('INTERFACE ET CARTE', style: headerStyle),
+                const Text('INTERFACE', style: headerStyle),
                 const SizedBox(height: 12),
 
                 // Couleur d'accent : cadres/titres/icônes de l'écran Outils
@@ -91,40 +91,11 @@ class DisplaySettingsScreen extends StatelessWidget {
                   ),
                 ),
 
-                // Échelle
-                Row(
-                  children: [
-                    const Text('Afficher l\'échelle', style: labelStyle),
-                    const Spacer(),
-                    Switch(
-                      value: settings.showScale,
-                      onChanged: (v) => settings.setShowScale(v),
-                      activeThumbColor: Colors.greenAccent,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-                // Taille icônes
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Taille icônes Waypoints', style: labelStyle),
-                    Text('${settings.waypointIconSize.round()} px', style: valueStyle),
-                  ],
-                ),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
-                  child: Slider(
-                    value: settings.waypointIconSize,
-                    min: 20, max: 60, divisions: 8,
-                    onChanged: (v) => settings.setWaypointIconSize(v),
-                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
-                  ),
-                ),
-
                 const Divider(color: Colors.white12, height: 24),
-                const Text('OUVERTURE DE LA CARTE', style: headerStyle),
+                const Text('CARTE ET WAYPOINTS', style: headerStyle),
+                const SizedBox(height: 8),
+
+                const Text('Ouverture de la carte', style: labelStyle),
                 const SizedBox(height: 4),
                 RadioListTile<MapStartupMode>(
                   contentPadding: EdgeInsets.zero,
@@ -154,6 +125,37 @@ class DisplaySettingsScreen extends StatelessWidget {
                     settings.startPickStartupCenter();
                     Navigator.pop(context);
                   },
+                ),
+
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text('Afficher l\'échelle', style: labelStyle),
+                    const Spacer(),
+                    Switch(
+                      value: settings.showScale,
+                      onChanged: (v) => settings.setShowScale(v),
+                      activeThumbColor: Colors.greenAccent,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Taille icônes Waypoints', style: labelStyle),
+                    Text('${settings.waypointIconSize.round()} px', style: valueStyle),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
+                  child: Slider(
+                    value: settings.waypointIconSize,
+                    min: 20, max: 60, divisions: 8,
+                    onChanged: (v) => settings.setWaypointIconSize(v),
+                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
+                  ),
                 ),
 
                 const Divider(color: Colors.white12, height: 24),
