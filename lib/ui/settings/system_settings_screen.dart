@@ -111,50 +111,11 @@ class SystemSettingsScreen extends StatelessWidget {
               ),
             ],
           ),
-          const Divider(color: Colors.white12, height: 24),
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Unités météo',
-                style: TextStyle(color: Colors.white54, fontSize: 12)),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Radio<UnitSystem>(
-                      value: UnitSystem.metric,
-                      groupValue: settings.weatherUnitSystem,
-                      onChanged: (v) => v != null ? settings.setWeatherUnitSystem(v) : null,
-                      activeColor: Colors.greenAccent,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    const Text('Métrique', style: labelStyle),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    Radio<UnitSystem>(
-                      value: UnitSystem.imperial,
-                      groupValue: settings.weatherUnitSystem,
-                      onChanged: (v) => v != null ? settings.setWeatherUnitSystem(v) : null,
-                      activeColor: Colors.greenAccent,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    const Text('Impérial', style: labelStyle),
-                  ],
-                ),
-              ),
-            ],
-          ),
           const Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'Température, vent et précipitations de la météo. Indépendant du '
-              'réglage ci-dessus. La pression reste en hPa.',
+              'S\'applique à toute l\'application, météo comprise (température, '
+              'vent, précipitations). La pression reste en hPa.',
               style: TextStyle(color: Colors.white38, fontSize: 11),
             ),
           ),

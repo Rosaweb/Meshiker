@@ -76,7 +76,7 @@ class WeatherService extends ChangeNotifier {
         lat: lat,
         lon: lon,
         hours: 4,
-        units: _settings?.weatherUnitSystem ?? UnitSystem.metric,
+        units: _settings?.unitSystem ?? UnitSystem.metric,
       );
     } on WeatherUnavailable catch (e) {
       _error = e.frenchMessage;

@@ -85,13 +85,11 @@ class SettingsService extends ChangeNotifier {
   
   double _barOpacity = 0.6;
   double _mainMenuOpacity = 0.6;
+  // Système d'unités unique pour toute l'application, météo comprise :
+  // transmis tel quel en `unitsSystem` à la Weather API (bascule tout le
+  // payload, aucune conversion côté client). Remplace l'ancien toggle
+  // Celsius/Fahrenheit.
   UnitSystem _unitSystem = UnitSystem.metric;
-  // Unités d'affichage de la météo (§5 spec-meteo.md), indépendantes du
-  // réglage général : transmises telles quelles en `unitsSystem` à la
-  // Weather API (bascule tout le payload, aucune conversion côté client).
-  // Défaut = réglage général au premier lancement, modifiable ensuite
-  // séparément. Remplace l'ancien toggle Celsius/Fahrenheit.
-  UnitSystem _weatherUnitSystem = UnitSystem.metric;
   bool _showScale = true;
   bool _reversePanels = false;
   bool _showAllWaypoints = true;
@@ -236,7 +234,6 @@ class SettingsService extends ChangeNotifier {
   double get barOpacity => _barOpacity;
   double get mainMenuOpacity => _mainMenuOpacity;
   UnitSystem get unitSystem => _unitSystem;
-  UnitSystem get weatherUnitSystem => _weatherUnitSystem;
   bool get showScale => _showScale;
   bool get reversePanels => _reversePanels;
   bool get showAllWaypoints => _showAllWaypoints;
@@ -358,12 +355,6 @@ class SettingsService extends ChangeNotifier {
     _barOpacity = _prefs.getDouble('bar_opacity') ?? 0.6;
     _mainMenuOpacity = _prefs.getDouble('main_menu_opacity') ?? 0.6;
     _unitSystem = UnitSystem.values[_prefs.getInt('unit_system') ?? 0];
-    // Pas de valeur enregistrée -> on reprend le réglage général (déjà lu
-    // juste au-dessus). Ensuite indépendant.
-    final savedWeatherUnit = _prefs.getInt('weather_unit_system');
-    _weatherUnitSystem = savedWeatherUnit != null
-        ? UnitSystem.values[savedWeatherUnit]
-        : _unitSystem;
     _showScale = _prefs.getBool('show_scale') ?? true;
     _reversePanels = _prefs.getBool('reverse_panels') ?? false;
     _showAllWaypoints = _prefs.getBool('show_all_waypoints') ?? true;
@@ -818,12 +809,6 @@ class SettingsService extends ChangeNotifier {
   Future<void> setUnitSystem(UnitSystem system) async {
     _unitSystem = system;
     await _prefs.setInt('unit_system', system.index);
-    notifyListeners();
-  }
-
-  Future<void> setWeatherUnitSystem(UnitSystem system) async {
-    _weatherUnitSystem = system;
-    await _prefs.setInt('weather_unit_system', system.index);
     notifyListeners();
   }
 

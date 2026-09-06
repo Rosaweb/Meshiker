@@ -232,7 +232,7 @@ La météo nécessite une connexion internet : en zone blanche, la page l'indiqu
 
 ### Unités
 
-La météo suit le réglage **Unités météo** (Paramètres système), indépendant du réglage général métrique/impérial. La pression est toujours en hPa.
+La météo suit le réglage **Unités de mesure** métrique/impérial des Paramètres système (le même que pour le reste de l'application). La pression est toujours en hPa.
 
 ---
 
@@ -313,7 +313,7 @@ Accessible via **Paramètres → Paramètres d'affichage**.
 
 Accessible via **Paramètres → Paramètres système**.
 
-- **Unités de mesure** : métrique/impérial pour les distances/altitudes, plus un réglage **Unités météo** distinct (métrique/impérial) pour la température, le vent et les précipitations. La pression reste en hPa.
+- **Unités de mesure** : un seul choix métrique/impérial pour toute l'application — distances, altitudes, et météo (température, vent, précipitations). La pression reste en hPa.
 - **Stockage GPX/KML** : dossier source des traces et sous-dossier d'enregistrement (voir section 5).
 - **Cache des cartes** : limite de taille (100 à 5000 Mo) et bouton pour vider le cache de tuiles.
 - **Réseau et téléchargement** : option pour restreindre les téléchargements de cartes hors-ligne au Wi-Fi.

@@ -53,7 +53,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
     final recording = context.read<RecordingService>();
     final isar = context.read<IsarService>();
     final isPremium = context.read<SubscriptionService>().isPremium;
-    final units = settings.weatherUnitSystem;
+    final units = settings.unitSystem;
 
     final pos = recording.currentPosition.value;
     if (pos == null) {
