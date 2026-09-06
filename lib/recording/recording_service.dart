@@ -95,6 +95,10 @@ class RecordingService {
   // Altitude retenue au dernier point de calibrage : plus nécessairement
   // `position.altitude` (peut venir d'une trace suivie, cf. §4.1 du spec).
   double _lastCalibrationElevation = 0;
+  // Suit l'état actif du podomètre vu par le dernier `_onPosition`, pour
+  // détecter une transition inactif → actif et ré-armer le baseline de
+  // calibrage (cf. `_resetPedometerCalibrationBaseline`).
+  bool _pedometerCalibrationArmed = false;
 
   final _onTraceDetector = OnTraceDetector();
   // localUuid des segments dont on a déjà tenté l'enrichissement altimétrique
@@ -309,6 +313,13 @@ class RecordingService {
         debugPrint('RecordingService: In-app location toggle changed: $enabled');
         if (enabled) {
           startPositionMonitoring();
+        } else {
+          // Sans arrêt explicite, le flux GPS continuait de tourner malgré le
+          // bouton "off" affiché à l'écran : la reprise ne correspondait alors
+          // à aucune vraie coupure, et le baseline de calibrage du podomètre
+          // ne se réarmait jamais après une pause GPS seule (podomètre resté
+          // actif) -- cf. `stopPositionMonitoring`.
+          stopPositionMonitoring();
         }
 
         // Répercute le réglage "calibrage podomètre actif" sur le service
@@ -340,6 +351,39 @@ class RecordingService {
     unawaited(refreshNavigationStats());
   }
 
+  /// Coupe le flux GPS de localisation (hors enregistrement de trace, cf.
+  /// `pause()`/`stop()` pour ce cas). Toute reprise ultérieure repart d'un
+  /// baseline de calibrage podomètre vierge (via `startPositionMonitoring`)
+  /// et ne "ponte" pas la distance du jour au travers de la coupure
+  /// (`_lastAcceptedFix` remis à null).
+  void stopPositionMonitoring() {
+    _positionSub?.cancel();
+    _positionSub = null;
+    _gnssSub?.cancel();
+    _gnssSub = null;
+    _signalLostTimer?.cancel();
+    _signalLostTimer = null;
+    _lastAcceptedFix = null;
+    gpsStatus.value = '-';
+    currentPosition.value = null;
+  }
+
+  /// Invalide le point de référence du calibrage podomètre (position, pas et
+  /// altitude au dernier calibrage). À appeler à chaque reprise du flux GPS
+  /// ou de la lecture de pas : sans cela, le premier calibrage après une
+  /// pause "ponte" la distance parcourue avant l'arrêt à celle parcourue
+  /// après la reprise via une simple distance à vol d'oiseau entre les deux
+  /// positions. Sur un aller-retour (même itinéraire dans les deux sens),
+  /// l'arrêt et la reprise ont lieu au même endroit : cette distance à vol
+  /// d'oiseau reste artificiellement petite alors que le nombre de pas
+  /// cumulés (aller + retour) est bien réel, ce qui fausse le ratio
+  /// pas/mètre et retarde d'autant le calibrage du trajet retour.
+  void _resetPedometerCalibrationBaseline() {
+    _lastCalibrationPosition = null;
+    _lastCalibrationSteps = 0;
+    _lastCalibrationElevation = 0;
+  }
+
   void startPositionMonitoring() {
     // On ne démarre le flux que si le bouton de l'app est activé
     if (settingsService != null && !settingsService!.locationEnabled) {
@@ -350,7 +394,8 @@ class RecordingService {
 
     _positionSub?.cancel();
     _gnssSub?.cancel();
-    
+    _resetPedometerCalibrationBaseline();
+
     debugPrint('RecordingService: Starting position stream...');
     gpsStatus.value = 'recherche GPS';
     
@@ -457,6 +502,7 @@ class RecordingService {
     pointCount.value = 0;
     livePoints.value = [];
     magnetEnabled.value = true;
+    _resetPedometerCalibrationBaseline();
 
     await isarService.isar.writeTxn(
       () => isarService.isar.recordingDrafts.put(
@@ -584,9 +630,20 @@ class RecordingService {
     // (trop peu d'utilisateurs enregistrent réellement) — il suffit que la
     // localisation soit active (on est dans `_onPosition`), que le podomètre
     // tourne et que le réglage de calibrage soit actif.
-    if (pedometerService?.isActive == true &&
-        (settingsService?.pedometerCalibrationEnabled ?? true)) {
+    final pedometerCalibrationActive = pedometerService?.isActive == true &&
+        (settingsService?.pedometerCalibrationEnabled ?? true);
+    if (pedometerCalibrationActive) {
+      // Transition inactif → actif (podomètre coupé puis relancé, ou GPS
+      // repris, sans que la position ait bougé) : le baseline précédent
+      // daterait d'avant la pause et fausserait le premier calibrage suivant
+      // la reprise -- cf. `_resetPedometerCalibrationBaseline`.
+      if (!_pedometerCalibrationArmed) {
+        _resetPedometerCalibrationBaseline();
+        _pedometerCalibrationArmed = true;
+      }
       unawaited(_updatePedometerCalibration(position, accepted: accepted, isStationary: isStationary));
+    } else {
+      _pedometerCalibrationArmed = false;
     }
 
     if (status.value == RecordingStatus.recording) {
@@ -1011,6 +1068,7 @@ class RecordingService {
   Future<void> resume() async {
     if (status.value != RecordingStatus.paused) return;
     _nextPointStartsNewSegment = true;
+    _resetPedometerCalibrationBaseline();
     _positionSub = geo.Geolocator
         .getPositionStream(locationSettings: _buildLocationSettings())
         .listen(_onPosition);
