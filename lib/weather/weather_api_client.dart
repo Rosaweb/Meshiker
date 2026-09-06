@@ -66,6 +66,10 @@ class WeatherApiClient {
   static const _envApiKey = String.fromEnvironment('GOOGLE_WEATHER_API_KEY');
   static const _base = 'https://weather.googleapis.com/v1';
 
+  /// Marge volontairement large : les premières connexions TLS sur réseau
+  /// mobile faible (montagne) peuvent être lentes à s'établir.
+  static const _requestTimeout = Duration(seconds: 20);
+
   final http.Client _http;
   final Connectivity _connectivity;
   final String _apiKey;
@@ -171,7 +175,7 @@ class WeatherApiClient {
 
     try {
       final response =
-          await _http.get(uri).timeout(const Duration(seconds: 15));
+          await _http.get(uri).timeout(_requestTimeout);
       if (response.statusCode != 200) {
         debugPrint(
             'WeatherApiClient: HTTP ${response.statusCode} sur $path — ${response.body}');
