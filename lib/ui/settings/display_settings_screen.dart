@@ -91,7 +91,7 @@ class DisplaySettingsScreen extends StatelessWidget {
                   ),
                 ),
 
-                // Échelle & Gaucher
+                // Échelle
                 Row(
                   children: [
                     const Text('Afficher l\'échelle', style: labelStyle),
@@ -103,37 +103,8 @@ class DisplaySettingsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                Row(
-                  children: [
-                    const Text('Mode Gaucher', style: labelStyle),
-                    const Spacer(),
-                    Switch(
-                      value: settings.reversePanels,
-                      onChanged: (v) => settings.setReversePanels(v),
-                      activeThumbColor: Colors.greenAccent,
-                    ),
-                  ],
-                ),
 
                 const SizedBox(height: 12),
-                // Zones de swipe
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Zones de swipe', style: labelStyle),
-                    Text('${settings.edgeSwipeWidth.round()} px', style: valueStyle),
-                  ],
-                ),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
-                  child: Slider(
-                    value: settings.edgeSwipeWidth,
-                    min: 20, max: 80, divisions: 12,
-                    onChanged: (v) => settings.setEdgeSwipeWidth(v),
-                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
-                  ),
-                ),
-
                 // Taille icônes
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -250,6 +221,37 @@ class DisplaySettingsScreen extends StatelessWidget {
                   onChanged: (level) {
                     if (level != null) settings.setFontScaleLevel(level);
                   },
+                ),
+
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text('Mode Gaucher', style: labelStyle),
+                    const Spacer(),
+                    Switch(
+                      value: settings.reversePanels,
+                      onChanged: (v) => settings.setReversePanels(v),
+                      activeThumbColor: Colors.greenAccent,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Zones de swipe', style: labelStyle),
+                    Text('${settings.edgeSwipeWidth.round()} px', style: valueStyle),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
+                  child: Slider(
+                    value: settings.edgeSwipeWidth,
+                    min: 20, max: 80, divisions: 12,
+                    onChanged: (v) => settings.setEdgeSwipeWidth(v),
+                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
+                  ),
                 ),
 
                 const Divider(color: Colors.white12, height: 24),
