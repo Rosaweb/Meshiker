@@ -125,7 +125,26 @@ class RecordingService {
   final ValueNotifier<double> gpsAccuracyMeters = ValueNotifier(0.0);
   final AlwaysNotifyValueNotifier<geo.Position?> currentPosition =
       AlwaysNotifyValueNotifier(null);
-  final ValueNotifier<String> gpsStatus = ValueNotifier('-');
+  /// Libellé de la carte "Satellites" du volet Navigation. Trois valeurs
+  /// possibles seulement (cf. `_refreshGpsStatusLabel`) :
+  ///  - [_gpsStatusOff]     : localisation coupée (réglage app, service
+  ///                          système, ou permission refusée) ;
+  ///  - `"N Sats"`           : flux actif, signal satellite reçu ;
+  ///  - [_gpsStatusWaiting]  : flux actif mais pas (ou plus) de signal
+  ///                          exploitable (démarrage, intérieur, perte
+  ///                          momentanée alors que la localisation reste
+  ///                          active).
+  /// Aucun libellé d'erreur/permission n'est exposé ici.
+  final ValueNotifier<String> gpsStatus = ValueNotifier(_gpsStatusOff);
+  static const _gpsStatusOff = '-';
+  static const _gpsStatusWaiting = 'en attente\nde signal';
+
+  // `true` entre le moment où on demande le démarrage du flux GPS et son
+  // arrêt explicite : distingue "localisation coupée" de "en attente".
+  bool _monitoringActive = false;
+  // `true` quand aucun fix GPS n'est arrivé depuis > 15 s (cf.
+  // `_resetSignalTimer`) : signal perdu alors que le flux tourne toujours.
+  bool _signalStale = false;
 
   // Stockage détaillé des satellites
   final Map<String, int> _constellationCounts = {};
@@ -280,14 +299,29 @@ class RecordingService {
   void _resetSignalTimer() {
     _signalLostTimer?.cancel();
     if (settingsService != null && !settingsService!.locationEnabled) return;
-    
+
     _signalLostTimer = Timer(const Duration(seconds: 15), () {
-      if (_totalSatellites > 0) {
-        // Signal instable ou faible
-      } else {
-        gpsStatus.value = 'en attente\nde signal';
-      }
+      // Aucun fix depuis 15 s alors que la localisation est toujours active :
+      // perte (momentanée) de signal — on retombe sur "en attente".
+      _signalStale = true;
+      _refreshGpsStatusLabel();
     });
+  }
+
+  /// Recalcule [gpsStatus] à partir de l'état courant. Seul point qui écrit
+  /// ce libellé avec un compte de satellites ou l'état "en attente" ; les
+  /// appelants se contentent de mettre à jour [_monitoringActive] /
+  /// [_signalStale] / [_totalSatellites] puis d'appeler cette méthode.
+  void _refreshGpsStatusLabel() {
+    final locationOn =
+        (settingsService?.locationEnabled ?? true) && _monitoringActive;
+    if (!locationOn) {
+      gpsStatus.value = _gpsStatusOff;
+      return;
+    }
+    gpsStatus.value = (!_signalStale && _totalSatellites > 0)
+        ? '$_totalSatellites Sats'
+        : _gpsStatusWaiting;
   }
 
   StreamSubscription<geo.ServiceStatus>? _serviceStatusSub;
@@ -299,8 +333,8 @@ class RecordingService {
       if (status == geo.ServiceStatus.enabled) {
         startPositionMonitoring();
       } else {
-        gpsStatus.value = 'GPS désactivé';
-        currentPosition.value = null;
+        // Service de localisation coupé au niveau Android -> "-".
+        stopPositionMonitoring();
       }
     });
 
@@ -364,8 +398,12 @@ class RecordingService {
     _signalLostTimer?.cancel();
     _signalLostTimer = null;
     _lastAcceptedFix = null;
-    gpsStatus.value = '-';
+    _monitoringActive = false;
+    _signalStale = false;
+    _totalSatellites = 0;
+    _constellationCounts.clear();
     currentPosition.value = null;
+    _refreshGpsStatusLabel();
   }
 
   /// Invalide le point de référence du calibrage podomètre (position, pas et
@@ -388,7 +426,8 @@ class RecordingService {
     // On ne démarre le flux que si le bouton de l'app est activé
     if (settingsService != null && !settingsService!.locationEnabled) {
       debugPrint('RecordingService: Location disabled in app settings');
-      gpsStatus.value = '-';
+      _monitoringActive = false;
+      _refreshGpsStatusLabel();
       return;
     }
 
@@ -397,12 +436,18 @@ class RecordingService {
     _resetPedometerCalibrationBaseline();
 
     debugPrint('RecordingService: Starting position stream...');
-    gpsStatus.value = 'recherche GPS';
-    
+    _monitoringActive = true;
+    _signalStale = false;
+    _totalSatellites = 0;
+    _refreshGpsStatusLabel();
+
     ensurePermissions().then((granted) {
       if (!granted) {
         debugPrint('RecordingService: Permissions not granted');
-        gpsStatus.value = 'permission refusée';
+        // Sans permission, la localisation est inutilisable : on traite ça
+        // comme "localisation coupée" plutôt que d'exposer une erreur.
+        _monitoringActive = false;
+        _refreshGpsStatusLabel();
         return;
       }
 
@@ -416,7 +461,10 @@ class RecordingService {
           },
           onError: (e) {
             debugPrint('RecordingService: Stream error: $e');
-            gpsStatus.value = 'erreur GPS';
+            // Erreur transitoire du flux : la localisation reste demandée,
+            // on affiche "en attente" le temps que ça reprenne.
+            _signalStale = true;
+            _refreshGpsStatusLabel();
           },
           cancelOnError: false,
         );
@@ -439,7 +487,8 @@ class RecordingService {
         _resetSignalTimer();
       } catch (e) {
         debugPrint('RecordingService: Error starting stream: $e');
-        gpsStatus.value = 'erreur technique';
+        _signalStale = true;
+        _refreshGpsStatusLabel();
       }
     });
   }
@@ -456,12 +505,7 @@ class RecordingService {
       }
     });
 
-    // Mise à jour du libellé affiché sur la carte
-    if (_totalSatellites > 0) {
-      gpsStatus.value = '$_totalSatellites Sats';
-    } else {
-      gpsStatus.value = 'Recherche...';
-    }
+    _refreshGpsStatusLabel();
   }
 
   String _normalizeConstellationName(String rawName) {
@@ -560,6 +604,10 @@ class RecordingService {
   void _onPosition(geo.Position position) {
     debugPrint('RecordingService: DISPATCHING POS: ${position.latitude}, ${position.longitude}');
     _resetSignalTimer();
+    // Un fix vient d'arriver : le flux tourne et reçoit du signal.
+    _monitoringActive = true;
+    _signalStale = false;
+    _refreshGpsStatusLabel();
 
     final lastPos = currentPosition.value;
 
