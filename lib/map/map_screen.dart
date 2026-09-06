@@ -833,6 +833,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   _ActiveTracesLayer(
                     viewModel: widget.viewModel,
                     isarService: widget.isarService,
+                    strokeWidth: widget.settingsService.traceStrokeWidth,
                   ),
                 _PoisLayer(viewModel: widget.viewModel),
                 if (widget.settingsService.showAllWaypoints ||
@@ -850,7 +851,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
                 if (widget.planningController != null)
                   _PlanningLayer(controller: widget.planningController!),
-                _LiveTrackLayer(recordingService: widget.recordingService),
+                _LiveTrackLayer(
+                  recordingService: widget.recordingService,
+                  strokeWidth: widget.settingsService.traceStrokeWidth,
+                ),
                 _LocationMarkerLayer(
                     recordingService: widget.recordingService,
                     heading: _currentHeading),
@@ -1767,10 +1771,12 @@ class _ActiveTracesLayer extends StatelessWidget {
   const _ActiveTracesLayer({
     required this.viewModel,
     required this.isarService,
+    required this.strokeWidth,
   });
 
   final MapViewModel viewModel;
   final IsarService isarService;
+  final double strokeWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -1801,7 +1807,7 @@ class _ActiveTracesLayer extends StatelessWidget {
                   color: trace.colorHex != null
                       ? Color(trace.colorHex!)
                       : Colors.red,
-                  strokeWidth: 4,
+                  strokeWidth: strokeWidth,
                 ));
               }
             }
@@ -2150,7 +2156,11 @@ class _PulsingHaloState extends State<_PulsingHalo>
 
 class _LiveTrackLayer extends StatelessWidget {
   final RecordingService recordingService;
-  const _LiveTrackLayer({required this.recordingService});
+  final double strokeWidth;
+  const _LiveTrackLayer({
+    required this.recordingService,
+    required this.strokeWidth,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2167,7 +2177,7 @@ class _LiveTrackLayer extends StatelessWidget {
             Polyline(
               points: latLngs,
               color: Colors.redAccent.withValues(alpha: 0.8),
-              strokeWidth: 4.0,
+              strokeWidth: strokeWidth,
             ),
           ],
         );

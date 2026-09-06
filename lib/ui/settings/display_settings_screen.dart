@@ -162,6 +162,24 @@ class DisplaySettingsScreen extends StatelessWidget {
                 const Text('TRACES', style: headerStyle),
                 const SizedBox(height: 8),
 
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Épaisseur du trait sur la carte', style: labelStyle),
+                    Text('${settings.traceStrokeWidth.round()} px', style: valueStyle),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 2),
+                  child: Slider(
+                    value: settings.traceStrokeWidth,
+                    min: 1, max: 10, divisions: 9,
+                    onChanged: (v) => settings.setTraceStrokeWidth(v),
+                    activeColor: Colors.greenAccent, inactiveColor: Colors.white12,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
                 const Text('Aperçu des traces GPX', style: labelStyle),
                 const SizedBox(height: 4),
                 Row(

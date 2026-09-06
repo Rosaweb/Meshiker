@@ -131,6 +131,9 @@ class SettingsService extends ChangeNotifier {
   // Colors.greenAccent par défaut.
   int _accentColorHex = 0xFF69F0AE;
   double _waypointIconSize = 30.0;
+  // Épaisseur du trait des traces GPX (et de la trace en cours
+  // d'enregistrement) affichées sur la carte, en pixels logiques.
+  double _traceStrokeWidth = 4.0;
   FontScaleLevel _fontScaleLevel = FontScaleLevel.normal;
   bool _showOsmPois = false;
   Set<String> _enabledOsmPoiCategoryIds = kOsmPoiCategories.map((c) => c.id).toSet();
@@ -256,6 +259,7 @@ class SettingsService extends ChangeNotifier {
   bool get locationEnabled => _locationEnabled;
   Color get accentColor => Color(_accentColorHex);
   double get waypointIconSize => _waypointIconSize;
+  double get traceStrokeWidth => _traceStrokeWidth;
   FontScaleLevel get fontScaleLevel => _fontScaleLevel;
   bool get showOsmPois => _showOsmPois;
   Set<String> get enabledOsmPoiCategoryIds => _enabledOsmPoiCategoryIds;
@@ -380,6 +384,7 @@ class SettingsService extends ChangeNotifier {
     _locationEnabled = _prefs.getBool('location_enabled') ?? true;
     _accentColorHex = _prefs.getInt('accent_color') ?? 0xFF69F0AE;
     _waypointIconSize = _prefs.getDouble('waypoint_icon_size') ?? 30.0;
+    _traceStrokeWidth = _prefs.getDouble('trace_stroke_width') ?? 4.0;
     _fontScaleLevel = FontScaleLevel.values[_prefs.getInt('font_scale_level') ?? 0];
     _showOsmPois = _prefs.getBool('show_osm_pois') ?? false;
     final enabledOsmCats = _prefs.getStringList('enabled_osm_poi_categories');
@@ -717,6 +722,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setWaypointIconSize(double value) async {
     _waypointIconSize = value;
     await _prefs.setDouble('waypoint_icon_size', value);
+    notifyListeners();
+  }
+
+  Future<void> setTraceStrokeWidth(double value) async {
+    _traceStrokeWidth = value;
+    await _prefs.setDouble('trace_stroke_width', value);
     notifyListeners();
   }
 
