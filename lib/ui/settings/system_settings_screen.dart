@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -430,26 +431,53 @@ class SystemSettingsScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
       ),
-      child: SwitchListTile(
-        title: const Text('Envoyer des rapports de plantage automatiques', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        subtitle: const Text(
-          'Aide à identifier et corriger les bugs. Les comptes Premium peuvent '
-          'relire, annoter ou annuler un rapport avant son envoi depuis '
-          '"Mon compte > Rapport de bug". Un changement ne prend effet qu\'au '
-          'prochain lancement de l\'app.',
-          style: TextStyle(color: Colors.white38, fontSize: 12),
-        ),
-        value: settings.crashReportingEnabled,
-        onChanged: (v) async {
-          await settings.setCrashReportingEnabled(v);
-          if (!v && context.mounted) {
-            // Purge silencieuse immédiate des rapports premium en attente
-            // (spec-crash-reporting.md §4) : aucun envoi, aucune notification.
-            await CrashReportingService.purgeAllPending(context.read<IsarService>());
-          }
-        },
-        activeThumbColor: Colors.greenAccent,
-        contentPadding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          SwitchListTile(
+            title: const Text('Envoyer des rapports de plantage automatiques', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            subtitle: const Text(
+              'Aide à identifier et corriger les bugs. Les comptes Premium peuvent '
+              'relire, annoter ou annuler un rapport avant son envoi depuis '
+              '"Mon compte > Rapport de bug". Un changement ne prend effet qu\'au '
+              'prochain lancement de l\'app.',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+            value: settings.crashReportingEnabled,
+            onChanged: (v) async {
+              await settings.setCrashReportingEnabled(v);
+              if (!v && context.mounted) {
+                // Purge silencieuse immédiate des rapports premium en attente
+                // (spec-crash-reporting.md §4) : aucun envoi, aucune notification.
+                await CrashReportingService.purgeAllPending(context.read<IsarService>());
+              }
+            },
+            activeThumbColor: Colors.greenAccent,
+            contentPadding: EdgeInsets.zero,
+          ),
+          // Vérification Sentry : uniquement en build de debug, jamais livré
+          // aux utilisateurs. Lève une exception NON interceptée pour exercer
+          // le vrai chemin de capture automatique (FlutterError.onError ->
+          // intégration Sentry). Pour un compte Premium, l'event part d'abord
+          // dans la file d'attente locale (spec §5.2) : le pousser ensuite
+          // depuis "Mon compte > Rapport de bug", ou attendre 3 lancements.
+          if (kDebugMode) ...[
+            const Divider(color: Colors.white12, height: 24),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  throw StateError('Meshiker: test de vérification Sentry (déclenché manuellement)');
+                },
+                icon: const Icon(Icons.bug_report),
+                label: const Text('Déclencher une erreur test (debug)'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orangeAccent,
+                  side: const BorderSide(color: Colors.orangeAccent),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
