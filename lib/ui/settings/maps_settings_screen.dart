@@ -227,6 +227,25 @@ class MapsSettingsScreen extends StatelessWidget {
   }
 }
 
+/// Ligne d'aide affichée sous une source à emprise nationale dans « Mes
+/// cartes » : rappelle qu'elle ne s'affiche que sur sa zone, sa licence, et
+/// l'éventuelle indisponibilité du téléchargement hors-ligne.
+String _regionalHint(MapSourceInfo source) {
+  const licenseLabels = {
+    'PUBLIC-DOMAIN': 'domaine public',
+    'CC0': 'CC0',
+    'CC-BY-4.0': 'CC BY 4.0',
+  };
+  final license = licenseLabels[source.licenseCode] ?? source.licenseCode;
+  final buffer = StringBuffer('Carte régionale');
+  if (license != null) buffer.write(' ($license)');
+  buffer.write(' — s\'affiche uniquement sur sa zone de couverture.');
+  if (!source.cacheAllowedOffline) {
+    buffer.write(' Téléchargement hors ligne indisponible.');
+  }
+  return buffer.toString();
+}
+
 class _OnlineSourcesTab extends StatelessWidget {
   const _OnlineSourcesTab();
 
@@ -252,8 +271,28 @@ class _OnlineSourcesTab extends StatelessWidget {
                   final isSelected = favIndex != -1;
 
                   return ListTile(
+                    isThreeLine: source.bounds != null,
                     title: Text(source.name, style: const TextStyle(color: Colors.white)),
-                    subtitle: Text(source.description, style: const TextStyle(color: Colors.white70)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(source.description,
+                            style: const TextStyle(color: Colors.white70)),
+                        // Fond de carte national : ne s'affiche que sur sa
+                        // zone de couverture (sinon fond générique). Indiqué
+                        // ici pour éviter la surprise « j'ai choisi USGS mais
+                        // je vois de l'OSM ».
+                        if (source.bounds != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              _regionalHint(source),
+                              style: const TextStyle(
+                                  color: Colors.white38, fontSize: 11),
+                            ),
+                          ),
+                      ],
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
