@@ -227,6 +227,7 @@ class SettingsService extends ChangeNotifier {
     'NO': 'kartverket_topo',
     'SE': 'lantmateriet_topowebb',
     'FI': 'mml_maastokartta',
+    'FR': 'ign_france',
   };
 
   /// Code pays ISO (majuscules) déduit de la locale de l'appareil, ou
