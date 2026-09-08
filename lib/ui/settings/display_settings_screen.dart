@@ -182,6 +182,25 @@ class DisplaySettingsScreen extends StatelessWidget {
                   ],
                 ),
 
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Cercle de précision GPS', style: labelStyle),
+                    ),
+                    Switch(
+                      value: settings.showAccuracyCircle,
+                      onChanged: (v) => settings.setShowAccuracyCircle(v),
+                      activeThumbColor: Colors.greenAccent,
+                    ),
+                  ],
+                ),
+                Text(
+                  'Trace un cercle noir autour de la position quand la précision '
+                  'annoncée dépasse ${SettingsService.accuracyCircleThresholdMeters.round()} m.',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+
                 const Divider(color: Colors.white12, height: 24),
                 const Text('TRACES', style: headerStyle),
                 const SizedBox(height: 8),

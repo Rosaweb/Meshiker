@@ -106,6 +106,15 @@ class SettingsService extends ChangeNotifier {
   // Celsius/Fahrenheit.
   UnitSystem _unitSystem = UnitSystem.metric;
   bool _showScale = true;
+  // Cercle matérialisant le périmètre d'imprécision GPS autour de la
+  // position, quand la précision annoncée dépasse
+  // [accuracyCircleThresholdMeters]. Désactivé par défaut.
+  bool _showAccuracyCircle = false;
+
+  /// En dessous de ce rayon (m), l'imprécision reste évaluable à vue et le
+  /// cercle n'est pas tracé même si l'option est active. Valeur provisoire,
+  /// ajustable ultérieurement.
+  static const accuracyCircleThresholdMeters = 25.0;
   bool _reversePanels = false;
   bool _showAllWaypoints = true;
   // Volontairement jamais persisté ni initialisé à true au démarrage :
@@ -253,6 +262,7 @@ class SettingsService extends ChangeNotifier {
   double get mainMenuOpacity => _mainMenuOpacity;
   UnitSystem get unitSystem => _unitSystem;
   bool get showScale => _showScale;
+  bool get showAccuracyCircle => _showAccuracyCircle;
   bool get reversePanels => _reversePanels;
   bool get showAllWaypoints => _showAllWaypoints;
   bool get showEveryWaypoint => _showEveryWaypoint;
@@ -375,6 +385,7 @@ class SettingsService extends ChangeNotifier {
     _mainMenuOpacity = _prefs.getDouble('main_menu_opacity') ?? 0.6;
     _unitSystem = UnitSystem.values[_prefs.getInt('unit_system') ?? 0];
     _showScale = _prefs.getBool('show_scale') ?? true;
+    _showAccuracyCircle = _prefs.getBool('show_accuracy_circle') ?? false;
     _reversePanels = _prefs.getBool('reverse_panels') ?? false;
     _showAllWaypoints = _prefs.getBool('show_all_waypoints') ?? true;
     _showAllGpx = _prefs.getBool('show_all_gpx') ?? true;
@@ -818,6 +829,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setShowScale(bool value) async {
     _showScale = value;
     await _prefs.setBool('show_scale', value);
+    notifyListeners();
+  }
+
+  Future<void> setShowAccuracyCircle(bool value) async {
+    _showAccuracyCircle = value;
+    await _prefs.setBool('show_accuracy_circle', value);
     notifyListeners();
   }
 

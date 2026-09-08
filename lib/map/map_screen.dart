@@ -856,6 +856,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   recordingService: widget.recordingService,
                   strokeWidth: widget.settingsService.traceStrokeWidth,
                 ),
+                if (widget.settingsService.showAccuracyCircle)
+                  _AccuracyCircleLayer(
+                    recordingService: widget.recordingService,
+                    thresholdMeters:
+                        SettingsService.accuracyCircleThresholdMeters,
+                  ),
                 _LocationMarkerLayer(
                     recordingService: widget.recordingService,
                     heading: _currentHeading,
@@ -2057,6 +2063,45 @@ class _MapScaleWidget extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Cercle noir centré sur la position, de rayon égal à la précision GPS
+/// annoncée (en mètres), pour visualiser le périmètre d'imprécision. N'est
+/// tracé que si la précision dépasse [thresholdMeters] — en dessous, elle
+/// reste évaluable à vue.
+class _AccuracyCircleLayer extends StatelessWidget {
+  final RecordingService recordingService;
+  final double thresholdMeters;
+  const _AccuracyCircleLayer({
+    required this.recordingService,
+    required this.thresholdMeters,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<geo.Position?>(
+      valueListenable: recordingService.currentPosition,
+      builder: (context, pos, _) {
+        if (pos == null) return const SizedBox.shrink();
+        final accuracy = pos.accuracy;
+        if (!accuracy.isFinite || accuracy < thresholdMeters) {
+          return const SizedBox.shrink();
+        }
+        return CircleLayer(
+          circles: [
+            CircleMarker(
+              point: LatLng(pos.latitude, pos.longitude),
+              radius: accuracy,
+              useRadiusInMeter: true,
+              color: Colors.black.withValues(alpha: 0.06),
+              borderColor: Colors.black.withValues(alpha: 0.55),
+              borderStrokeWidth: 1.5,
+            ),
+          ],
+        );
+      },
     );
   }
 }
