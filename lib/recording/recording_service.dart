@@ -525,10 +525,31 @@ class RecordingService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('global_speed_count', _globalPointsCount);
     await prefs.setDouble('global_speed_sum', _globalSpeedSum);
-    
+
     await prefs.setInt('daily_speed_count', _dailyPointsCount);
     await prefs.setDouble('daily_speed_sum', _dailySpeedSum);
     await prefs.setString('daily_speed_date', DateTime.now().toIso8601String());
+  }
+
+  /// Remet à zéro les moyennes de vitesse jour et générale (accumulateurs
+  /// en mémoire + copie persistée). Déclenché manuellement depuis la fenêtre
+  /// de détail de la vitesse : utile après une installation où du bruit GPS
+  /// aurait pu s'accumuler avant que le filtrage centralisé ne s'applique.
+  /// La vitesse "en cours" n'est pas concernée (recalculée au fix suivant).
+  Future<void> resetSpeedAverages() async {
+    _dailyPointsCount = 0;
+    _dailySpeedSum = 0.0;
+    _globalPointsCount = 0;
+    _globalSpeedSum = 0.0;
+    averageSpeedDailyMps.value = 0.0;
+    averageSpeedGlobalMps.value = 0.0;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('global_speed_count');
+    await prefs.remove('global_speed_sum');
+    await prefs.remove('daily_speed_count');
+    await prefs.remove('daily_speed_sum');
+    await prefs.remove('daily_speed_date');
   }
 
   Future<void> start({
@@ -617,10 +638,7 @@ class RecordingService {
     // carte lors d'un arrêt prolongé).
     currentPosition.value = position;
 
-    currentSpeedMps.value = position.speed;
     gpsAccuracyMeters.value = position.accuracy;
-
-    _updateSpeedAverages(position.speed);
 
     if (!_isDailyDistanceInitialized) {
       _initDailyDistance();
@@ -630,8 +648,8 @@ class RecordingService {
     // qualité du fix par rapport au dernier fix accepté, et détection de
     // stationnarité sur fenêtre glissante (seuils configurables par
     // l'utilisateur). `accepted`/`isStationary` gouvernent ensuite les
-    // trois branches dégradées par le bruit GPS ci-dessous ; tout le reste
-    // de cette méthode continue de voir chaque fix brut sans filtre.
+    // branches dégradées par le bruit GPS ci-dessous (vitesse, distance du
+    // jour, stockage de la trace, calibrage podomètre).
     final isStationary = _stationaryDetector.update(
       position,
       windowDuration:
@@ -644,6 +662,18 @@ class RecordingService {
         ? GpsFixQuality.isAcceptableFirstFix(position)
         : GpsFixQuality.isAcceptableFix(previous: previousAcceptedFix, current: position);
     if (accepted) _lastAcceptedFix = position;
+
+    // Vitesse : mêmes garde-fous que la distance du jour ci-dessous. Sans
+    // ça, le bruit GPS à l'arrêt (souvent > 0,5 m/s) alimentait la vitesse
+    // "en cours" et les moyennes jour/générale alors qu'aucun déplacement
+    // n'a lieu. Pause détectée => vitesse en cours nulle ; fix rejeté => on
+    // garde la dernière vitesse connue plutôt qu'une valeur implausible.
+    if (isStationary) {
+      currentSpeedMps.value = 0.0;
+    } else if (accepted && previousAcceptedFix != null) {
+      currentSpeedMps.value = position.speed;
+      _updateSpeedAverages(position.speed);
+    }
 
     if (lastPos != null) {
       final now = DateTime.now();

@@ -1026,47 +1026,106 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   Widget _buildSpeedCard() {
     final recording = widget.recordingService;
     final accent = widget.settingsService.accentColor;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: accent.withValues(alpha: 0.2))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(Icons.speed, color: accent, size: 15),
-            const SizedBox(width: 4),
-            Text('Vitesse', style: TextStyle(color: accent, fontSize: 11))
-          ]),
-          Expanded(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(_formatSpeed(recording.currentSpeedMps.value),
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 2),
-                  Text(
-                      'Jour: ${_formatSpeed(recording.averageSpeedDailyMps.value)}',
-                      style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500)),
-                  Text(
-                      'Gén.: ${_formatSpeed(recording.averageSpeedGlobalMps.value)}',
-                      style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500)),
-                ],
+    return GestureDetector(
+      onTap: () => _showSpeedDetails(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: accent.withValues(alpha: 0.2))),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.speed, color: accent, size: 15),
+              const SizedBox(width: 4),
+              Text('Vitesse', style: TextStyle(color: accent, fontSize: 11))
+            ]),
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(_formatSpeed(recording.currentSpeedMps.value),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text(
+                        'Jour: ${_formatSpeed(recording.averageSpeedDailyMps.value)}',
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500)),
+                    Text(
+                        'Gén.: ${_formatSpeed(recording.averageSpeedGlobalMps.value)}',
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSpeedDetails(BuildContext context) {
+    final recording = widget.recordingService;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Vitesse', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: Text(
+                  'En cours : ${_formatSpeed(recording.currentSpeedMps.value)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16)),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: Text(
+                  'Moyenne du jour : ${_formatSpeed(recording.averageSpeedDailyMps.value)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16)),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: Text(
+                  'Moyenne générale : ${_formatSpeed(recording.averageSpeedGlobalMps.value)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16)),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'La réinitialisation efface les moyennes du jour et générale. '
+              'Utile après une installation où du bruit GPS a pu s\'accumuler.',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await recording.resetSpeedAverages();
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('RÉINITIALISER',
+                style: TextStyle(color: Colors.redAccent)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('FERMER',
+                style: TextStyle(color: Colors.greenAccent)),
           ),
         ],
       ),
