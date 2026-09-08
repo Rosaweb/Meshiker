@@ -7,13 +7,107 @@ import '../../utils/settings_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/offline_map/offline_map.dart';
 
+// SUPABASE_URL / SUPABASE_ANON_KEY sont injectés au build via
+// `--dart-define-from-file=env.json` (cf. env.example.json). Sans eux, les
+// sources passant par l'Edge Function proxy (Suède, Finlande) ne
+// s'afficheront pas — même limitation que la météo ou l'assistant IA.
+const String _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const String _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
+// En-têtes envoyés avec chaque requête de tuile passant par l'Edge Function
+// `map-tile-proxy` (verify_jwt = false côté fonction, mais la passerelle
+// Supabase attend malgré tout la clé anonyme). La clé API réelle du
+// fournisseur (Lantmäteriet / MML) reste un secret serveur, jamais ici.
+const Map<String, String> _proxyAuthHeaders = {
+  'apikey': _supabaseAnonKey,
+  'Authorization': 'Bearer $_supabaseAnonKey',
+};
+
+/// Emprise géographique d'une source de tuiles à couverture nationale
+/// (USGS, Kartverket…). `null` sur une [MapSourceInfo] = disponible partout
+/// (cas des fonds génériques OSM / satellite).
+class MapBounds {
+  final double minLat;
+  final double maxLat;
+  final double minLon;
+  final double maxLon;
+
+  const MapBounds({
+    required this.minLat,
+    required this.maxLat,
+    required this.minLon,
+    required this.maxLon,
+  });
+
+  bool contains(double lat, double lon) =>
+      lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
+}
+
 class MapSourceInfo {
   final String id;
   final String name;
   final String url;
   final String description;
 
-  MapSourceInfo({required this.id, required this.name, required this.url, required this.description});
+  // --- Champs cartes nationales (rétro-compatibles : valeurs par défaut
+  // neutres pour les sources génériques existantes). ---
+
+  /// Emprise géographique. `null` = fond de carte proposé partout. Sinon la
+  /// source n'est retenue que si le centre de la carte tombe dedans (voir
+  /// [MapStyle.resolveTileSource]) — « source bonus déclenchée par zone ».
+  final MapBounds? bounds;
+
+  /// Mention légale à afficher tant que cette source est active (widget
+  /// d'attribution unique de [MapScreen]). `null` = aucune mention requise.
+  final String? attributionText;
+
+  /// Code licence indicatif (`CC-BY-4.0`, `CC0`, `PUBLIC-DOMAIN`…), pour la
+  /// doc / l'écran « Mes cartes ». Pas de logique métier dessus.
+  final String? licenseCode;
+
+  /// `false` = le téléchargement hors-ligne est refusé sur cette source
+  /// (`OfflineMapDownloadService`) tant qu'une confirmation légale écrite
+  /// n'est pas obtenue (Kartverket : zone grise Geovekst zoom 12-20 ;
+  /// MML : CC BY 4.0 couvre l'affichage, pas confirmé pour le cache). Le
+  /// rendu en ligne, lui, reste autorisé.
+  final bool cacheAllowedOffline;
+
+  /// En-têtes HTTP additionnels pour chaque requête de tuile (réseau ET
+  /// téléchargement hors-ligne). Utilisé pour la clé anonyme Supabase des
+  /// sources passant par l'Edge Function proxy. `const {}` par défaut.
+  final Map<String, String> httpHeaders;
+
+  /// Deuxième calque de tuiles empilé PAR-DESSUS [url] (mêmes placeholders
+  /// `{z}/{x}/{y}`). `null` = un seul calque. Utilisé quand un fond est
+  /// servi en deux services distincts — géométrie + étiquettes — comme le
+  /// fond canadien CBMT (RNCan). Le calque d'étiquettes est un PNG
+  /// transparent.
+  final String? overlayUrl;
+
+  /// Niveau de zoom maximal réellement servi par la source. Au-delà,
+  /// flutter_map agrandit la dernière tuile disponible au lieu de demander
+  /// des tuiles inexistantes (404). `null` = pas de plafond (comportement
+  /// historique). Ex: CBMT s'arrête à z15, USGS ~z16.
+  final int? maxNativeZoom;
+
+  MapSourceInfo({
+    required this.id,
+    required this.name,
+    required this.url,
+    required this.description,
+    this.bounds,
+    this.attributionText,
+    this.licenseCode,
+    this.cacheAllowedOffline = true,
+    this.httpHeaders = const {},
+    this.overlayUrl,
+    this.maxNativeZoom,
+  });
+
+  /// `true` si [lat]/[lon] tombe dans l'emprise de la source (ou si elle
+  /// n'a pas d'emprise = disponible partout).
+  bool coversPoint(double lat, double lon) =>
+      bounds == null || bounds!.contains(lat, lon);
 }
 
 final List<MapSourceInfo> availableSources = [
@@ -46,6 +140,90 @@ final List<MapSourceInfo> availableSources = [
     name: 'ArcGIS Satellite',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     description: 'Imagerie mondiale haute résolution ArcGIS.',
+  ),
+
+  // --- Cartes topographiques nationales (déclenchées par zone) ---
+  // Le serveur attend l'ordre z/y/x dans l'URL ; flutter_map et
+  // OfflineMapDownloadService substituent {x}/{y} par position, donc écrire
+  // le gabarit « {z}/{y}/{x} » suffit — aucun TileProvider spécifique.
+  MapSourceInfo(
+    id: 'usgs_topo',
+    name: 'USGS Topo (États-Unis)',
+    // Endpoint tuiles ArcGIS REST (même forme que arcgis_sat, plus fiable
+    // que le WMTS KVP). Zoom max ~16. Domaine public, aucun compte.
+    url:
+        'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
+    description: 'Cartes topographiques officielles USA (The National Map).',
+    bounds: const MapBounds(
+        minLat: 15.0, maxLat: 72.0, minLon: -170.0, maxLon: -64.0),
+    attributionText:
+        'Map services and data available from U.S. Geological Survey, National Geospatial Program.',
+    licenseCode: 'PUBLIC-DOMAIN',
+  ),
+  MapSourceInfo(
+    id: 'kartverket_topo',
+    name: 'Kartverket (Norvège)',
+    url:
+        'https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png',
+    description: 'Carte topographique nationale norvégienne.',
+    bounds: const MapBounds(
+        minLat: 57.0, maxLat: 81.5, minLon: 3.0, maxLon: 35.0),
+    attributionText: '© Kartverket',
+    licenseCode: 'CC-BY-4.0',
+    // Zone grise Geovekst (zoom 12-20) : cache hors-ligne bloqué tant que
+    // Kartverket n'a pas confirmé le périmètre par écrit.
+    cacheAllowedOffline: false,
+  ),
+  MapSourceInfo(
+    id: 'lantmateriet_topowebb',
+    name: 'Lantmäteriet (Suède)',
+    // Passe par l'Edge Function proxy : la fonction injecte le token
+    // Lantmäteriet et remet l'URL amont en ordre z/y/x. Le client envoie
+    // toujours {z}/{x}/{y}.
+    url:
+        '$_supabaseUrl/functions/v1/map-tile-proxy/lantmateriet/{z}/{x}/{y}.png',
+    description: 'Carte topographique nationale suédoise (Topowebb).',
+    bounds: const MapBounds(
+        minLat: 55.0, maxLat: 69.5, minLon: 10.5, maxLon: 24.5),
+    attributionText: '© Lantmäteriet',
+    licenseCode: 'CC0',
+    httpHeaders: _proxyAuthHeaders,
+  ),
+  MapSourceInfo(
+    id: 'mml_maastokartta',
+    name: 'Maanmittauslaitos (Finlande)',
+    url: '$_supabaseUrl/functions/v1/map-tile-proxy/mml/{z}/{x}/{y}.png',
+    description: 'Carte topographique nationale finlandaise (Maastokartta).',
+    bounds: const MapBounds(
+        minLat: 59.5, maxLat: 70.5, minLon: 19.0, maxLon: 32.0),
+    attributionText: '© Maanmittauslaitos',
+    licenseCode: 'CC-BY-4.0',
+    // CC BY 4.0 confirmé pour l'affichage, pas pour le cache hors-ligne.
+    cacheAllowedOffline: false,
+    httpHeaders: _proxyAuthHeaders,
+  ),
+  MapSourceInfo(
+    id: 'cbmt_canada',
+    name: 'Canada Base Map (RNCan)',
+    // NRCan publie CBMT en tuiles raster PRÉ-RENDUES aussi en EPSG:3857
+    // (grille Web Mercator standard, origine et résolutions identiques à
+    // OSM) : `CBMT_CBCT_GEOM_3857` = géométrie (routes, hydro, relief),
+    // `CBCT_TXT_3857` = étiquettes en français (PNG transparent). Aucune
+    // conversion Lambert / provider spécifique nécessaire — c'est un XYZ
+    // classique, comme `arcgis_sat`. Tuiles servies jusqu'à z15.
+    url:
+        'https://maps-cartes.services.geo.ca/server2_serveur2/rest/services/BaseMaps/CBMT_CBCT_GEOM_3857/MapServer/tile/{z}/{y}/{x}',
+    overlayUrl:
+        'https://maps-cartes.services.geo.ca/server2_serveur2/rest/services/BaseMaps/CBCT_TXT_3857/MapServer/tile/{z}/{y}/{x}',
+    description:
+        'Fond topographique officiel du Canada (Ressources naturelles Canada), étiquettes en français.',
+    bounds: const MapBounds(
+        minLat: 41.0, maxLat: 84.0, minLon: -141.5, maxLon: -52.0),
+    attributionText: '© Ressources naturelles Canada',
+    licenseCode: 'OGL-CANADA',
+    // v1 : affichage en ligne uniquement (cf. spec-fond-carte-cbmt-canada).
+    cacheAllowedOffline: false,
+    maxNativeZoom: 15,
   ),
 ];
 
@@ -87,74 +265,203 @@ class MapsSettingsScreen extends StatelessWidget {
   }
 }
 
-class _OnlineSourcesTab extends StatelessWidget {
+/// Ligne d'aide affichée sous une source à emprise nationale dans « Mes
+/// cartes » : rappelle qu'elle ne s'affiche que sur sa zone, sa licence, et
+/// l'éventuelle indisponibilité du téléchargement hors-ligne.
+String _regionalHint(MapSourceInfo source) {
+  const licenseLabels = {
+    'PUBLIC-DOMAIN': 'domaine public',
+    'CC0': 'CC0',
+    'CC-BY-4.0': 'CC BY 4.0',
+    'OGL-CANADA': 'OGL Canada',
+  };
+  final license = licenseLabels[source.licenseCode] ?? source.licenseCode;
+  final buffer = StringBuffer('Carte régionale');
+  if (license != null) buffer.write(' ($license)');
+  buffer.write(' — s\'affiche uniquement sur sa zone de couverture.');
+  if (!source.cacheAllowedOffline) {
+    buffer.write(' Téléchargement hors ligne indisponible.');
+  }
+  return buffer.toString();
+}
+
+/// Onglet « Fonds de carte » de « Mes cartes », en deux sections :
+///
+/// 1. **Cartes affichées** : les fonds proposés par défaut (+ la carte
+///    nationale du pays de l'utilisateur, semence unique côté
+///    `SettingsService`). La case à cocher y sélectionne les favoris du
+///    bouton MAP (max 3, l'ordre = priorité), comportement historique.
+/// 2. **Gérer les fonds de carte** (masquée, dépliée par un lien en bas de
+///    la section 1) : la liste intégrale. La case à cocher y décide
+///    seulement quelles cartes apparaissent dans la section 1 — aucun lien
+///    avec le bouton MAP. Décocher une carte favorite la retire aussi des
+///    favoris (`SettingsService.setVisibleMaps`).
+class _OnlineSourcesTab extends StatefulWidget {
   const _OnlineSourcesTab();
+
+  @override
+  State<_OnlineSourcesTab> createState() => _OnlineSourcesTabState();
+}
+
+class _OnlineSourcesTabState extends State<_OnlineSourcesTab> {
+  bool _managing = false;
 
   @override
   Widget build(BuildContext context) {
     return Consumer<SettingsService>(
       builder: (context, settings, child) {
+        final visibleSources = availableSources
+            .where((s) => settings.visibleMapIds.contains(s.id))
+            .toList();
+
         return Column(
           children: [
             const Padding(
               padding: EdgeInsets.all(16.0),
               child: Text(
-                'Sélectionnez jusqu\'à 3 cartes favorites. L\'ordre détermine la priorité du bouton MAP.',
+                'Cochez jusqu\'à 3 cartes favorites. L\'ordre détermine la priorité du bouton MAP.',
                 style: TextStyle(color: Colors.white38),
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                itemCount: availableSources.length,
-                itemBuilder: (context, index) {
-                  final source = availableSources[index];
-                  final favIndex = settings.favoriteMapIds.indexOf(source.id);
-                  final isSelected = favIndex != -1;
+              child: ListView(
+                children: [
+                  // --- Section 1 : cartes affichées ---
+                  for (final source in visibleSources)
+                    _sourceTile(
+                        settings: settings,
+                        source: source,
+                        isFavoriteSection: true),
 
-                  return ListTile(
-                    title: Text(source.name, style: const TextStyle(color: Colors.white)),
-                    subtitle: Text(source.description, style: const TextStyle(color: Colors.white70)),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isSelected)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.greenAccent.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5)),
-                            ),
-                            child: Text(
-                              'Priorité ${favIndex + 1}',
-                              style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        Checkbox(
-                          value: isSelected,
-                          onChanged: (checked) {
-                            List<String> current = List.from(settings.favoriteMapIds);
-                            if (checked == true) {
-                              if (current.length < 3) current.add(source.id);
-                            } else {
-                              current.remove(source.id);
-                            }
-                            settings.setFavoriteMaps(current);
-                          },
-                          checkColor: Colors.black,
-                          activeColor: Colors.greenAccent,
-                          side: const BorderSide(color: Colors.white38),
-                        ),
-                      ],
+                  // --- Lien vers la section 2 ---
+                  ListTile(
+                    leading: Icon(
+                      _managing ? Icons.expand_less : Icons.tune,
+                      color: Colors.greenAccent,
                     ),
-                  );
-                },
+                    title: Text(
+                      _managing
+                          ? 'Masquer les fonds de carte'
+                          : 'Gérer les fonds de carte',
+                      style: const TextStyle(
+                        color: Colors.greenAccent,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onTap: () => setState(() => _managing = !_managing),
+                  ),
+
+                  // --- Section 2 : quelles cartes afficher en section 1 ---
+                  if (_managing) ...[
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Text(
+                        'Cochez les fonds de carte à faire apparaître ci-dessus. '
+                        'Sans effet sur le bouton MAP.',
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                    ),
+                    for (final source in availableSources)
+                      _sourceTile(
+                          settings: settings,
+                          source: source,
+                          isFavoriteSection: false),
+                  ],
+                ],
               ),
             ),
           ],
         );
       },
     );
+  }
+
+  Widget _sourceTile({
+    required SettingsService settings,
+    required MapSourceInfo source,
+    required bool isFavoriteSection,
+  }) {
+    final favIndex = settings.favoriteMapIds.indexOf(source.id);
+    final isFavorite = favIndex != -1;
+    final checked = isFavoriteSection
+        ? isFavorite
+        : settings.visibleMapIds.contains(source.id);
+
+    return ListTile(
+      isThreeLine: source.bounds != null,
+      title: Text(source.name, style: const TextStyle(color: Colors.white)),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(source.description,
+              style: const TextStyle(color: Colors.white70)),
+          // Fond de carte national : ne s'affiche que sur sa zone de
+          // couverture (sinon fond générique). Indiqué pour éviter la
+          // surprise « j'ai choisi USGS mais je vois de l'OSM ».
+          if (source.bounds != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                _regionalHint(source),
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isFavoriteSection && isFavorite)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.greenAccent.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: Colors.greenAccent.withValues(alpha: 0.5)),
+              ),
+              child: Text(
+                'Priorité ${favIndex + 1}',
+                style: const TextStyle(
+                    color: Colors.greenAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+          Checkbox(
+            value: checked,
+            onChanged: (value) => isFavoriteSection
+                ? _toggleFavorite(settings, source.id, value == true)
+                : _toggleVisible(settings, source.id, value == true),
+            checkColor: Colors.black,
+            activeColor: Colors.greenAccent,
+            side: const BorderSide(color: Colors.white38),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleFavorite(SettingsService settings, String id, bool add) {
+    final current = List<String>.from(settings.favoriteMapIds);
+    if (add) {
+      if (current.contains(id) || current.length >= 3) return;
+      current.add(id);
+    } else {
+      current.remove(id);
+    }
+    settings.setFavoriteMaps(current);
+  }
+
+  void _toggleVisible(SettingsService settings, String id, bool add) {
+    final current = List<String>.from(settings.visibleMapIds);
+    if (add) {
+      if (!current.contains(id)) current.add(id);
+    } else {
+      current.remove(id);
+      if (current.isEmpty) return; // toujours au moins une carte affichée
+    }
+    settings.setVisibleMaps(current);
   }
 }
 

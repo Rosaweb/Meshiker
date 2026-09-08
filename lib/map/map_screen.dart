@@ -823,7 +823,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     tileProviders: widget.vectorTileSource!.tileProviders,
                   )
                 else
-                  _buildDynamicTileLayer(),
+                  ..._buildDynamicTileLayers(),
                 if (widget.settingsService.displayMode == DisplayMode.mesh)
                   _MeshLayer(
                     viewModel: widget.viewModel,
@@ -875,10 +875,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     currentPos: widget.recordingService.currentPosition.value,
                     mapCenter: _mapController.camera.center,
                   ),
-                const RichAttributionWidget(
+                RichAttributionWidget(
+                  // Mention unique, pilotée par les métadonnées de la source
+                  // active : la ligne d'attribution du fond de carte national
+                  // (USGS, Kartverket…) n'apparaît que quand il est réellement
+                  // affiché. Aucune logique par pays ici.
                   attributions: [
-                    TextSourceAttribution(
+                    const TextSourceAttribution(
                         "Contributeurs de la toile d'araignee"),
+                    if (_activeTileSource().attributionText case final a?)
+                      TextSourceAttribution(a),
                   ],
                 ),
               ],
@@ -1247,16 +1253,48 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDynamicTileLayer() {
-    final source = MapStyle.resolveTileSource(widget.settingsService);
+  /// Calque(s) de tuiles du fond de carte actif. En général un seul, mais
+  /// deux si la source empile un calque d'étiquettes ([MapSourceInfo.
+  /// overlayUrl], cas du fond canadien CBMT : géométrie + labels servis
+  /// séparément).
+  List<Widget> _buildDynamicTileLayers() {
+    final source = _activeTileSource();
+    // Au-delà de maxNativeZoom, agrandir la dernière tuile plutôt que
+    // demander des tuiles 404 (CBMT s'arrête à z15).
+    final maxNativeZoom = source.maxNativeZoom ?? 19;
 
-    return TileLayer(
-      urlTemplate: source.url,
-      subdomains: const ['a', 'b', 'c'],
-      userAgentPackageName: 'com.meshiker.app',
-      tileProvider: _buildTileProvider(source.id, onTileLoaded: _onTileLoaded),
-      errorTileCallback: _onTileError,
-      reset: _tileResetController.stream,
+    return [
+      TileLayer(
+        urlTemplate: source.url,
+        subdomains: const ['a', 'b', 'c'],
+        userAgentPackageName: 'com.meshiker.app',
+        maxNativeZoom: maxNativeZoom,
+        tileProvider: _buildTileProvider(source, onTileLoaded: _onTileLoaded),
+        errorTileCallback: _onTileError,
+        reset: _tileResetController.stream,
+      ),
+      if (source.overlayUrl case final overlayUrl?)
+        TileLayer(
+          urlTemplate: overlayUrl,
+          userAgentPackageName: 'com.meshiker.app',
+          maxNativeZoom: maxNativeZoom,
+          // Cache disque distinct du calque géométrie (mêmes z/x/y, image
+          // différente).
+          tileProvider: _buildTileProvider(source,
+              onTileLoaded: _onTileLoaded, idSuffix: '__labels'),
+          reset: _tileResetController.stream,
+        ),
+    ];
+  }
+
+  /// Source de tuiles effectivement affichée, en tenant compte du centre de
+  /// carte courant (déclenchement par zone des cartes nationales).
+  MapSourceInfo _activeTileSource() {
+    final center = _latestCamera?.center;
+    return MapStyle.resolveTileSource(
+      widget.settingsService,
+      centerLat: center?.latitude,
+      centerLon: center?.longitude,
     );
   }
 
@@ -1266,8 +1304,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// rend une zone téléchargée ("Créer une carte") réellement consultable
   /// hors connexion. Les tuiles réseau restantes passent par le cache disque
   /// de [TileCacheService] (voir [_OfflineAwareTileProvider]).
-  TileProvider _buildTileProvider(String sourceId, {required VoidCallback onTileLoaded}) {
-    final headers = {'User-Agent': 'Meshiker/1.0'};
+  TileProvider _buildTileProvider(MapSourceInfo source,
+      {required VoidCallback onTileLoaded, String idSuffix = ''}) {
+    final sourceId = '${source.id}$idSuffix';
+    // Les en-têtes propres à la source (ex: clé anonyme Supabase pour les
+    // fonds passant par l'Edge Function proxy) priment sur le User-Agent
+    // par défaut mais ne le remplacent pas.
+    final headers = {'User-Agent': 'Meshiker/1.0', ...source.httpHeaders};
     final completedMaps = widget.isarService.isar.offlineMaps
         .filter()
         .sourceIdEqualTo(sourceId)
@@ -2654,13 +2697,37 @@ class _MapCreationMenu extends StatelessWidget {
 
               // Le fond de carte actuellement affiché est celui téléchargé :
               // c'est ce que l'utilisateur vient de voir/ajuster à l'écran.
-              final favIds = settings.favoriteMapIds;
-              final sourceId = favIds.isNotEmpty
-                  ? favIds[settings.currentMapIndex % favIds.length]
-                  : 'osm_standard';
-              final source = availableSources.firstWhere(
-                  (s) => s.id == sourceId,
-                  orElse: () => availableSources.first);
+              // Résolution géo-consciente (centre de la zone sélectionnée)
+              // pour rester cohérent avec le déclenchement par zone des
+              // fonds nationaux à l'écran.
+              final areaCenterLat =
+                  (settings.mapOrigin!.lat + settings.mapTarget!.lat) / 2;
+              final areaCenterLon =
+                  (settings.mapOrigin!.lon + settings.mapTarget!.lon) / 2;
+              final source = MapStyle.resolveTileSource(
+                settings,
+                centerLat: areaCenterLat,
+                centerLon: areaCenterLon,
+              );
+
+              // Certaines sources nationales autorisent l'affichage en ligne
+              // mais pas (encore) le cache hors-ligne — cf.
+              // MapSourceInfo.cacheAllowedOffline.
+              if (!source.cacheAllowedOffline) {
+                if (context.mounted) Navigator.pop(context);
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        'Le téléchargement hors-ligne n\'est pas autorisé sur « ${source.name} ».',
+                        textAlign: TextAlign.center),
+                    duration: const Duration(seconds: 3),
+                    behavior: SnackBarBehavior.floating,
+                    margin: const EdgeInsets.symmetric(
+                        horizontal: 40, vertical: 200),
+                  ),
+                );
+                return;
+              }
 
               final map = OfflineMap()
                 ..localUuid = const Uuid().v4()
@@ -2693,8 +2760,10 @@ class _MapCreationMenu extends StatelessWidget {
 
               unawaited(
                 OfflineMapDownloadService(isarService: isar)
-                    .download(map, headers: const {'User-Agent': 'Meshiker/1.0'})
-                    .then((_) {
+                    .download(map, headers: {
+                  'User-Agent': 'Meshiker/1.0',
+                  ...source.httpHeaders,
+                }).then((_) {
                   messenger.showSnackBar(
                     SnackBar(
                       content: Text(
