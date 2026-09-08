@@ -103,6 +103,7 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
                         urlTemplate: source.url,
                         subdomains: const ['a', 'b', 'c'],
                         userAgentPackageName: 'com.meshiker.app',
+                        maxNativeZoom: source.maxNativeZoom ?? 19,
                         // Sources passant par l'Edge Function proxy : la clé
                         // anonyme Supabase doit accompagner la requête.
                         tileProvider: source.httpHeaders.isEmpty
@@ -112,6 +113,12 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
                                 ...source.httpHeaders,
                               }),
                       ),
+                      if (source.overlayUrl case final overlayUrl?)
+                        TileLayer(
+                          urlTemplate: overlayUrl,
+                          userAgentPackageName: 'com.meshiker.app',
+                          maxNativeZoom: source.maxNativeZoom ?? 19,
+                        ),
                       PolylineLayer(
                         polylines: [
                           Polyline(

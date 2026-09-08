@@ -77,6 +77,19 @@ class MapSourceInfo {
   /// sources passant par l'Edge Function proxy. `const {}` par défaut.
   final Map<String, String> httpHeaders;
 
+  /// Deuxième calque de tuiles empilé PAR-DESSUS [url] (mêmes placeholders
+  /// `{z}/{x}/{y}`). `null` = un seul calque. Utilisé quand un fond est
+  /// servi en deux services distincts — géométrie + étiquettes — comme le
+  /// fond canadien CBMT (RNCan). Le calque d'étiquettes est un PNG
+  /// transparent.
+  final String? overlayUrl;
+
+  /// Niveau de zoom maximal réellement servi par la source. Au-delà,
+  /// flutter_map agrandit la dernière tuile disponible au lieu de demander
+  /// des tuiles inexistantes (404). `null` = pas de plafond (comportement
+  /// historique). Ex: CBMT s'arrête à z15, USGS ~z16.
+  final int? maxNativeZoom;
+
   MapSourceInfo({
     required this.id,
     required this.name,
@@ -87,6 +100,8 @@ class MapSourceInfo {
     this.licenseCode,
     this.cacheAllowedOffline = true,
     this.httpHeaders = const {},
+    this.overlayUrl,
+    this.maxNativeZoom,
   });
 
   /// `true` si [lat]/[lon] tombe dans l'emprise de la source (ou si elle
@@ -187,6 +202,29 @@ final List<MapSourceInfo> availableSources = [
     cacheAllowedOffline: false,
     httpHeaders: _proxyAuthHeaders,
   ),
+  MapSourceInfo(
+    id: 'cbmt_canada',
+    name: 'Canada Base Map (RNCan)',
+    // NRCan publie CBMT en tuiles raster PRÉ-RENDUES aussi en EPSG:3857
+    // (grille Web Mercator standard, origine et résolutions identiques à
+    // OSM) : `CBMT_CBCT_GEOM_3857` = géométrie (routes, hydro, relief),
+    // `CBCT_TXT_3857` = étiquettes en français (PNG transparent). Aucune
+    // conversion Lambert / provider spécifique nécessaire — c'est un XYZ
+    // classique, comme `arcgis_sat`. Tuiles servies jusqu'à z15.
+    url:
+        'https://maps-cartes.services.geo.ca/server2_serveur2/rest/services/BaseMaps/CBMT_CBCT_GEOM_3857/MapServer/tile/{z}/{y}/{x}',
+    overlayUrl:
+        'https://maps-cartes.services.geo.ca/server2_serveur2/rest/services/BaseMaps/CBCT_TXT_3857/MapServer/tile/{z}/{y}/{x}',
+    description:
+        'Fond topographique officiel du Canada (Ressources naturelles Canada), étiquettes en français.',
+    bounds: const MapBounds(
+        minLat: 41.0, maxLat: 84.0, minLon: -141.5, maxLon: -52.0),
+    attributionText: '© Ressources naturelles Canada',
+    licenseCode: 'OGL-CANADA',
+    // v1 : affichage en ligne uniquement (cf. spec-fond-carte-cbmt-canada).
+    cacheAllowedOffline: false,
+    maxNativeZoom: 15,
+  ),
 ];
 
 class MapsSettingsScreen extends StatelessWidget {
@@ -235,6 +273,7 @@ String _regionalHint(MapSourceInfo source) {
     'PUBLIC-DOMAIN': 'domaine public',
     'CC0': 'CC0',
     'CC-BY-4.0': 'CC BY 4.0',
+    'OGL-CANADA': 'OGL Canada',
   };
   final license = licenseLabels[source.licenseCode] ?? source.licenseCode;
   final buffer = StringBuffer('Carte régionale');

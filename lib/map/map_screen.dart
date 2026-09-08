@@ -823,7 +823,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     tileProviders: widget.vectorTileSource!.tileProviders,
                   )
                 else
-                  _buildDynamicTileLayer(),
+                  ..._buildDynamicTileLayers(),
                 if (widget.settingsService.displayMode == DisplayMode.mesh)
                   _MeshLayer(
                     viewModel: widget.viewModel,
@@ -1253,17 +1253,38 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDynamicTileLayer() {
+  /// Calque(s) de tuiles du fond de carte actif. En général un seul, mais
+  /// deux si la source empile un calque d'étiquettes ([MapSourceInfo.
+  /// overlayUrl], cas du fond canadien CBMT : géométrie + labels servis
+  /// séparément).
+  List<Widget> _buildDynamicTileLayers() {
     final source = _activeTileSource();
+    // Au-delà de maxNativeZoom, agrandir la dernière tuile plutôt que
+    // demander des tuiles 404 (CBMT s'arrête à z15).
+    final maxNativeZoom = source.maxNativeZoom ?? 19;
 
-    return TileLayer(
-      urlTemplate: source.url,
-      subdomains: const ['a', 'b', 'c'],
-      userAgentPackageName: 'com.meshiker.app',
-      tileProvider: _buildTileProvider(source, onTileLoaded: _onTileLoaded),
-      errorTileCallback: _onTileError,
-      reset: _tileResetController.stream,
-    );
+    return [
+      TileLayer(
+        urlTemplate: source.url,
+        subdomains: const ['a', 'b', 'c'],
+        userAgentPackageName: 'com.meshiker.app',
+        maxNativeZoom: maxNativeZoom,
+        tileProvider: _buildTileProvider(source, onTileLoaded: _onTileLoaded),
+        errorTileCallback: _onTileError,
+        reset: _tileResetController.stream,
+      ),
+      if (source.overlayUrl case final overlayUrl?)
+        TileLayer(
+          urlTemplate: overlayUrl,
+          userAgentPackageName: 'com.meshiker.app',
+          maxNativeZoom: maxNativeZoom,
+          // Cache disque distinct du calque géométrie (mêmes z/x/y, image
+          // différente).
+          tileProvider: _buildTileProvider(source,
+              onTileLoaded: _onTileLoaded, idSuffix: '__labels'),
+          reset: _tileResetController.stream,
+        ),
+    ];
   }
 
   /// Source de tuiles effectivement affichée, en tenant compte du centre de
@@ -1284,8 +1305,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// hors connexion. Les tuiles réseau restantes passent par le cache disque
   /// de [TileCacheService] (voir [_OfflineAwareTileProvider]).
   TileProvider _buildTileProvider(MapSourceInfo source,
-      {required VoidCallback onTileLoaded}) {
-    final sourceId = source.id;
+      {required VoidCallback onTileLoaded, String idSuffix = ''}) {
+    final sourceId = '${source.id}$idSuffix';
     // Les en-têtes propres à la source (ex: clé anonyme Supabase pour les
     // fonds passant par l'Edge Function proxy) priment sur le User-Agent
     // par défaut mais ne le remplacent pas.
