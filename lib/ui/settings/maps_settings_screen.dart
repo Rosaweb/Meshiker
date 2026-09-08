@@ -7,13 +7,92 @@ import '../../utils/settings_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/offline_map/offline_map.dart';
 
+// SUPABASE_URL / SUPABASE_ANON_KEY sont injectés au build via
+// `--dart-define-from-file=env.json` (cf. env.example.json). Sans eux, les
+// sources passant par l'Edge Function proxy (Suède, Finlande) ne
+// s'afficheront pas — même limitation que la météo ou l'assistant IA.
+const String _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const String _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
+// En-têtes envoyés avec chaque requête de tuile passant par l'Edge Function
+// `map-tile-proxy` (verify_jwt = false côté fonction, mais la passerelle
+// Supabase attend malgré tout la clé anonyme). La clé API réelle du
+// fournisseur (Lantmäteriet / MML) reste un secret serveur, jamais ici.
+const Map<String, String> _proxyAuthHeaders = {
+  'apikey': _supabaseAnonKey,
+  'Authorization': 'Bearer $_supabaseAnonKey',
+};
+
+/// Emprise géographique d'une source de tuiles à couverture nationale
+/// (USGS, Kartverket…). `null` sur une [MapSourceInfo] = disponible partout
+/// (cas des fonds génériques OSM / satellite).
+class MapBounds {
+  final double minLat;
+  final double maxLat;
+  final double minLon;
+  final double maxLon;
+
+  const MapBounds({
+    required this.minLat,
+    required this.maxLat,
+    required this.minLon,
+    required this.maxLon,
+  });
+
+  bool contains(double lat, double lon) =>
+      lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
+}
+
 class MapSourceInfo {
   final String id;
   final String name;
   final String url;
   final String description;
 
-  MapSourceInfo({required this.id, required this.name, required this.url, required this.description});
+  // --- Champs cartes nationales (rétro-compatibles : valeurs par défaut
+  // neutres pour les sources génériques existantes). ---
+
+  /// Emprise géographique. `null` = fond de carte proposé partout. Sinon la
+  /// source n'est retenue que si le centre de la carte tombe dedans (voir
+  /// [MapStyle.resolveTileSource]) — « source bonus déclenchée par zone ».
+  final MapBounds? bounds;
+
+  /// Mention légale à afficher tant que cette source est active (widget
+  /// d'attribution unique de [MapScreen]). `null` = aucune mention requise.
+  final String? attributionText;
+
+  /// Code licence indicatif (`CC-BY-4.0`, `CC0`, `PUBLIC-DOMAIN`…), pour la
+  /// doc / l'écran « Mes cartes ». Pas de logique métier dessus.
+  final String? licenseCode;
+
+  /// `false` = le téléchargement hors-ligne est refusé sur cette source
+  /// (`OfflineMapDownloadService`) tant qu'une confirmation légale écrite
+  /// n'est pas obtenue (Kartverket : zone grise Geovekst zoom 12-20 ;
+  /// MML : CC BY 4.0 couvre l'affichage, pas confirmé pour le cache). Le
+  /// rendu en ligne, lui, reste autorisé.
+  final bool cacheAllowedOffline;
+
+  /// En-têtes HTTP additionnels pour chaque requête de tuile (réseau ET
+  /// téléchargement hors-ligne). Utilisé pour la clé anonyme Supabase des
+  /// sources passant par l'Edge Function proxy. `const {}` par défaut.
+  final Map<String, String> httpHeaders;
+
+  MapSourceInfo({
+    required this.id,
+    required this.name,
+    required this.url,
+    required this.description,
+    this.bounds,
+    this.attributionText,
+    this.licenseCode,
+    this.cacheAllowedOffline = true,
+    this.httpHeaders = const {},
+  });
+
+  /// `true` si [lat]/[lon] tombe dans l'emprise de la source (ou si elle
+  /// n'a pas d'emprise = disponible partout).
+  bool coversPoint(double lat, double lon) =>
+      bounds == null || bounds!.contains(lat, lon);
 }
 
 final List<MapSourceInfo> availableSources = [
@@ -46,6 +125,67 @@ final List<MapSourceInfo> availableSources = [
     name: 'ArcGIS Satellite',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     description: 'Imagerie mondiale haute résolution ArcGIS.',
+  ),
+
+  // --- Cartes topographiques nationales (déclenchées par zone) ---
+  // Le serveur attend l'ordre z/y/x dans l'URL ; flutter_map et
+  // OfflineMapDownloadService substituent {x}/{y} par position, donc écrire
+  // le gabarit « {z}/{y}/{x} » suffit — aucun TileProvider spécifique.
+  MapSourceInfo(
+    id: 'usgs_topo',
+    name: 'USGS Topo (États-Unis)',
+    // Endpoint tuiles ArcGIS REST (même forme que arcgis_sat, plus fiable
+    // que le WMTS KVP). Zoom max ~16. Domaine public, aucun compte.
+    url:
+        'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
+    description: 'Cartes topographiques officielles USA (The National Map).',
+    bounds: const MapBounds(
+        minLat: 15.0, maxLat: 72.0, minLon: -170.0, maxLon: -64.0),
+    attributionText:
+        'Map services and data available from U.S. Geological Survey, National Geospatial Program.',
+    licenseCode: 'PUBLIC-DOMAIN',
+  ),
+  MapSourceInfo(
+    id: 'kartverket_topo',
+    name: 'Kartverket (Norvège)',
+    url:
+        'https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png',
+    description: 'Carte topographique nationale norvégienne.',
+    bounds: const MapBounds(
+        minLat: 57.0, maxLat: 81.5, minLon: 3.0, maxLon: 35.0),
+    attributionText: '© Kartverket',
+    licenseCode: 'CC-BY-4.0',
+    // Zone grise Geovekst (zoom 12-20) : cache hors-ligne bloqué tant que
+    // Kartverket n'a pas confirmé le périmètre par écrit.
+    cacheAllowedOffline: false,
+  ),
+  MapSourceInfo(
+    id: 'lantmateriet_topowebb',
+    name: 'Lantmäteriet (Suède)',
+    // Passe par l'Edge Function proxy : la fonction injecte le token
+    // Lantmäteriet et remet l'URL amont en ordre z/y/x. Le client envoie
+    // toujours {z}/{x}/{y}.
+    url:
+        '$_supabaseUrl/functions/v1/map-tile-proxy/lantmateriet/{z}/{x}/{y}.png',
+    description: 'Carte topographique nationale suédoise (Topowebb).',
+    bounds: const MapBounds(
+        minLat: 55.0, maxLat: 69.5, minLon: 10.5, maxLon: 24.5),
+    attributionText: '© Lantmäteriet',
+    licenseCode: 'CC0',
+    httpHeaders: _proxyAuthHeaders,
+  ),
+  MapSourceInfo(
+    id: 'mml_maastokartta',
+    name: 'Maanmittauslaitos (Finlande)',
+    url: '$_supabaseUrl/functions/v1/map-tile-proxy/mml/{z}/{x}/{y}.png',
+    description: 'Carte topographique nationale finlandaise (Maastokartta).',
+    bounds: const MapBounds(
+        minLat: 59.5, maxLat: 70.5, minLon: 19.0, maxLon: 32.0),
+    attributionText: '© Maanmittauslaitos',
+    licenseCode: 'CC-BY-4.0',
+    // CC BY 4.0 confirmé pour l'affichage, pas pour le cache hors-ligne.
+    cacheAllowedOffline: false,
+    httpHeaders: _proxyAuthHeaders,
   ),
 ];
 

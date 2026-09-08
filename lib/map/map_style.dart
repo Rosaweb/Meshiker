@@ -109,24 +109,56 @@ class MapStyle {
   /// de l'utilisateur (ou OpenStreetMap standard s'il n'en a configuré
   /// aucune). Centralisé ici pour que MapScreen et tout autre aperçu de
   /// carte (ex: illustration d'une trace) restent cohérents entre eux.
-  static MapSourceInfo resolveTileSource(SettingsService settings) {
+  ///
+  /// [centerLat]/[centerLon] : centre de carte courant. Si la source
+  /// favorite sélectionnée a une emprise géographique (cartes nationales
+  /// USGS, Kartverket…) et que ce centre tombe hors emprise, on retombe
+  /// silencieusement sur la première source favorite valide ici, sinon sur
+  /// OpenStreetMap — c'est le « déclenchement par zone » des cartes bonus.
+  /// Sans centre fourni, aucun filtrage (comportement historique).
+  static MapSourceInfo resolveTileSource(
+    SettingsService settings, {
+    double? centerLat,
+    double? centerLon,
+  }) {
     final favIds = settings.favoriteMapIds;
     if (favIds.isEmpty) {
       return availableSources.firstWhere((s) => s.id == 'osm_standard');
     }
     final currentId = favIds[settings.currentMapIndex % favIds.length];
-    return availableSources.firstWhere((s) => s.id == currentId,
+    final picked = availableSources.firstWhere((s) => s.id == currentId,
         orElse: () => availableSources.first);
+
+    if (centerLat == null ||
+        centerLon == null ||
+        picked.coversPoint(centerLat, centerLon)) {
+      return picked;
+    }
+
+    for (final id in favIds) {
+      final candidate = availableSources.firstWhere((s) => s.id == id,
+          orElse: () => availableSources.first);
+      if (candidate.coversPoint(centerLat, centerLon)) return candidate;
+    }
+    return availableSources.firstWhere((s) => s.id == 'osm_standard');
   }
 
   /// Fond de carte à utiliser pour les aperçus de traces GPX. Si
   /// l'utilisateur en a choisi un fixe (Paramètres d'affichage), on l'utilise
   /// tel quel ; sinon on retombe sur [resolveTileSource] (fond de carte
   /// actif de la carte principale), comportement historique.
-  static MapSourceInfo resolveTracePreviewSource(SettingsService settings) {
+  static MapSourceInfo resolveTracePreviewSource(
+    SettingsService settings, {
+    double? centerLat,
+    double? centerLon,
+  }) {
     final fixedId = settings.tracePreviewMapSourceId;
-    if (fixedId == null) return resolveTileSource(settings);
+    if (fixedId == null) {
+      return resolveTileSource(settings,
+          centerLat: centerLat, centerLon: centerLon);
+    }
     return availableSources.firstWhere((s) => s.id == fixedId,
-        orElse: () => resolveTileSource(settings));
+        orElse: () => resolveTileSource(settings,
+            centerLat: centerLat, centerLon: centerLon));
   }
 }

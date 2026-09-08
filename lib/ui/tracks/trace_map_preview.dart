@@ -72,7 +72,11 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
               );
             }
 
-            final source = MapStyle.resolveTracePreviewSource(settings);
+            final source = MapStyle.resolveTracePreviewSource(
+              settings,
+              centerLat: (bbox.minLat + bbox.maxLat) / 2,
+              centerLon: (bbox.minLon + bbox.maxLon) / 2,
+            );
             final latLngPoints =
                 points!.map((p) => LatLng(p.lat, p.lon)).toList();
 
@@ -99,6 +103,14 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
                         urlTemplate: source.url,
                         subdomains: const ['a', 'b', 'c'],
                         userAgentPackageName: 'com.meshiker.app',
+                        // Sources passant par l'Edge Function proxy : la clé
+                        // anonyme Supabase doit accompagner la requête.
+                        tileProvider: source.httpHeaders.isEmpty
+                            ? null
+                            : NetworkTileProvider(headers: {
+                                'User-Agent': 'Meshiker/1.0',
+                                ...source.httpHeaders,
+                              }),
                       ),
                       PolylineLayer(
                         polylines: [

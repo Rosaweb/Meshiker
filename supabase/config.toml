@@ -11,6 +11,14 @@
 # UNAUTHORIZED_INVALID_JWT_FORMAT).
 verify_jwt = false
 
+[functions.map-tile-proxy]
+# Proxy de tuiles pour les fonds de carte nationaux à clé API (Suède,
+# Finlande). Un fond de carte doit rester affichable sans session
+# utilisateur (contrainte « zone blanche ») : verify_jwt = false, comme
+# revenuecat-webhook. Les clés Lantmäteriet / MML restent des secrets
+# serveur, injectées dans la fonction, jamais exposées au client.
+verify_jwt = false
+
 [functions.assistant-token]
 # JWT Supabase standard (attaché automatiquement par supabase_flutter) :
 # verify_jwt reste à sa valeur par défaut (true).
