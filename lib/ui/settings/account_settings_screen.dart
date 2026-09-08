@@ -34,7 +34,15 @@ class AccountSettingsScreen extends StatelessWidget {
               future: isar.currentDeviceUser(),
               builder: (context, snapshot) {
                 final user = snapshot.data;
-                final crashReportingEnabled = context.watch<SettingsService>().crashReportingEnabled;
+                final settings = context.watch<SettingsService>();
+                final crashReportingEnabled = settings.crashReportingEnabled;
+                // La section « Cartes IGN » suit la présence du fond IGN dans
+                // les cartes visibles (« Mes cartes ») : par défaut seuls les
+                // utilisateurs de locale FR l'ont (semence par pays), mais
+                // tout utilisateur qui active la carte IGN via « Gérer les
+                // fonds de carte » voit alors aussi cette section.
+                final showIgnSection =
+                    settings.visibleMapIds.contains('ign_france');
 
                 return ListView(
                   padding: const EdgeInsets.all(16),
@@ -42,8 +50,10 @@ class AccountSettingsScreen extends StatelessWidget {
                     _buildUserHeader(context, user, authService),
                     const SizedBox(height: 32),
                     _buildSubscriptionSection(context, subService),
-                    const SizedBox(height: 16),
-                    _buildIgnSubscriptionPlaceholder(),
+                    if (showIgnSection) ...[
+                      const SizedBox(height: 16),
+                      _buildIgnSubscriptionPlaceholder(),
+                    ],
                     const SizedBox(height: 32),
                     const Divider(color: Colors.white12),
                     // Visibilité liée uniquement au toggle système (spec
@@ -282,7 +292,8 @@ class AccountSettingsScreen extends StatelessWidget {
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      'Bientôt disponible : abonnement annuel pour les fonds de carte IGN SCAN25 et Plan IGN.',
+                      'Plan IGN disponible dans « Mes cartes ». Abonnement annuel SCAN25 '
+                      '(cartes de randonnée au 1:25 000) : bientôt disponible.',
                       style: TextStyle(color: Colors.white38, fontSize: 12),
                     ),
                   ],

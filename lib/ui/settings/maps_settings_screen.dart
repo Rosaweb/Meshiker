@@ -203,6 +203,25 @@ final List<MapSourceInfo> availableSources = [
     httpHeaders: _proxyAuthHeaders,
   ),
   MapSourceInfo(
+    id: 'ign_france',
+    name: 'Plan IGN (France)',
+    // Plan IGN v2 servi en accès libre par la Géoplateforme IGN
+    // (`data.geopf.fr`), sans clé ni compte — TileMatrixSet `PM` = grille
+    // Web Mercator standard, donc XYZ classique (TILEMATRIX=z, TILEROW=y,
+    // TILECOL=x, substitués par nom). SCAN25 (cartes de rando au 1:25 000)
+    // reste, lui, sur abonnement — cf. section « Cartes IGN » de « Mon
+    // compte », affichée seulement quand cette source est visible.
+    url:
+        'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png',
+    description:
+        'Plan IGN v2 — cartographie de référence de l\'IGN (Géoplateforme, accès libre).',
+    bounds: const MapBounds(
+        minLat: 41.0, maxLat: 51.6, minLon: -5.5, maxLon: 9.8),
+    attributionText: '© IGN',
+    licenseCode: 'ETALAB-2.0',
+    maxNativeZoom: 18,
+  ),
+  MapSourceInfo(
     id: 'cbmt_canada',
     name: 'Canada Base Map (RNCan)',
     // NRCan publie CBMT en tuiles raster PRÉ-RENDUES aussi en EPSG:3857
@@ -274,6 +293,7 @@ String _regionalHint(MapSourceInfo source) {
     'CC0': 'CC0',
     'CC-BY-4.0': 'CC BY 4.0',
     'OGL-CANADA': 'OGL Canada',
+    'ETALAB-2.0': 'Licence Ouverte',
   };
   final license = licenseLabels[source.licenseCode] ?? source.licenseCode;
   final buffer = StringBuffer('Carte régionale');
