@@ -13,9 +13,9 @@ import '../../models/offline_map/offline_map.dart';
 import '../../models/trace.dart';
 import '../../recording/recording_service.dart';
 import '../../search/local_search_engine.dart';
+import '../../map/map_style.dart';
 import '../../utils/offline_map_download_service.dart';
 import '../../utils/settings_service.dart';
-import '../settings/maps_settings_screen.dart';
 import '../waypoints/waypoint_manager_screen.dart';
 import 'elevation_chart_painter.dart';
 import 'elevation_profile_data.dart';
@@ -316,13 +316,24 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
 
     // Même fond de carte que celui affiché à l'écran, mêmes bornes de zoom
     // que celles proposées par défaut pour une création manuelle (cf.
-    // SettingsService.startMapCreation).
-    final favIds = settings.favoriteMapIds;
-    final sourceId = favIds.isNotEmpty
-        ? favIds[settings.currentMapIndex % favIds.length]
-        : 'osm_standard';
-    final source = availableSources.firstWhere((s) => s.id == sourceId,
-        orElse: () => availableSources.first);
+    // SettingsService.startMapCreation). Résolution géo-consciente (centre
+    // de la trace) pour rester cohérent avec le déclenchement par zone des
+    // fonds nationaux.
+    final source = MapStyle.resolveTileSource(
+      settings,
+      centerLat: (minLat + maxLat) / 2,
+      centerLon: (minLon + maxLon) / 2,
+    );
+
+    if (!source.cacheAllowedOffline) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+              'Le téléchargement hors-ligne n\'est pas autorisé sur « ${source.name} ».'),
+        ),
+      );
+      return;
+    }
 
     final map = OfflineMap()
       ..localUuid = const Uuid().v4()
@@ -352,8 +363,8 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
       ),
     );
 
-    unawaited(OfflineMapDownloadService(isarService: isar)
-        .download(map, headers: const {'User-Agent': 'Meshiker/1.0'}));
+    unawaited(OfflineMapDownloadService(isarService: isar).download(map,
+        headers: {'User-Agent': 'Meshiker/1.0', ...source.httpHeaders}));
   }
 
   Future<void> _moveSourceFile() async {

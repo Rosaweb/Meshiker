@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../map/osm_poi_categories.dart';
@@ -199,7 +201,45 @@ class SettingsService extends ChangeNotifier {
   double _tileCacheLimitMb = 500.0;
   bool _wifiOnlyDownload = true;
   bool _aiAssistantDisabled = false;
-  List<String> _favoriteMapIds = ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
+  // Favoris pilotant le bouton MAP (choisis PARMI les cartes visibles,
+  // section 1 de « Mes cartes »). CyclOSM n'en fait plus partie par défaut.
+  List<String> _favoriteMapIds = List.of(_defaultVisibleMapIds);
+
+  // Fonds de carte affichés dans la 1re section de « Mes cartes » : ceux
+  // proposés à l'installation + la carte nationale du pays (semence unique,
+  // cf. init()). Piloté ensuite par la 2e section « Gérer les fonds de
+  // carte » — sans aucun lien avec le bouton MAP.
+  List<String> _visibleMapIds = List.of(_defaultVisibleMapIds);
+
+  /// Cartes proposées par défaut : les fonds génériques d'avant les cartes
+  /// nationales, CyclOSM exclu.
+  static const List<String> _defaultVisibleMapIds = [
+    'osm_standard',
+    'opentopo',
+    'google_sat',
+    'arcgis_sat',
+  ];
+
+  /// Carte nationale ajoutée automatiquement à la 1re section selon le code
+  /// pays de la locale de l'appareil. Semence unique à la 1re exécution.
+  static const Map<String, String> _countryMapSourceIds = {
+    'US': 'usgs_topo',
+    'NO': 'kartverket_topo',
+    'SE': 'lantmateriet_topowebb',
+    'FI': 'mml_maastokartta',
+  };
+
+  /// Code pays ISO (majuscules) déduit de la locale de l'appareil, ou
+  /// `null`. Ex: `Platform.localeName` == 'fr_FR' -> 'FR'.
+  static String? _deviceCountryCode() {
+    try {
+      final match =
+          RegExp(r'[_-]([A-Za-z]{2})').firstMatch(Platform.localeName);
+      return match?.group(1)?.toUpperCase();
+    } catch (_) {
+      return null;
+    }
+  }
 
   // Rapports de crash (spec-crash-reporting.md)
   bool _crashReportingEnabled = true;
@@ -333,6 +373,7 @@ class SettingsService extends ChangeNotifier {
   bool get crashReportingEnabled => _crashReportingEnabled;
   bool get lastKnownPremiumStatus => _lastKnownPremiumStatus;
   List<String> get favoriteMapIds => _favoriteMapIds;
+  List<String> get visibleMapIds => _visibleMapIds;
   List<String> get activeGpxNames => _activeGpxNames;
   String? get navigationWaypointUuid => _navigationWaypointUuid;
   bool get waypointSelectionMode => _waypointSelectionMode;
@@ -449,8 +490,35 @@ class SettingsService extends ChangeNotifier {
     _aiAssistantDisabled = _prefs.getBool('ai_assistant_disabled') ?? false;
     _crashReportingEnabled = _prefs.getBool('crash_reporting_enabled') ?? true;
     _lastKnownPremiumStatus = _prefs.getBool('last_known_premium_status') ?? false;
-    _favoriteMapIds = _prefs.getStringList('favorite_maps') ?? ['osm_standard', 'opentopo', 'cyclosm', 'google_sat', 'arcgis_sat'];
-    
+    _favoriteMapIds = _prefs.getStringList('favorite_maps') ??
+        List.of(_defaultVisibleMapIds);
+
+    // Section 1 de « Mes cartes ». Semence unique à la 1re exécution :
+    // fonds par défaut + carte nationale du pays (locale).
+    final storedVisible = _prefs.getStringList('visible_maps');
+    if (storedVisible != null) {
+      _visibleMapIds = storedVisible;
+    } else {
+      final seed = List<String>.of(_defaultVisibleMapIds);
+      final countryMap = _countryMapSourceIds[_deviceCountryCode() ?? ''];
+      if (countryMap != null && !seed.contains(countryMap)) seed.add(countryMap);
+      _visibleMapIds = seed;
+      await _prefs.setStringList('visible_maps', _visibleMapIds);
+    }
+
+    // Un favori doit toujours être une carte visible (migration : retire
+    // CyclOSM, ou toute carte héritée non visible, des favoris du bouton
+    // MAP).
+    final reconciledFav =
+        _favoriteMapIds.where(_visibleMapIds.contains).toList();
+    if (reconciledFav.length != _favoriteMapIds.length) {
+      _favoriteMapIds = reconciledFav.isEmpty
+          ? _visibleMapIds.take(3).toList()
+          : reconciledFav;
+      await _prefs.setStringList('favorite_maps', _favoriteMapIds);
+    }
+
+
     _activeGpxNames = _prefs.getStringList('active_gpx_list') ?? [];
     // Migration depuis l'ancien format unique
     final oldActive = _prefs.getString('active_gpx');
@@ -817,6 +885,26 @@ class SettingsService extends ChangeNotifier {
   void cycleMap() {
     if (_favoriteMapIds.isEmpty) return;
     _currentMapIndex = (_currentMapIndex + 1) % _favoriteMapIds.length;
+    notifyListeners();
+  }
+
+  /// Met à jour la liste des fonds de carte affichés dans la 1re section de
+  /// « Mes cartes » (pilotée par la 2e section « Gérer les fonds de
+  /// carte »). Aucun lien avec le bouton MAP — sauf qu'une carte retirée
+  /// d'ici ne peut plus être un favori : elle est alors aussi retirée de
+  /// `favoriteMapIds`.
+  Future<void> setVisibleMaps(List<String> ids) async {
+    _visibleMapIds = ids;
+    await _prefs.setStringList('visible_maps', ids);
+
+    final reconciled = _favoriteMapIds.where(ids.contains).toList();
+    if (reconciled.length != _favoriteMapIds.length) {
+      _favoriteMapIds = reconciled;
+      await _prefs.setStringList('favorite_maps', _favoriteMapIds);
+      _currentMapIndex = _favoriteMapIds.isEmpty
+          ? 0
+          : _currentMapIndex % _favoriteMapIds.length;
+    }
     notifyListeners();
   }
 

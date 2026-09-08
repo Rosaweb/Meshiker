@@ -246,94 +246,183 @@ String _regionalHint(MapSourceInfo source) {
   return buffer.toString();
 }
 
-class _OnlineSourcesTab extends StatelessWidget {
+/// Onglet « Fonds de carte » de « Mes cartes », en deux sections :
+///
+/// 1. **Cartes affichées** : les fonds proposés par défaut (+ la carte
+///    nationale du pays de l'utilisateur, semence unique côté
+///    `SettingsService`). La case à cocher y sélectionne les favoris du
+///    bouton MAP (max 3, l'ordre = priorité), comportement historique.
+/// 2. **Gérer les fonds de carte** (masquée, dépliée par un lien en bas de
+///    la section 1) : la liste intégrale. La case à cocher y décide
+///    seulement quelles cartes apparaissent dans la section 1 — aucun lien
+///    avec le bouton MAP. Décocher une carte favorite la retire aussi des
+///    favoris (`SettingsService.setVisibleMaps`).
+class _OnlineSourcesTab extends StatefulWidget {
   const _OnlineSourcesTab();
+
+  @override
+  State<_OnlineSourcesTab> createState() => _OnlineSourcesTabState();
+}
+
+class _OnlineSourcesTabState extends State<_OnlineSourcesTab> {
+  bool _managing = false;
 
   @override
   Widget build(BuildContext context) {
     return Consumer<SettingsService>(
       builder: (context, settings, child) {
+        final visibleSources = availableSources
+            .where((s) => settings.visibleMapIds.contains(s.id))
+            .toList();
+
         return Column(
           children: [
             const Padding(
               padding: EdgeInsets.all(16.0),
               child: Text(
-                'Sélectionnez jusqu\'à 3 cartes favorites. L\'ordre détermine la priorité du bouton MAP.',
+                'Cochez jusqu\'à 3 cartes favorites. L\'ordre détermine la priorité du bouton MAP.',
                 style: TextStyle(color: Colors.white38),
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                itemCount: availableSources.length,
-                itemBuilder: (context, index) {
-                  final source = availableSources[index];
-                  final favIndex = settings.favoriteMapIds.indexOf(source.id);
-                  final isSelected = favIndex != -1;
+              child: ListView(
+                children: [
+                  // --- Section 1 : cartes affichées ---
+                  for (final source in visibleSources)
+                    _sourceTile(
+                        settings: settings,
+                        source: source,
+                        isFavoriteSection: true),
 
-                  return ListTile(
-                    isThreeLine: source.bounds != null,
-                    title: Text(source.name, style: const TextStyle(color: Colors.white)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(source.description,
-                            style: const TextStyle(color: Colors.white70)),
-                        // Fond de carte national : ne s'affiche que sur sa
-                        // zone de couverture (sinon fond générique). Indiqué
-                        // ici pour éviter la surprise « j'ai choisi USGS mais
-                        // je vois de l'OSM ».
-                        if (source.bounds != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              _regionalHint(source),
-                              style: const TextStyle(
-                                  color: Colors.white38, fontSize: 11),
-                            ),
-                          ),
-                      ],
+                  // --- Lien vers la section 2 ---
+                  ListTile(
+                    leading: Icon(
+                      _managing ? Icons.expand_less : Icons.tune,
+                      color: Colors.greenAccent,
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isSelected)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.greenAccent.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.5)),
-                            ),
-                            child: Text(
-                              'Priorité ${favIndex + 1}',
-                              style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        Checkbox(
-                          value: isSelected,
-                          onChanged: (checked) {
-                            List<String> current = List.from(settings.favoriteMapIds);
-                            if (checked == true) {
-                              if (current.length < 3) current.add(source.id);
-                            } else {
-                              current.remove(source.id);
-                            }
-                            settings.setFavoriteMaps(current);
-                          },
-                          checkColor: Colors.black,
-                          activeColor: Colors.greenAccent,
-                          side: const BorderSide(color: Colors.white38),
-                        ),
-                      ],
+                    title: Text(
+                      _managing
+                          ? 'Masquer les fonds de carte'
+                          : 'Gérer les fonds de carte',
+                      style: const TextStyle(
+                        color: Colors.greenAccent,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  );
-                },
+                    onTap: () => setState(() => _managing = !_managing),
+                  ),
+
+                  // --- Section 2 : quelles cartes afficher en section 1 ---
+                  if (_managing) ...[
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Text(
+                        'Cochez les fonds de carte à faire apparaître ci-dessus. '
+                        'Sans effet sur le bouton MAP.',
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                    ),
+                    for (final source in availableSources)
+                      _sourceTile(
+                          settings: settings,
+                          source: source,
+                          isFavoriteSection: false),
+                  ],
+                ],
               ),
             ),
           ],
         );
       },
     );
+  }
+
+  Widget _sourceTile({
+    required SettingsService settings,
+    required MapSourceInfo source,
+    required bool isFavoriteSection,
+  }) {
+    final favIndex = settings.favoriteMapIds.indexOf(source.id);
+    final isFavorite = favIndex != -1;
+    final checked = isFavoriteSection
+        ? isFavorite
+        : settings.visibleMapIds.contains(source.id);
+
+    return ListTile(
+      isThreeLine: source.bounds != null,
+      title: Text(source.name, style: const TextStyle(color: Colors.white)),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(source.description,
+              style: const TextStyle(color: Colors.white70)),
+          // Fond de carte national : ne s'affiche que sur sa zone de
+          // couverture (sinon fond générique). Indiqué pour éviter la
+          // surprise « j'ai choisi USGS mais je vois de l'OSM ».
+          if (source.bounds != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                _regionalHint(source),
+                style: const TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isFavoriteSection && isFavorite)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.greenAccent.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: Colors.greenAccent.withValues(alpha: 0.5)),
+              ),
+              child: Text(
+                'Priorité ${favIndex + 1}',
+                style: const TextStyle(
+                    color: Colors.greenAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+          Checkbox(
+            value: checked,
+            onChanged: (value) => isFavoriteSection
+                ? _toggleFavorite(settings, source.id, value == true)
+                : _toggleVisible(settings, source.id, value == true),
+            checkColor: Colors.black,
+            activeColor: Colors.greenAccent,
+            side: const BorderSide(color: Colors.white38),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleFavorite(SettingsService settings, String id, bool add) {
+    final current = List<String>.from(settings.favoriteMapIds);
+    if (add) {
+      if (current.contains(id) || current.length >= 3) return;
+      current.add(id);
+    } else {
+      current.remove(id);
+    }
+    settings.setFavoriteMaps(current);
+  }
+
+  void _toggleVisible(SettingsService settings, String id, bool add) {
+    final current = List<String>.from(settings.visibleMapIds);
+    if (add) {
+      if (!current.contains(id)) current.add(id);
+    } else {
+      current.remove(id);
+      if (current.isEmpty) return; // toujours au moins une carte affichée
+    }
+    settings.setVisibleMaps(current);
   }
 }
 
