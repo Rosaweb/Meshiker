@@ -790,12 +790,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _preCompassDynamicRotation = _dynamicRotation;
       _dynamicRotation = true;
       _compassMode = true;
+      // Le centre de rotation de la carte est ramené au milieu du bord
+      // supérieur du bandeau (cf. build) : pour qu'il coïncide avec la
+      // position, on force le mode suivi.
+      _followUser = true;
       if (!_menuExpanded) {
         _menuExpanded = true;
         _menuExpandController.forward();
       }
     });
     if (_currentHeading != null) _mapController.rotate(-_currentHeading!);
+    final pos = widget.recordingService.currentPosition.value;
+    if (pos != null) {
+      _mapController.move(
+          LatLng(pos.latitude, pos.longitude), _mapController.camera.zoom);
+    }
   }
 
   void _exitCompassMode() {
@@ -809,6 +818,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
+  /// Contenu de l'échelle (libellé + barre), partagé par la disposition
+  /// horizontale normale et la disposition verticale du mode boussole. Le
+  /// fondu suit le menu principal pour disparaître avec lui sous un volet.
+  Widget _buildScaleContent() {
+    return AnimatedBuilder(
+      animation: widget.panelScrollAnimation,
+      builder: (context, child) {
+        final distance =
+            (widget.panelScrollAnimation.value - widget.mapPageIndex)
+                .abs()
+                .clamp(0.0, 1.0);
+        return Opacity(opacity: 1.0 - distance, child: child);
+      },
+      child: _MapScaleWidget(
+        camera: _latestCamera!,
+        color: Colors.black,
+        unitSystem: widget.settingsService.unitSystem,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -817,9 +847,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       builder: (context, _) {
         final bottomMenuHeight = 80.0 + (_menuExpandController.value * 80.0);
 
+        // Mode boussole : on décale/agrandit le widget carte pour que SON
+        // CENTRE — c.-à-d. le centre de rotation de flutter_map ET le point où
+        // `camera.center` (donc la position, en mode suivi) est dessiné —
+        // tombe au milieu du bord supérieur du bandeau de menu, en bas de
+        // l'écran. Le débord, invisible car écrêté par le Stack, est le prix
+        // de ce recentrage — acceptable pour un mode transitoire (au prix
+        // d'un viewport un peu plus large chargé depuis Isar).
+        final screenH = MediaQuery.sizeOf(context).height;
+        final compassAnchorY = screenH - bottomMenuHeight;
+        final compassMapHeight =
+            2.0 * max(compassAnchorY, screenH - compassAnchorY);
+        final compassMapTop = compassAnchorY - compassMapHeight / 2;
+
         return Stack(
           children: [
-            FlutterMap(
+            Positioned(
+              left: 0,
+              right: 0,
+              top: _compassMode ? compassMapTop : 0.0,
+              bottom: _compassMode ? null : 0.0,
+              height: _compassMode ? compassMapHeight : null,
+              child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
                 initialCenter: widget.initialCenter,
@@ -939,6 +988,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ],
             ),
+            ),
             if (widget.settingsService.locatingWaypointUuid != null ||
                 widget.settingsService.locatingTraceUuid != null)
               Positioned(
@@ -1002,30 +1052,30 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-            if (widget.settingsService.showScale && _latestCamera != null)
+            // Hors mode boussole : échelle horizontale au-dessus du bandeau.
+            if (widget.settingsService.showScale &&
+                _latestCamera != null &&
+                !_compassMode)
               Positioned(
                 bottom: bottomMenuHeight + 10,
                 left: 0,
                 right: 0,
+                child: Center(child: _buildScaleContent()),
+              ),
+            // En mode boussole : la position est ramenée en bas de l'écran et
+            // l'échelle horizontale la recouvrirait (ainsi que la croix de
+            // visée) — on la bascule à la verticale, centrée sur le bord
+            // gauche.
+            if (widget.settingsService.showScale &&
+                _latestCamera != null &&
+                _compassMode)
+              Positioned(
+                left: 8,
+                top: 0,
+                bottom: 0,
                 child: Center(
-                  child: AnimatedBuilder(
-                    // Même fondu que le menu principal, pour que l'échelle
-                    // disparaisse en même temps que lui sous un volet latéral.
-                    animation: widget.panelScrollAnimation,
-                    builder: (context, child) {
-                      final distance = (widget.panelScrollAnimation.value -
-                              widget.mapPageIndex)
-                          .abs()
-                          .clamp(0.0, 1.0);
-                      final menuVisibility = 1.0 - distance;
-                      return Opacity(opacity: menuVisibility, child: child);
-                    },
-                    child: _MapScaleWidget(
-                      camera: _latestCamera!,
-                      color: Colors.black,
-                      unitSystem: widget.settingsService.unitSystem,
-                    ),
-                  ),
+                  child:
+                      RotatedBox(quarterTurns: 3, child: _buildScaleContent()),
                 ),
               ),
             if (_isMapReady && _latestCamera != null)
