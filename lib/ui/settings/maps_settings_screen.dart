@@ -352,6 +352,78 @@ final List<MapSourceInfo> availableSources = [
     cacheAllowedOffline: false,
     maxNativeZoom: 16,
   ),
+
+  // --- Tranche 2 (après vérif d'endpoints alternatifs, 2026-09-09). ---
+  MapSourceInfo(
+    id: 'cz_ztm',
+    name: 'ZTM (Tchéquie)',
+    // ČÚZK expose une variante Web Mercator de son cache ArcGIS (ZTM_WM),
+    // distincte du WMTS Krovak (EPSG:5514) → XYZ classique. Cache fusionné
+    // multi-échelle (ZM10/ZM25/ZM50…).
+    url:
+        'https://ags.cuzk.gov.cz/arcgis1/rest/services/ZTM_WM/MapServer/tile/{z}/{y}/{x}',
+    description: 'Základní topografická mapa — carte topo de base tchèque (ČÚZK).',
+    bounds: const MapBounds(
+        minLat: 48.5, maxLat: 51.1, minLon: 12.0, maxLon: 18.9),
+    attributionText: '© Český úřad zeměměřický a katastrální',
+    licenseCode: 'OPEN',
+    maxNativeZoom: 16,
+  ),
+  MapSourceInfo(
+    id: 'ee_kaart',
+    name: 'Põhikaart (Estonie)',
+    // Maa-amet : WMTS RESTful, TileMatrixSet GMC (Web Mercator) → XYZ
+    // {z}/{y}/{x}. `ASUTUS` = identifiant d'organisme demandé par les
+    // conditions d'usage (valeur libre, pas d'inscription).
+    url:
+        'https://tiles.maaamet.ee/tm/wmts/1.0.0/kaart/default/GMC/{z}/{y}/{x}.png?ASUTUS=meshiker&KESKKOND=LIVE',
+    description: 'Eesti põhikaart — carte de base nationale estonienne (Maa-amet).',
+    bounds: const MapBounds(
+        minLat: 57.5, maxLat: 59.8, minLon: 21.7, maxLon: 28.3),
+    attributionText: 'Aluskaart © Maa-amet',
+    licenseCode: 'ATTRIB',
+    maxNativeZoom: 17,
+  ),
+  MapSourceInfo(
+    id: 'pl_topo',
+    name: 'Mapa topograficzna (Pologne)',
+    // GUGiK ne pré-tuile qu'en grille nationale (EPSG:2180) ; le WMS
+    // « guest » anonyme n'expose pas EPSG:3857 → interrogé en CRS:84.
+    url: '',
+    wms: const WmsConfig(
+      baseUrl:
+          'https://mapy.geoportal.gov.pl/wss/service/img/guest/TOPO/MapServer/WMSServer?',
+      layers: ['Raster'],
+      format: 'image/png',
+      geographicCrs: true,
+    ),
+    description: 'Mapa topograficzna Polski (GUGiK / Geoportal).',
+    bounds: const MapBounds(
+        minLat: 49.0, maxLat: 54.9, minLon: 14.1, maxLon: 24.2),
+    attributionText: '© Główny Urząd Geodezji i Kartografii',
+    licenseCode: 'OPEN',
+    cacheAllowedOffline: false,
+    maxNativeZoom: 16,
+  ),
+  MapSourceInfo(
+    id: 'sk_tm25',
+    name: 'TM25 (Slovaquie)',
+    // ÚGKK : WMS EPSG:3857, couche « 1 » = TM 1:25 000 (RETM, équivalent
+    // raster de la carte topo).
+    url: '',
+    wms: const WmsConfig(
+      baseUrl: 'https://zbgisws.skgeodesy.sk/retm_wms/service.svc/get?',
+      layers: ['1'],
+      format: 'image/png',
+    ),
+    description: 'Topografická mapa 1:25 000 (ÚGKK SR).',
+    bounds: const MapBounds(
+        minLat: 47.7, maxLat: 49.7, minLon: 16.8, maxLon: 22.6),
+    attributionText: '© Úrad geodézie, kartografie a katastra SR',
+    licenseCode: 'OPEN',
+    cacheAllowedOffline: false,
+    maxNativeZoom: 16,
+  ),
 ];
 
 class MapsSettingsScreen extends StatelessWidget {
@@ -403,6 +475,7 @@ String _regionalHint(MapSourceInfo source) {
     'OGL-CANADA': 'OGL Canada',
     'ETALAB-2.0': 'Licence Ouverte',
     'OPEN': 'licence ouverte',
+    'ATTRIB': 'attribution requise',
   };
   final license = licenseLabels[source.licenseCode] ?? source.licenseCode;
   final buffer = StringBuffer('Carte régionale');

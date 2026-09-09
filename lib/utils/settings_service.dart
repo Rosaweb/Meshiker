@@ -232,6 +232,10 @@ class SettingsService extends ChangeNotifier {
     'AT': 'at_basemap',
     'SI': 'si_dtk50',
     'HR': 'hr_tk25',
+    'CZ': 'cz_ztm',
+    'EE': 'ee_kaart',
+    'PL': 'pl_topo',
+    'SK': 'sk_tm25',
   };
 
   /// Code pays ISO (majuscules) déduit de la locale de l'appareil, ou
