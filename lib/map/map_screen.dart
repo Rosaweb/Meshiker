@@ -1301,9 +1301,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   onTap: () => setState(() => _arcSliderOpen = false),
                   child: Container(
                     color: Colors.black.withValues(alpha: 0.35),
-                    alignment: Alignment.bottomCenter,
+                    alignment: Alignment.centerRight,
                     child: Padding(
-                      padding: EdgeInsets.only(bottom: bottomMenuHeight + 24),
+                      padding: const EdgeInsets.only(right: 12),
                       child: GestureDetector(
                         // Absorbe les taps sur le slider pour ne pas fermer
                         // l'overlay via le scrim.
