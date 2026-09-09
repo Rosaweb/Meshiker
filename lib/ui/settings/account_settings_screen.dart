@@ -4,6 +4,7 @@ import '../../utils/auth_service.dart';
 import '../../utils/settings_service.dart';
 import '../../utils/subscription_service.dart';
 import '../../database/isar_service.dart';
+import '../../models/pending_crash_report.dart';
 import '../../models/utilisateur.dart';
 import '../auth/login_screen.dart';
 import '../auth/secure_account_screen.dart';
@@ -51,21 +52,38 @@ class AccountSettingsScreen extends StatelessWidget {
                     // vide inclus, pour apprendre passivement à
                     // l'utilisateur où regarder en cas de souci.
                     if (crashReportingEnabled) ...[
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.bug_report_outlined, color: Colors.greenAccent),
-                        title: const Text('Rapport de bug', style: TextStyle(color: Colors.white)),
-                        subtitle: const Text('Rapports de plantage en attente d\'envoi', style: TextStyle(color: Colors.white60)),
-                        trailing: const Icon(Icons.chevron_right, color: Colors.white24),
-                        onTap: () => Navigator.push(context, PageRouteBuilder(
-                          pageBuilder: (context, animation, secondaryAnimation) => const BugReportListScreen(),
-                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                            return SlideTransition(
-                              position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
-                              child: child,
-                            );
-                          },
-                        )),
+                      StreamBuilder<List<PendingCrashReport>>(
+                        stream: isar.watchPendingCrashReports(),
+                        builder: (context, snapshot) {
+                          final hasPending =
+                              (snapshot.data?.isNotEmpty ?? false);
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.bug_report_outlined, color: Colors.greenAccent),
+                            title: Row(
+                              children: [
+                                const Text('Rapport de bug', style: TextStyle(color: Colors.white)),
+                                // Point jaune clignotant tant qu'un rapport de
+                                // bug est en attente d'envoi dans la file.
+                                if (hasPending) ...[
+                                  const SizedBox(width: 8),
+                                  const _BlinkingDot(),
+                                ],
+                              ],
+                            ),
+                            subtitle: const Text('Rapports de plantage en attente d\'envoi', style: TextStyle(color: Colors.white60)),
+                            trailing: const Icon(Icons.chevron_right, color: Colors.white24),
+                            onTap: () => Navigator.push(context, PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) => const BugReportListScreen(),
+                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                return SlideTransition(
+                                  position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(animation),
+                                  child: child,
+                                );
+                              },
+                            )),
+                          );
+                        },
                       ),
                       const Divider(color: Colors.white12),
                     ],
@@ -295,4 +313,51 @@ class AccountSettingsScreen extends StatelessWidget {
     );
   }
 
+}
+
+/// Petit point jaune dont l'opacité pulse en continu — signale la présence
+/// d'au moins un rapport de bug en attente d'envoi, à côté du titre
+/// « Rapport de bug ».
+class _BlinkingDot extends StatefulWidget {
+  const _BlinkingDot();
+
+  @override
+  State<_BlinkingDot> createState() => _BlinkingDotState();
+}
+
+class _BlinkingDotState extends State<_BlinkingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 1.0, end: 0.15).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      ),
+      child: Container(
+        width: 9,
+        height: 9,
+        decoration: BoxDecoration(
+          color: Colors.yellow,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.yellow.withValues(alpha: 0.6),
+              blurRadius: 4,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

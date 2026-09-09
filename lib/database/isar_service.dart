@@ -818,6 +818,17 @@ class IsarService {
         .findAll();
   }
 
+  /// Flux (live) des rapports de bug en attente d'envoi, les plus récents
+  /// d'abord — pour le point d'alerte de la section « Rapport de bug » de
+  /// « Mon compte », qui doit apparaître/disparaître sans rouvrir l'écran.
+  Stream<List<PendingCrashReport>> watchPendingCrashReports() {
+    return isar.pendingCrashReports
+        .filter()
+        .statusEqualTo(CrashReportStatus.pending)
+        .sortByLastOccurredAtDesc()
+        .watch(fireImmediately: true);
+  }
+
   Future<PendingCrashReport?> pendingCrashReportByFingerprint(
       String fingerprint) {
     return isar.pendingCrashReports
