@@ -1263,6 +1263,29 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // demander des tuiles 404 (CBMT s'arrête à z15).
     final maxNativeZoom = source.maxNativeZoom ?? 19;
 
+    // Source servie en WMS (Slovénie, Croatie…) : flutter_map calcule une
+    // bbox GetMap par tuile ; notre `_OfflineAwareTileProvider` (cache
+    // disque) s'applique par-dessus comme pour un gabarit XYZ.
+    if (source.wms case final wms?) {
+      return [
+        TileLayer(
+          wmsOptions: WMSTileLayerOptions(
+            baseUrl: wms.baseUrl,
+            layers: wms.layers,
+            format: wms.format,
+            version: wms.version,
+            transparent: wms.transparent,
+            crs: wms.geographicCrs ? const Epsg4326() : const Epsg3857(),
+          ),
+          userAgentPackageName: 'com.meshiker.app',
+          maxNativeZoom: maxNativeZoom,
+          tileProvider: _buildTileProvider(source, onTileLoaded: _onTileLoaded),
+          errorTileCallback: _onTileError,
+          reset: _tileResetController.stream,
+        ),
+      ];
+    }
+
     return [
       TileLayer(
         urlTemplate: source.url,
