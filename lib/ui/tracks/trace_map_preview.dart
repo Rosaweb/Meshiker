@@ -99,20 +99,36 @@ class _TraceMapPreviewState extends State<TraceMapPreview> {
                       ),
                     ),
                     children: [
-                      TileLayer(
-                        urlTemplate: source.url,
-                        subdomains: const ['a', 'b', 'c'],
-                        userAgentPackageName: 'com.meshiker.app',
-                        maxNativeZoom: source.maxNativeZoom ?? 19,
-                        // Sources passant par l'Edge Function proxy : la clé
-                        // anonyme Supabase doit accompagner la requête.
-                        tileProvider: source.httpHeaders.isEmpty
-                            ? null
-                            : NetworkTileProvider(headers: {
-                                'User-Agent': 'Meshiker/1.0',
-                                ...source.httpHeaders,
-                              }),
-                      ),
+                      if (source.wms case final wms?)
+                        TileLayer(
+                          wmsOptions: WMSTileLayerOptions(
+                            baseUrl: wms.baseUrl,
+                            layers: wms.layers,
+                            format: wms.format,
+                            version: wms.version,
+                            transparent: wms.transparent,
+                            crs: wms.geographicCrs
+                                ? const Epsg4326()
+                                : const Epsg3857(),
+                          ),
+                          userAgentPackageName: 'com.meshiker.app',
+                          maxNativeZoom: source.maxNativeZoom ?? 19,
+                        )
+                      else
+                        TileLayer(
+                          urlTemplate: source.url,
+                          subdomains: const ['a', 'b', 'c'],
+                          userAgentPackageName: 'com.meshiker.app',
+                          maxNativeZoom: source.maxNativeZoom ?? 19,
+                          // Sources passant par l'Edge Function proxy : la clé
+                          // anonyme Supabase doit accompagner la requête.
+                          tileProvider: source.httpHeaders.isEmpty
+                              ? null
+                              : NetworkTileProvider(headers: {
+                                  'User-Agent': 'Meshiker/1.0',
+                                  ...source.httpHeaders,
+                                }),
+                        ),
                       if (source.overlayUrl case final overlayUrl?)
                         TileLayer(
                           urlTemplate: overlayUrl,

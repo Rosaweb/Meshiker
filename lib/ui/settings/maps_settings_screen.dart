@@ -43,6 +43,32 @@ class MapBounds {
       lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
 }
 
+/// Configuration d'une source servie en **WMS** (pas de tuiles
+/// pré-générées) : flutter_map (`WMSTileLayerOptions`) calcule une bbox
+/// `GetMap` par tuile visible. Les couches de cache disque / hors-ligne de
+/// [MapScreen] s'appliquent ensuite exactement comme pour un gabarit XYZ.
+class WmsConfig {
+  /// URL de base du service, jusqu'au `?` inclus.
+  final String baseUrl;
+  final List<String> layers;
+  final String format; // 'image/png' | 'image/jpeg'
+  final String version; // '1.3.0'
+  final bool transparent;
+
+  /// `true` pour les services qui n'exposent pas EPSG:3857 : on interroge
+  /// alors en EPSG:4326 (flutter_map gère l'inversion d'axes WMS 1.3.0).
+  final bool geographicCrs;
+
+  const WmsConfig({
+    required this.baseUrl,
+    required this.layers,
+    this.format = 'image/png',
+    this.version = '1.3.0',
+    this.transparent = false,
+    this.geographicCrs = false,
+  });
+}
+
 class MapSourceInfo {
   final String id;
   final String name;
@@ -90,6 +116,10 @@ class MapSourceInfo {
   /// historique). Ex: CBMT s'arrête à z15, USGS ~z16.
   final int? maxNativeZoom;
 
+  /// Si non-null : la source est servie en WMS et non par un gabarit
+  /// d'URL. [url] est alors ignoré (mettre `''`).
+  final WmsConfig? wms;
+
   MapSourceInfo({
     required this.id,
     required this.name,
@@ -102,6 +132,7 @@ class MapSourceInfo {
     this.httpHeaders = const {},
     this.overlayUrl,
     this.maxNativeZoom,
+    this.wms,
   });
 
   /// `true` si [lat]/[lon] tombe dans l'emprise de la source (ou si elle
@@ -244,6 +275,83 @@ final List<MapSourceInfo> availableSources = [
     cacheAllowedOffline: false,
     maxNativeZoom: 15,
   ),
+
+  // --- Cartes topo nationales Europe, sans clé ni compte
+  // (cf. spec-cartes-topo-europe-sans-compte). Tranche 1 : sources
+  // vérifiées renvoyant des tuiles réelles. ---
+  MapSourceInfo(
+    id: 'es_mtn',
+    name: 'MTN (Espagne)',
+    // WMTS IGN España, TileMatrixSet GoogleMapsCompatible (EPSG:3857) →
+    // XYZ classique. Couche `MTN` = raster multi-échelle (1:25 000 aux
+    // zooms rando, 1:50 000 en dessous, etc.).
+    url:
+        'https://www.ign.es/wmts/mapa-raster?layer=MTN&style=default&tilematrixset=GoogleMapsCompatible&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/jpeg&TileMatrix={z}&TileRow={y}&TileCol={x}',
+    description:
+        'Mapa Topográfico Nacional — cartographie topographique officielle espagnole (IGN).',
+    bounds: const MapBounds(
+        minLat: 35.0, maxLat: 44.5, minLon: -9.8, maxLon: 4.5),
+    attributionText: '© Instituto Geográfico Nacional de España',
+    licenseCode: 'CC-BY-4.0',
+    maxNativeZoom: 18,
+  ),
+  MapSourceInfo(
+    id: 'at_basemap',
+    name: 'basemap.at (Autriche)',
+    // WMTS basemap.at, TileMatrixSet google3857 (EPSG:3857). Pas de raster
+    // topo nommé — le fond « Standard » (geolandbasemap) est la carte de
+    // référence officielle.
+    url:
+        'https://maps.wien.gv.at/basemap/geolandbasemap/normal/google3857/{z}/{y}/{x}.png',
+    description: 'Fond de carte de référence officiel autrichien (basemap.at).',
+    bounds: const MapBounds(
+        minLat: 46.3, maxLat: 49.1, minLon: 9.5, maxLon: 17.2),
+    attributionText: 'Datenquelle: basemap.at',
+    licenseCode: 'CC-BY-4.0',
+    maxNativeZoom: 19,
+  ),
+  MapSourceInfo(
+    id: 'si_dtk50',
+    name: 'DTK50 (Slovénie)',
+    // GURS ne pré-tuile pas : WMS EPSG:3857, flutter_map calcule une bbox
+    // GetMap par tuile. DTK50 = carte topo 1:50 000 (le DTK25 civil a été
+    // abandonné).
+    url: '',
+    wms: const WmsConfig(
+      baseUrl: 'https://ipi.eprostor.gov.si/wms-si-gurs-dts/wms?',
+      layers: ['SI.GURS.DK:DTK50'],
+      format: 'image/png',
+    ),
+    description: 'Državna topografska karta 1:50 000 (GURS).',
+    bounds: const MapBounds(
+        minLat: 45.4, maxLat: 47.0, minLon: 13.3, maxLon: 16.7),
+    attributionText: '© Geodetska uprava Republike Slovenije',
+    licenseCode: 'CC-BY-4.0',
+    // WMS : le téléchargeur hors-ligne (gabarit XYZ) ne sait pas gérer,
+    // donc en ligne uniquement pour l'instant.
+    cacheAllowedOffline: false,
+    maxNativeZoom: 16,
+  ),
+  MapSourceInfo(
+    id: 'hr_tk25',
+    name: 'TK25 (Croatie)',
+    // DGU : WMS ouvert sans clé. La couche TK25 n'expose pas EPSG:3857 →
+    // on interroge en EPSG:4326 (geographicCrs).
+    url: '',
+    wms: const WmsConfig(
+      baseUrl: 'https://geoportal.dgu.hr/services/tk/wms?',
+      layers: ['TK25'],
+      format: 'image/png',
+      geographicCrs: true,
+    ),
+    description: 'Topografska karta 1:25 000 (Državna geodetska uprava).',
+    bounds: const MapBounds(
+        minLat: 42.3, maxLat: 46.6, minLon: 13.4, maxLon: 19.5),
+    attributionText: '© Državna geodetska uprava',
+    licenseCode: 'OPEN',
+    cacheAllowedOffline: false,
+    maxNativeZoom: 16,
+  ),
 ];
 
 class MapsSettingsScreen extends StatelessWidget {
@@ -294,6 +402,7 @@ String _regionalHint(MapSourceInfo source) {
     'CC-BY-4.0': 'CC BY 4.0',
     'OGL-CANADA': 'OGL Canada',
     'ETALAB-2.0': 'Licence Ouverte',
+    'OPEN': 'licence ouverte',
   };
   final license = licenseLabels[source.licenseCode] ?? source.licenseCode;
   final buffer = StringBuffer('Carte régionale');
