@@ -443,6 +443,20 @@ class IsarService {
     return all.where((w) => !w.isPhotoWaypoint).toList();
   }
 
+  /// Uniquement les waypoints photo (`isPhotoWaypoint == true`), liens
+  /// `category` chargés. Source de la galerie "Mes photos"
+  /// (spec-galerie-photos-carnet-de-route.md §1.3).
+  Future<List<Waypoint>> photoWaypoints() async {
+    final list = await isar.waypoints
+        .filter()
+        .isPhotoWaypointEqualTo(true)
+        .findAll();
+    for (final w in list) {
+      await w.category.load();
+    }
+    return list;
+  }
+
   /// Waypoints photo (`isPhotoWaypoint == true`) dans un rayon (mètres) autour
   /// d'un point — pré-filtrage bounding box indexé puis affinage Haversine
   /// exact, même schéma que [nearbyPois]. Support du regroupement spatial des

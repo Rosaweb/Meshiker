@@ -28,6 +28,7 @@ import 'tracks/track_manager_screen.dart';
 import 'tracks/roadmap_screen.dart';
 import 'segments/segment_manager_screen.dart';
 import 'waypoints/waypoint_manager_screen.dart';
+import 'photos/photo_gallery_screen.dart';
 import 'assistant/assistant_prompt_bar.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -490,6 +491,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               title: 'Mesh manager',
               subtitle: 'Gérer les segments',
               onTap: () => _pushSettings(const SegmentManagerScreen())),
+          _buildSettingsTile(
+              icon: Icons.photo_library_outlined,
+              title: 'Mes photos',
+              subtitle: 'Vos photos géolocalisées',
+              onTap: () => _pushSettings(const PhotoGalleryScreen())),
           _buildSettingsTile(
               icon: Icons.help_outline,
               title: 'Aide',
