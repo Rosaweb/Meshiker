@@ -397,17 +397,45 @@ class _WaypointEditScreenState extends State<WaypointEditScreen> {
         for (int i = 0; i < _photoPaths.length; i++)
           GestureDetector(
             onTap: () => setState(() => _headerPhotoIndex = i),
-            child: Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _headerPhotoIndex == i ? Colors.greenAccent : Colors.transparent, width: 2),
-                image: DecorationImage(image: FileImage(File(_photoPaths[i])), fit: BoxFit.cover),
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _headerPhotoIndex == i ? Colors.greenAccent : Colors.transparent, width: 2),
+                    image: DecorationImage(image: FileImage(File(_photoPaths[i])), fit: BoxFit.cover),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                SizedBox(
+                  width: 60,
+                  child: Text(
+                    _photoTakenLabel(_photoPaths[i]),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white38, fontSize: 9),
+                  ),
+                ),
+              ],
             ),
           ),
       ],
     );
+  }
+
+  /// Horodatage de la photo lu à l'affichage depuis les métadonnées du
+  /// fichier (spec-photos-geolocalisees.md §5.2) : `photoPaths` reste une
+  /// simple `List<String>`, aucun nouveau modèle. Permet de distinguer des
+  /// visites successives sur un même site (clustering purement spatial).
+  String _photoTakenLabel(String path) {
+    try {
+      final m = File(path).lastModifiedSync();
+      String two(int v) => v.toString().padLeft(2, '0');
+      return '${two(m.day)}/${two(m.month)}/${m.year % 100} ${two(m.hour)}:${two(m.minute)}';
+    } catch (_) {
+      return '';
+    }
   }
 }

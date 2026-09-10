@@ -63,6 +63,16 @@ class Waypoint {
   List<String> photoPaths = [];
   int headerPhotoIndex = 0; // Index de la photo d'entête
 
+  /// true si ce waypoint a été créé via le bouton photo du bandeau de menu
+  /// principal (plutôt que par appui long sur la carte). Détermine le
+  /// masquage par défaut sur la carte et l'exclusion des listes / compteurs /
+  /// exports / annonces par défaut (spec-photos-geolocalisees.md §2.1, §8).
+  /// Champ structurel, indépendant de `category` : ne doit jamais être déduit
+  /// d'une WaypointCategory, qui reste éditable / supprimable par
+  /// l'utilisateur. Migration Isar : nouveau champ, défaut `false`, les
+  /// waypoints existants restent `false` sans migration de données.
+  bool isPhotoWaypoint = false;
+
   // Relations
   final category = IsarLink<WaypointCategory>();
   final folder = IsarLink<WaypointFolder>();

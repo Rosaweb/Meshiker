@@ -622,6 +622,35 @@ class RecordingService {
     );
   }
 
+  /// Dernier fix ayant passé le filtre de qualité centralisé
+  /// ([GpsFixQuality]) — distinct de `currentPosition.value`, qui peut avoir
+  /// été rejeté. Exposé pour la capture photo géolocalisée (spec-photos §4).
+  geo.Position? get lastAcceptedFix => _lastAcceptedFix;
+
+  /// Fix GPS pour une création ponctuelle (photo géolocalisée, spec-photos
+  /// §4) : tente un fix frais one-shot, le valide par le pipeline centralisé,
+  /// et retombe sur le dernier fix accepté puis sur la dernière position
+  /// connue. La localisation en arrière-plan tourne déjà en continu dès que
+  /// le réglage est actif — aucun nouveau polling n'est créé.
+  Future<geo.Position?> acquireFixNow() async {
+    try {
+      final pos = await geo.Geolocator.getCurrentPosition(
+        locationSettings: _buildLocationSettings(isRecording: false),
+      );
+      final ok = _lastAcceptedFix == null
+          ? GpsFixQuality.isAcceptableFirstFix(pos)
+          : GpsFixQuality.isAcceptableFix(
+              previous: _lastAcceptedFix!, current: pos);
+      if (ok) {
+        _lastAcceptedFix = pos;
+        return pos;
+      }
+    } catch (e) {
+      debugPrint('RecordingService.acquireFixNow: $e');
+    }
+    return _lastAcceptedFix ?? currentPosition.value;
+  }
+
   void _onPosition(geo.Position position) {
     debugPrint('RecordingService: DISPATCHING POS: ${position.latitude}, ${position.longitude}');
     _resetSignalTimer();
@@ -987,7 +1016,13 @@ class RecordingService {
         _activeTrace = await isarService.isar.traces.filter().nameEqualTo(roadmapTrace).findFirst();
         if (_activeTrace != null) {
           _activePolyline = await isarService.getTracePolyline(_activeTrace!);
-          _traceWaypoints = await isarService.searchWaypoints(filterGpxName: roadmapTrace);
+          // Waypoints photo exclus par défaut du Roadmap / des annonces / de
+          // l'assistant IA (spec-photos-geolocalisees.md §8).
+          _traceWaypoints = await isarService.searchWaypoints(
+            filterGpxName: roadmapTrace,
+            includePhotoWaypoints:
+                settingsService?.showPhotoWaypoints ?? false,
+          );
         } else {
           _activePolyline = [];
           _traceWaypoints = [];

@@ -33,6 +33,7 @@ import '../utils/waypoint_icons.dart';
 import 'osm_poi_categories.dart';
 import '../ui/waypoints/osm_poi_detail_sheet.dart';
 import '../recording/recording_service.dart';
+import '../photos/photo_capture_service.dart';
 import '../gpx/gpx_import_service.dart';
 import '../gpx/gpx_models.dart';
 import '../models/trace.dart';
@@ -139,6 +140,45 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // Idem, mais cadré sur une étendue (ex: "Localiser sur la carte" depuis
     // la fiche d'une trace GPX).
     widget.viewModel.centerBoundsRequest.addListener(_onCenterBoundsRequest);
+  }
+
+  // Service de capture photo géolocalisée (spec-photos-geolocalisees.md).
+  // Récupéré via Provider (didChangeDependencies) plutôt que passé en
+  // paramètre : il n'est utilisé que par le bouton photo du bandeau et ces
+  // deux écoutes.
+  PhotoCaptureService? _photoCapture;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final svc = context.read<PhotoCaptureService>();
+    if (identical(svc, _photoCapture)) return;
+    _photoCapture?.pendingEditWaypoint.removeListener(_onPhotoPendingEdit);
+    _photoCapture?.message.removeListener(_onPhotoMessage);
+    _photoCapture = svc;
+    svc.pendingEditWaypoint.addListener(_onPhotoPendingEdit);
+    svc.message.addListener(_onPhotoMessage);
+  }
+
+  void _onPhotoPendingEdit() {
+    final wp = _photoCapture?.pendingEditWaypoint.value;
+    if (wp == null || !mounted) return;
+    _photoCapture!.pendingEditWaypoint.value = null;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.7),
+      builder: (context) => WaypointEditScreen(
+        waypoint: wp,
+        isarService: widget.isarService,
+      ),
+    ).then((_) => widget.viewModel.refreshNow());
+  }
+
+  void _onPhotoMessage() {
+    final msg = _photoCapture?.message.value;
+    if (msg == null || !mounted) return;
+    _photoCapture!.message.value = null;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _onCenterRequest() {
@@ -253,6 +293,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     widget.recordingService.currentPosition.removeListener(_onLocationUpdate);
+    _photoCapture?.pendingEditWaypoint.removeListener(_onPhotoPendingEdit);
+    _photoCapture?.message.removeListener(_onPhotoMessage);
     widget.viewModel.centerRequest.removeListener(_onCenterRequest);
     widget.viewModel.centerBoundsRequest.removeListener(_onCenterBoundsRequest);
     _colorMode.dispose();
@@ -307,6 +349,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       roadmapTraceName: widget.settingsService.roadmapTraceName,
       showEveryWaypoint: widget.settingsService.showEveryWaypoint,
       showGpxWaypoints: widget.settingsService.showGpxWaypoints,
+      showPhotoWaypoints: widget.settingsService.showPhotoWaypoints,
     );
     if (widget.settingsService.mapCreationStep == MapCreationStep.stretchArea &&
         widget.settingsService.mapOrigin != null) {
@@ -1238,6 +1281,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     widget.settingsService.showEveryWaypoint,
                                 showGpxWaypoints:
                                     widget.settingsService.showGpxWaypoints,
+                                showPhotoWaypoints:
+                                    widget.settingsService.showPhotoWaypoints,
                               );
                             },
                             onLongPressWaypoints: () {
@@ -1249,6 +1294,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 showEveryWaypoint: true,
                                 showGpxWaypoints:
                                     widget.settingsService.showGpxWaypoints,
+                                showPhotoWaypoints:
+                                    widget.settingsService.showPhotoWaypoints,
                               );
                             },
                             onToggleGpx: () {
@@ -1287,6 +1334,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               _handleToggleRecording();
                             },
                             isRecording: widget.recordingService.isActive,
+                            onCapturePhoto: () {
+                              _dismissLocateBackButton();
+                              context
+                                  .read<PhotoCaptureService>()
+                                  .startCaptureSession();
+                            },
                           ),
                         ),
                       ),
@@ -1730,6 +1783,7 @@ class _BottomControlBar extends StatelessWidget {
   final VoidCallback onDeleteSelected;
   final VoidCallback onToggleRecording;
   final bool isRecording;
+  final VoidCallback onCapturePhoto;
 
   const _BottomControlBar({
     required this.opacity,
@@ -1774,6 +1828,7 @@ class _BottomControlBar extends StatelessWidget {
     required this.onDeleteSelected,
     required this.onToggleRecording,
     required this.isRecording,
+    required this.onCapturePhoto,
   });
 
   // Inverse l'ordre horizontal des boutons en mode gaucher (reversePanels),
@@ -1909,6 +1964,12 @@ class _BottomControlBar extends StatelessWidget {
                 color: showAllGpx ? Colors.greenAccent : Colors.white38,
                 fontWeight: FontWeight.bold,
                 fontSize: 12)),
+      ),
+      // Photo géolocalisée (spec-photos-geolocalisees.md §3.1) : au centre de
+      // la deuxième ligne du bandeau.
+      _RoundButton(
+        onPressed: onCapturePhoto,
+        child: const Icon(Icons.photo_camera, color: Colors.white70),
       ),
       _RoundButton(
         onPressed: onToggleRecording,

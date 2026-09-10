@@ -19,6 +19,12 @@
     <!-- Permission pour le scan de QR code (réception d'un partage) -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Photos géolocalisées : lecture de la pellicule pour l'observateur de
+         nouvelles images (photo_manager) pendant une session multi-photos.
+         Android 13+ ; sous 13 c'est READ_EXTERNAL_STORAGE (déjà déclarée). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+
     <!-- Permission pour le micro de l'assistant IA conversationnel -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
@@ -89,6 +95,11 @@
         <!-- Requis par flutter_tts pour la synthèse vocale des annonces de waypoints -->
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
+        <!-- Requis (Android 11+) pour que resolveActivity() trouve l'appli
+             caméra système lancée par le bouton photo du bandeau (spec-photos). -->
+        <intent>
+            <action android:name="android.media.action.STILL_IMAGE_CAMERA"/>
         </intent>
     </queries>
 </manifest>

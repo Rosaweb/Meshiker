@@ -129,6 +129,14 @@ class SettingsService extends ChangeNotifier {
   bool _showGpxWaypoints = true;
   bool _flattenWaypointFolders = false;
 
+  // Photos géolocalisées (spec-photos-geolocalisees.md). Un waypoint photo est
+  // un Waypoint ordinaire avec `isPhotoWaypoint == true` ; ces trois réglages
+  // gouvernent son regroupement spatial, l'ouverture éventuelle de la fiche
+  // après la prise, et sa visibilité sur la carte / dans les listes.
+  double _photoClusterRadiusMeters = 15.0;
+  bool _showPhotoEditPopup = false;
+  bool _showPhotoWaypoints = false;
+
   // Annonces vocales des waypoints en cours de navigation (géofencing local,
   // sans IA — cf. spec-assistant-vocal-ia.md §2). Deux contextes indépendants :
   // "waypoint manager" (waypoints affichés sur la carte) et "roadmap" (trace
@@ -325,6 +333,9 @@ class SettingsService extends ChangeNotifier {
   bool get showMesh => _displayMode == DisplayMode.mesh;
   bool get showGpxWaypoints => _showGpxWaypoints;
   bool get flattenWaypointFolders => _flattenWaypointFolders;
+  double get photoClusterRadiusMeters => _photoClusterRadiusMeters;
+  bool get showPhotoEditPopup => _showPhotoEditPopup;
+  bool get showPhotoWaypoints => _showPhotoWaypoints;
   bool get waypointAnnouncementsEnabled => _waypointAnnouncementsEnabled;
   bool get waypointAnnounceOnApproach => _waypointAnnounceOnApproach;
   bool get waypointAnnounceOnSpot => _waypointAnnounceOnSpot;
@@ -449,6 +460,9 @@ class SettingsService extends ChangeNotifier {
     _displayMode = DisplayMode.gpx;
     _showGpxWaypoints = _prefs.getBool('show_gpx_waypoints') ?? true;
     _flattenWaypointFolders = _prefs.getBool('flatten_waypoint_folders') ?? false;
+    _photoClusterRadiusMeters = _prefs.getDouble('photo_cluster_radius_m') ?? 15.0;
+    _showPhotoEditPopup = _prefs.getBool('show_photo_edit_popup') ?? false;
+    _showPhotoWaypoints = _prefs.getBool('show_photo_waypoints') ?? false;
     _waypointAnnouncementsEnabled = _prefs.getBool('waypoint_announcements_enabled') ?? false;
     _waypointAnnounceOnApproach = _prefs.getBool('waypoint_announce_on_approach') ?? true;
     _waypointAnnounceOnSpot = _prefs.getBool('waypoint_announce_on_spot') ?? true;
@@ -688,6 +702,36 @@ class SettingsService extends ChangeNotifier {
   Future<void> setFlattenWaypointFolders(bool value) async {
     _flattenWaypointFolders = value;
     await _prefs.setBool('flatten_waypoint_folders', value);
+    notifyListeners();
+  }
+
+  /// Rayon (mètres) du regroupement spatial des photos géolocalisées
+  /// (spec-photos-geolocalisees.md §5). Une nouvelle photo prise dans ce rayon
+  /// d'un waypoint photo existant y est ajoutée plutôt que de créer un
+  /// nouveau point.
+  Future<void> setPhotoClusterRadiusMeters(double value) async {
+    _photoClusterRadiusMeters = value;
+    await _prefs.setDouble('photo_cluster_radius_m', value);
+    notifyListeners();
+  }
+
+  /// Si activé, ouvre la fiche d'édition du waypoint photo juste après la
+  /// prise (ou après la fin d'une session multi-photos sur Android). Désactivé
+  /// par défaut, contrairement à l'appui long sur la carte (spec §7).
+  Future<void> setShowPhotoEditPopup(bool value) async {
+    _showPhotoEditPopup = value;
+    await _prefs.setBool('show_photo_edit_popup', value);
+    notifyListeners();
+  }
+
+  /// Visibilité des waypoints `isPhotoWaypoint == true` (spec §8). Désactivé
+  /// par défaut : ils sont alors masqués sur la carte et exclus des listes /
+  /// compteurs / exports / annonces, même quand l'affichage général des
+  /// waypoints est actif. Activé, ils rejoignent les waypoints classiques
+  /// (pas de couche séparée).
+  Future<void> setShowPhotoWaypoints(bool value) async {
+    _showPhotoWaypoints = value;
+    await _prefs.setBool('show_photo_waypoints', value);
     notifyListeners();
   }
 

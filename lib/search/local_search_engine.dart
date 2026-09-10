@@ -73,6 +73,15 @@ class LocalSearchEngine {
   }
 
   void indexWaypoint(Waypoint waypoint) {
+    // Les waypoints photo (spec-photos-geolocalisees.md §8) sont exclus de la
+    // recherche plein texte : ce sont des points d'observation terrain, pas
+    // des repères nommés que l'utilisateur chercherait par nom. Si un tel
+    // waypoint était déjà indexé (bascule du type via l'éditeur), on le
+    // retire.
+    if (waypoint.isPhotoWaypoint) {
+      removeWaypoint(waypoint.localUuid);
+      return;
+    }
     final docId = 'waypoint:${waypoint.localUuid}';
     final text = [waypoint.name, waypoint.description ?? ''].join(' ');
     _index.indexDocument(docId, text);

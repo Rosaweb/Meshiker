@@ -168,7 +168,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
             color: Colors.white.withValues(alpha: 0.05),
             child: _isMultiSelectMode
               ? _buildSelectionActions(isar)
-              : _buildFilters(isar),
+              : _buildFilters(isar, settings),
           ),
 
           Expanded(
@@ -182,6 +182,8 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
                       query: _searchQuery,
                       categoryId: _typeFilter?.id,
                       filterGpxName: widget.filterGpxName,
+                      // Waypoints photo masqués par défaut (spec-photos §8).
+                      includePhotoWaypoints: settings.showPhotoWaypoints,
                     ),
                     isar.allFolders(),
                   ]),
@@ -213,7 +215,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
     }
   }
 
-  Widget _buildFilters(IsarService isar) {
+  Widget _buildFilters(IsarService isar, SettingsService settings) {
     return Column(
       children: [
         TextField(
@@ -254,6 +256,7 @@ class _WaypointManagerScreenState extends State<WaypointManagerScreen> {
                 query: _searchQuery,
                 categoryId: _typeFilter?.id,
                 filterGpxName: widget.filterGpxName,
+                includePhotoWaypoints: settings.showPhotoWaypoints,
               ),
               builder: (context, snapshot) {
                 final visible = snapshot.data ?? const <Waypoint>[];

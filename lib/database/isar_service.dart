@@ -433,8 +433,62 @@ class IsarService {
     });
   }
 
-  Future<List<Waypoint>> allWaypoints() {
-    return isar.waypoints.where().findAll();
+  /// Tous les waypoints. [includePhotoWaypoints] false (défaut) exclut les
+  /// waypoints photo (`isPhotoWaypoint == true`) : voir
+  /// spec-photos-geolocalisees.md §8 — toute énumération / comptage / export
+  /// respecte ce filtre sauf réglage "Afficher les waypoints photo" actif.
+  Future<List<Waypoint>> allWaypoints({bool includePhotoWaypoints = false}) async {
+    final all = await isar.waypoints.where().findAll();
+    if (includePhotoWaypoints) return all;
+    return all.where((w) => !w.isPhotoWaypoint).toList();
+  }
+
+  /// Waypoints photo (`isPhotoWaypoint == true`) dans un rayon (mètres) autour
+  /// d'un point — pré-filtrage bounding box indexé puis affinage Haversine
+  /// exact, même schéma que [nearbyPois]. Support du regroupement spatial des
+  /// photos (spec-photos-geolocalisees.md §5.1) : purement spatial, aucune
+  /// borne temporelle.
+  Future<List<Waypoint>> nearbyPhotoWaypoints({
+    required double latitude,
+    required double longitude,
+    required double radiusMeters,
+  }) async {
+    final box = _approximateBoundingBox(latitude, longitude, radiusMeters);
+    final all = await isar.waypoints.where().findAll();
+    return all.where((w) {
+      if (!w.isPhotoWaypoint) return false;
+      if (w.latitude < box.minLat ||
+          w.latitude > box.maxLat ||
+          w.longitude < box.minLon ||
+          w.longitude > box.maxLon) {
+        return false;
+      }
+      return GeoUtils.haversineMeters(
+              latitude, longitude, w.latitude, w.longitude) <=
+          radiusMeters;
+    }).toList();
+  }
+
+  /// WaypointCategory "Photo" par défaut, purement cosmétique (icône/couleur
+  /// sur la carte quand l'utilisateur choisit d'afficher les waypoints
+  /// photo). Retrouvée ou créée via un `localUuid` stable — indépendant du
+  /// nom, que l'utilisateur reste libre de renommer sans effet sur
+  /// `isPhotoWaypoint` (spec-photos-geolocalisees.md §2.1).
+  static const photoCategoryUuid = 'meshiker-builtin-photo-category';
+
+  Future<WaypointCategory> ensurePhotoCategory() async {
+    final existing = await isar.waypointCategorys
+        .filter()
+        .localUuidEqualTo(photoCategoryUuid)
+        .findFirst();
+    if (existing != null) return existing;
+    final cat = WaypointCategory()
+      ..localUuid = photoCategoryUuid
+      ..name = 'Photo'
+      ..iconName = 'camera'
+      ..colorHex = 0xFF9C27B0;
+    await isar.writeTxn(() => isar.waypointCategorys.put(cat));
+    return cat;
   }
 
   Future<Waypoint?> waypointByUuid(String localUuid) {
@@ -568,13 +622,19 @@ class IsarService {
     // dossier (associatedGpxName == null), contrairement à l'absence totale
     // de filtre.
     List<String>? filterGpxNames,
+    // Waypoints photo (`isPhotoWaypoint == true`) exclus par défaut
+    // (spec-photos-geolocalisees.md §8) : les inclure seulement quand le
+    // réglage "Afficher les waypoints photo" est actif.
+    bool includePhotoWaypoints = false,
   }) async {
     // Utilisation d'une requête simple et filtrage manuel pour la robustesse
     final all = await isar.waypoints.where().findAll();
-    
+
     return all.where((w) {
       bool matches = true;
-      
+
+      if (!includePhotoWaypoints && w.isPhotoWaypoint) return false;
+
       if (query != null && query.isNotEmpty) {
         matches &= w.name.toLowerCase().contains(query.toLowerCase());
       }
@@ -610,9 +670,11 @@ class IsarService {
     required double maxLat,
     required double minLon,
     required double maxLon,
+    bool includePhotoWaypoints = false,
   }) async {
     final all = await isar.waypoints.where().findAll();
     return all.where((w) {
+      if (!includePhotoWaypoints && w.isPhotoWaypoint) return false;
       return w.associatedGpxName == null &&
           w.latitude >= minLat && w.latitude <= maxLat &&
           w.longitude >= minLon && w.longitude <= maxLon;
@@ -621,8 +683,12 @@ class IsarService {
 
   /// Récupère les waypoints groupés par dossier.
   /// Les waypoints sans dossier sont retournés avec la clé 'null'.
-  Future<Map<WaypointFolder?, List<Waypoint>>> waypointsGroupedByFolder() async {
-    final all = await isar.waypoints.where().findAll();
+  Future<Map<WaypointFolder?, List<Waypoint>>> waypointsGroupedByFolder(
+      {bool includePhotoWaypoints = false}) async {
+    final fetched = await isar.waypoints.where().findAll();
+    final all = includePhotoWaypoints
+        ? fetched
+        : fetched.where((w) => !w.isPhotoWaypoint).toList();
     // Isar ne charge pas automatiquement les liens, il faut les charger
     for (var w in all) {
       await w.folder.load();

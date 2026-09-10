@@ -52,7 +52,7 @@ class SystemSettingsScreen extends StatelessWidget {
                 const SizedBox(height: 32),
                 const Text('PHOTOS', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
-                _buildPhotoSection(context),
+                _buildPhotoSection(context, settings),
                 const SizedBox(height: 32),
                 const Text('ASSISTANT IA', style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
@@ -125,7 +125,7 @@ class SystemSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPhotoSection(BuildContext context) {
+  Widget _buildPhotoSection(BuildContext context, SettingsService settings) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -150,9 +150,9 @@ class SystemSettingsScreen extends StatelessWidget {
               messenger.showSnackBar(
                 const SnackBar(content: Text('Recherche de nouvelles photos...')),
               );
-              
+
               final photos = await scanner.scanPhotos();
-              
+
               messenger.showSnackBar(
                 SnackBar(content: Text('${photos.length} photos trouvées dans le dossier Meshiker.')),
               );
@@ -160,6 +160,46 @@ class SystemSettingsScreen extends StatelessWidget {
             icon: const Icon(Icons.photo_library),
             label: const Text('Synchroniser la galerie'),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.white10, foregroundColor: Colors.white),
+          ),
+          const Divider(color: Colors.white12, height: 32),
+          // Photos géolocalisées (spec-photos-geolocalisees.md §5.3, §7).
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                child: Text('Rayon de regroupement des photos',
+                    style: TextStyle(color: Colors.white, fontSize: 14)),
+              ),
+              Text('${settings.photoClusterRadiusMeters.round()} m',
+                  style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          Slider(
+            value: settings.photoClusterRadiusMeters.clamp(5, 100),
+            min: 5,
+            max: 100,
+            divisions: 19,
+            label: '${settings.photoClusterRadiusMeters.round()} m',
+            onChanged: (v) => settings.setPhotoClusterRadiusMeters(v),
+            activeColor: Colors.greenAccent,
+            inactiveColor: Colors.white12,
+          ),
+          const Text(
+            'Une nouvelle photo prise dans ce rayon d\'un point photo existant y est ajoutée plutôt que de créer un nouveau point.',
+            style: TextStyle(color: Colors.white38, fontSize: 11),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            title: const Text('Afficher la fenêtre d\'édition après une photo',
+                style: TextStyle(color: Colors.white, fontSize: 14)),
+            subtitle: const Text(
+              'Ouvre la fiche du point photo juste après la prise (ou après la fin de la session multi-photos sur Android). Désactivé par défaut.',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+            value: settings.showPhotoEditPopup,
+            onChanged: (v) => settings.setShowPhotoEditPopup(v),
+            activeThumbColor: Colors.greenAccent,
+            contentPadding: EdgeInsets.zero,
           ),
         ],
       ),

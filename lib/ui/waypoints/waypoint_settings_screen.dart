@@ -56,6 +56,15 @@ class _WaypointSettingsScreenState extends State<WaypointSettingsScreen> {
                     onChanged: (v) => settings.setShowGpxWaypoints(v),
                   ),
                   SwitchListTile(
+                    title: const Text('Afficher les waypoints photo', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    subtitle: const Text(
+                        'Points créés via le bouton photo du bandeau. Masqués par défaut, même quand les waypoints sont affichés ; exclus des listes, exports et annonces tant que ce réglage est désactivé.',
+                        style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    value: settings.showPhotoWaypoints,
+                    activeThumbColor: Colors.greenAccent,
+                    onChanged: (v) => settings.setShowPhotoWaypoints(v),
+                  ),
+                  SwitchListTile(
                     title: const Text('Afficher tous les waypoints sans dossiers', style: TextStyle(color: Colors.white, fontSize: 14)),
                     subtitle: const Text('Liste à plat de tous les waypoints, y compris ceux rangés dans un dossier', style: TextStyle(color: Colors.white38, fontSize: 12)),
                     value: settings.flattenWaypointFolders,

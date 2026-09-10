@@ -70,6 +70,7 @@ class MapViewModel {
   String? _lastRoadmapTraceName;
   bool _lastShowEveryWaypoint = false;
   bool _lastShowGpxWaypoints = true;
+  bool _lastShowPhotoWaypoints = false;
 
   /// A appeler quand le viewport de la carte change (deplacement, zoom).
   /// Debounce volontairement les appels rapproches (l'utilisateur qui
@@ -88,6 +89,7 @@ class MapViewModel {
     String? roadmapTraceName,
     bool showEveryWaypoint = false,
     bool showGpxWaypoints = true,
+    bool showPhotoWaypoints = false,
     Duration debounce = const Duration(milliseconds: 300),
   }) {
     _lastBounds = (minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon);
@@ -98,6 +100,7 @@ class MapViewModel {
     _lastRoadmapTraceName = roadmapTraceName;
     _lastShowEveryWaypoint = showEveryWaypoint;
     _lastShowGpxWaypoints = showGpxWaypoints;
+    _lastShowPhotoWaypoints = showPhotoWaypoints;
     _debounce?.cancel();
     _debounce = Timer(debounce, () {
       unawaited(_reload(
@@ -112,6 +115,7 @@ class MapViewModel {
         roadmapTraceName: roadmapTraceName,
         showEveryWaypoint: showEveryWaypoint,
         showGpxWaypoints: showGpxWaypoints,
+        showPhotoWaypoints: showPhotoWaypoints,
       ));
     });
   }
@@ -136,6 +140,7 @@ class MapViewModel {
       roadmapTraceName: _lastRoadmapTraceName,
       showEveryWaypoint: _lastShowEveryWaypoint,
       showGpxWaypoints: _lastShowGpxWaypoints,
+      showPhotoWaypoints: _lastShowPhotoWaypoints,
     );
   }
 
@@ -148,10 +153,12 @@ class MapViewModel {
     required String? roadmapTraceName,
     required bool showEveryWaypoint,
     bool? showGpxWaypoints,
+    bool? showPhotoWaypoints,
   }) async {
     _lastRoadmapTraceName = roadmapTraceName;
     _lastShowEveryWaypoint = showEveryWaypoint;
     if (showGpxWaypoints != null) _lastShowGpxWaypoints = showGpxWaypoints;
+    if (showPhotoWaypoints != null) _lastShowPhotoWaypoints = showPhotoWaypoints;
     final b = _lastBounds;
     if (b == null) return;
     await _reload(
@@ -166,6 +173,7 @@ class MapViewModel {
       roadmapTraceName: roadmapTraceName,
       showEveryWaypoint: showEveryWaypoint,
       showGpxWaypoints: _lastShowGpxWaypoints,
+      showPhotoWaypoints: _lastShowPhotoWaypoints,
     );
   }
 
@@ -181,6 +189,7 @@ class MapViewModel {
     String? roadmapTraceName,
     bool showEveryWaypoint = false,
     bool showGpxWaypoints = true,
+    bool showPhotoWaypoints = false,
   }) async {
     // 1. Local d'abord, toujours : c'est ce qui garantit l'usage en zone
     // blanche.
@@ -213,6 +222,10 @@ class MapViewModel {
             ? roadmapTraceName
             : null;
 
+    // Waypoints photo (`isPhotoWaypoint`) : masqués par défaut sur la carte,
+    // même quand l'affichage général des waypoints est actif — inclus
+    // seulement si le réglage "Afficher les waypoints photo" l'autorise
+    // (spec-photos-geolocalisees.md §8).
     final List<Waypoint> fetchedWaypoints;
     if (showEveryWaypoint) {
       fetchedWaypoints = await isarService.searchWaypoints(
@@ -220,6 +233,7 @@ class MapViewModel {
         maxLat: maxLat,
         minLon: minLon,
         maxLon: maxLon,
+        includePhotoWaypoints: showPhotoWaypoints,
       );
     } else {
       final independentWaypoints = await isarService.independentWaypointsInViewport(
@@ -227,6 +241,7 @@ class MapViewModel {
         maxLat: maxLat,
         minLon: minLon,
         maxLon: maxLon,
+        includePhotoWaypoints: showPhotoWaypoints,
       );
 
       List<Waypoint> traceWaypoints = const [];
@@ -238,6 +253,7 @@ class MapViewModel {
             minLon: minLon,
             maxLon: maxLon,
             filterGpxName: effectiveRoadmapTrace,
+            includePhotoWaypoints: showPhotoWaypoints,
           );
         } else if (activeGpxNames.isNotEmpty) {
           traceWaypoints = await isarService.searchWaypoints(
@@ -246,6 +262,7 @@ class MapViewModel {
             minLon: minLon,
             maxLon: maxLon,
             filterGpxNames: activeGpxNames,
+            includePhotoWaypoints: showPhotoWaypoints,
           );
         }
       }

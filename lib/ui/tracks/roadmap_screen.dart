@@ -96,7 +96,7 @@ class RoadmapScreen extends StatelessWidget {
               ),
             )
           : FutureBuilder<_RoadmapData?>(
-              future: _loadRoadmapData(isar, traceName),
+              future: _loadRoadmapData(isar, traceName, settings.showPhotoWaypoints),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
@@ -170,12 +170,17 @@ class RoadmapScreen extends StatelessWidget {
     );
   }
 
-  Future<_RoadmapData?> _loadRoadmapData(IsarService isar, String traceName) async {
+  Future<_RoadmapData?> _loadRoadmapData(
+      IsarService isar, String traceName, bool includePhotoWaypoints) async {
     final trace = await isar.isar.traces.filter().nameEqualTo(traceName).findFirst();
     if (trace == null) return null;
 
     final polyline = await isar.getTracePolyline(trace);
-    final waypoints = await isar.searchWaypoints(filterGpxName: traceName);
+    // Waypoints photo exclus du Roadmap par défaut (spec-photos §8).
+    final waypoints = await isar.searchWaypoints(
+      filterGpxName: traceName,
+      includePhotoWaypoints: includePhotoWaypoints,
+    );
 
     final entries = <_RoadmapEntry>[];
     for (final wp in waypoints) {

@@ -21,6 +21,7 @@ import 'utils/supabase_bootstrap_service.dart';
 import 'gpx/gpx_import_service.dart';
 import 'gpx/gpx_scanner_service.dart';
 import 'navigation/waypoint_announcement_service.dart';
+import 'photos/photo_capture_service.dart';
 import 'sharing/trace_share_service.dart';
 import 'assistant/assistant_service.dart';
 import 'assistant/places_service.dart';
@@ -139,6 +140,14 @@ void main() async {
         recordingService: recordingService,
         settingsService: settingsService,
       );
+      // Bouton photo du bandeau principal (spec-photos-geolocalisees.md) :
+      // crée des Waypoint `isPhotoWaypoint`, regroupés spatialement.
+      final photoCaptureService = PhotoCaptureService(
+        isarService: isarService,
+        recordingService: recordingService,
+        settingsService: settingsService,
+        mapViewModel: mapViewModel,
+      );
 
       const ownerUuid = 'user-local-123';
 
@@ -205,6 +214,7 @@ void main() async {
             Provider.value(value: mapViewModel),
             Provider.value(value: recordingService),
             Provider.value(value: waypointAnnouncementService),
+            Provider.value(value: photoCaptureService),
             Provider.value(value: importService),
             Provider.value(value: supabaseBootstrap),
             Provider.value(value: traceShareService),
