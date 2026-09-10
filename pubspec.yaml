@@ -61,6 +61,11 @@ dependencies:
   flutter_sound: ^9.30.0
   sentry_flutter: 9.28.0
   flutter_markdown_plus: ^1.0.12
+  # Carnet de route : génération PDF + partage natif + redimensionnement des
+  # photos avant export (spec-galerie-photos-carnet-de-route.md §2.4).
+  pdf: ^3.13.0
+  printing: ^5.15.0
+  image: ^4.9.2
 dev_dependencies:
   sentry_dart_plugin: ^3.4.0
   flutter_test:

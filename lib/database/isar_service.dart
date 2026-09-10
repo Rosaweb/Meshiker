@@ -10,6 +10,7 @@ import '../models/enums.dart';
 import '../models/pending_crash_report.dart';
 import '../models/point_of_interest.dart';
 import '../models/recording_draft.dart';
+import '../models/roadbook.dart';
 import '../models/segment.dart';
 import '../models/trace.dart';
 import '../models/trace_segment_entry.dart';
@@ -74,6 +75,7 @@ class IsarService {
         WaypointFolderSchema,
         OfflineMapSchema,
         PendingCrashReportSchema,
+        RoadbookSchema,
       ],
       directory: dir.path,
       // Un seul isolate d'écriture suffit ici : le service d'enregistrement
@@ -455,6 +457,36 @@ class IsarService {
       await w.category.load();
     }
     return list;
+  }
+
+  // -----------------------------------------------------------------
+  // Carnets de route (spec-galerie-photos-carnet-de-route.md Partie 2)
+  // -----------------------------------------------------------------
+
+  /// Le carnet de route de [gpxName], ou null s'il n'en existe pas encore
+  /// (contrainte : un seul par trace, index unique sur `associatedGpxName`).
+  Future<Roadbook?> roadbookForTrace(String gpxName) {
+    return isar.roadbooks
+        .filter()
+        .associatedGpxNameEqualTo(gpxName)
+        .findFirst();
+  }
+
+  /// Tous les carnets de route, du plus récemment modifié au plus ancien —
+  /// alimente la section "Carnets de route" en haut de la galerie (§1.3).
+  Future<List<Roadbook>> allRoadbooks() {
+    return isar.roadbooks.where().sortByUpdatedAtDesc().findAll();
+  }
+
+  Future<void> saveRoadbook(Roadbook roadbook) async {
+    roadbook.updatedAt = DateTime.now();
+    await isar.writeTxn(() => isar.roadbooks.put(roadbook));
+  }
+
+  /// Supprime le `Roadbook` [id] et ses blocs. Ne touche jamais aux
+  /// waypoints / photos d'origine (§2.5).
+  Future<void> deleteRoadbook(int id) async {
+    await isar.writeTxn(() => isar.roadbooks.delete(id));
   }
 
   /// Waypoints photo (`isPhotoWaypoint == true`) dans un rayon (mètres) autour
