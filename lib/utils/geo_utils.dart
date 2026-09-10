@@ -397,6 +397,36 @@ class GeoUtils {
     return (_radToDeg(radians) + 360) % 360;
   }
 
+  /// Calcule le point atteint en partant de (lat, lon), selon un azimut
+  /// (0-360°, 0 = Nord) et une distance en mètres. Inverse de
+  /// [bearingDegrees] : utilisé pour prolonger visuellement un relèvement
+  /// (visée boussole) au-delà du point visé, et pour tracer une petite
+  /// perpendiculaire de part et d'autre d'un point sélectionné. Formule
+  /// sphérique standard, précision suffisante à l'échelle d'un écran de
+  /// carte de randonnée.
+  static ({double lat, double lon}) destinationPoint(
+    double lat,
+    double lon,
+    double bearingDeg,
+    double distanceMeters,
+  ) {
+    final delta = distanceMeters / _earthRadiusMeters;
+    final theta = _degToRad(bearingDeg);
+    final phi1 = _degToRad(lat);
+    final lambda1 = _degToRad(lon);
+
+    final phi2 = asin(
+      sin(phi1) * cos(delta) + cos(phi1) * sin(delta) * cos(theta),
+    );
+    final lambda2 = lambda1 +
+        atan2(
+          sin(theta) * sin(delta) * cos(phi1),
+          cos(delta) - sin(phi1) * sin(phi2),
+        );
+
+    return (lat: _radToDeg(phi2), lon: _radToDeg(lambda2));
+  }
+
   static double _radToDeg(double rad) => rad * 180 / pi;
 
   /// Convertit un azimut ([bearingDegrees]) en point cardinal français à 8

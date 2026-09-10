@@ -113,6 +113,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   late AnimationController _menuExpandController;
   bool _menuExpanded = false;
 
+  // Mode boussole (spec_boussole_bearing.md) : bandeau de cap défilant qui
+  // remplace le menu principal + fonction de visée (bearing). Réservé à
+  // l'affichage GPX pour cette itération.
+  bool _compassMode = false;
+  bool? _preCompassDynamicRotation; // valeur de _dynamicRotation avant l'entrée
+  ({double lat, double lon})? _bearingTarget;
+  bool _arcSliderOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -330,6 +338,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _onTap(TapPosition tapPosition, LatLng point) {
     _dismissLocateBackButton();
+    // Mode boussole : le tap définit (ou remplace) le point de visée et rien
+    // d'autre — pas de hit-testing mesh, pas de traitement planification.
+    if (_compassMode) {
+      setState(() {
+        _bearingTarget = (lat: point.latitude, lon: point.longitude);
+      });
+      return;
+    }
     if (_planningActive) {
       widget.planningController?.addTapPoint(point.latitude, point.longitude);
       return;
@@ -765,6 +781,64 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
+  /// Entrée en mode boussole : force la carte orientée (fonction
+  /// `_dynamicRotation` déjà existante) et garde le menu étendu, la ligne du
+  /// bas portant le bouton de sortie. Voir spec_boussole_bearing.md §3.2.
+  void _enterCompassMode() {
+    _dismissLocateBackButton();
+    setState(() {
+      _preCompassDynamicRotation = _dynamicRotation;
+      _dynamicRotation = true;
+      _compassMode = true;
+      // Le centre de rotation de la carte est ramené au milieu du bord
+      // supérieur du bandeau (cf. build) : pour qu'il coïncide avec la
+      // position, on force le mode suivi.
+      _followUser = true;
+      if (!_menuExpanded) {
+        _menuExpanded = true;
+        _menuExpandController.forward();
+      }
+    });
+    if (_currentHeading != null) _mapController.rotate(-_currentHeading!);
+    final pos = widget.recordingService.currentPosition.value;
+    if (pos != null) {
+      _mapController.move(
+          LatLng(pos.latitude, pos.longitude), _mapController.camera.zoom);
+    }
+  }
+
+  void _exitCompassMode() {
+    setState(() {
+      _compassMode = false;
+      _bearingTarget = null;
+      _arcSliderOpen = false;
+      _dynamicRotation = _preCompassDynamicRotation ?? _dynamicRotation;
+      if (!_dynamicRotation) _mapController.rotate(0); // cf. onToggleRotation
+      _preCompassDynamicRotation = null;
+    });
+  }
+
+  /// Contenu de l'échelle (libellé + barre), partagé par la disposition
+  /// horizontale normale et la disposition verticale du mode boussole. Le
+  /// fondu suit le menu principal pour disparaître avec lui sous un volet.
+  Widget _buildScaleContent() {
+    return AnimatedBuilder(
+      animation: widget.panelScrollAnimation,
+      builder: (context, child) {
+        final distance =
+            (widget.panelScrollAnimation.value - widget.mapPageIndex)
+                .abs()
+                .clamp(0.0, 1.0);
+        return Opacity(opacity: 1.0 - distance, child: child);
+      },
+      child: _MapScaleWidget(
+        camera: _latestCamera!,
+        color: Colors.black,
+        unitSystem: widget.settingsService.unitSystem,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -773,9 +847,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       builder: (context, _) {
         final bottomMenuHeight = 80.0 + (_menuExpandController.value * 80.0);
 
+        // Mode boussole : on décale/agrandit le widget carte pour que SON
+        // CENTRE — c.-à-d. le centre de rotation de flutter_map ET le point où
+        // `camera.center` (donc la position, en mode suivi) est dessiné —
+        // tombe au milieu du bord supérieur du bandeau de menu, en bas de
+        // l'écran. Le débord, invisible car écrêté par le Stack, est le prix
+        // de ce recentrage — acceptable pour un mode transitoire (au prix
+        // d'un viewport un peu plus large chargé depuis Isar).
+        final screenH = MediaQuery.sizeOf(context).height;
+        final compassAnchorY = screenH - bottomMenuHeight;
+        final compassMapHeight =
+            2.0 * max(compassAnchorY, screenH - compassAnchorY);
+        final compassMapTop = compassAnchorY - compassMapHeight / 2;
+
         return Stack(
           children: [
-            FlutterMap(
+            Positioned(
+              left: 0,
+              right: 0,
+              top: _compassMode ? compassMapTop : 0.0,
+              bottom: _compassMode ? null : 0.0,
+              height: _compassMode ? compassMapHeight : null,
+              child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
                 initialCenter: widget.initialCenter,
@@ -875,6 +968,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     currentPos: widget.recordingService.currentPosition.value,
                     mapCenter: _mapController.camera.center,
                   ),
+                if (_compassMode && _bearingTarget != null)
+                  _BearingSightLayer(
+                    target: _bearingTarget!,
+                    currentPos: widget.recordingService.currentPosition.value,
+                    camera: _mapController.camera,
+                  ),
                 RichAttributionWidget(
                   // Mention unique, pilotée par les métadonnées de la source
                   // active : la ligne d'attribution du fond de carte national
@@ -888,6 +987,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   ],
                 ),
               ],
+            ),
             ),
             if (widget.settingsService.locatingWaypointUuid != null ||
                 widget.settingsService.locatingTraceUuid != null)
@@ -952,30 +1052,30 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-            if (widget.settingsService.showScale && _latestCamera != null)
+            // Hors mode boussole : échelle horizontale au-dessus du bandeau.
+            if (widget.settingsService.showScale &&
+                _latestCamera != null &&
+                !_compassMode)
               Positioned(
                 bottom: bottomMenuHeight + 10,
                 left: 0,
                 right: 0,
+                child: Center(child: _buildScaleContent()),
+              ),
+            // En mode boussole : la position est ramenée en bas de l'écran et
+            // l'échelle horizontale la recouvrirait (ainsi que la croix de
+            // visée) — on la bascule à la verticale, centrée sur le bord
+            // gauche.
+            if (widget.settingsService.showScale &&
+                _latestCamera != null &&
+                _compassMode)
+              Positioned(
+                left: 8,
+                top: 0,
+                bottom: 0,
                 child: Center(
-                  child: AnimatedBuilder(
-                    // Même fondu que le menu principal, pour que l'échelle
-                    // disparaisse en même temps que lui sous un volet latéral.
-                    animation: widget.panelScrollAnimation,
-                    builder: (context, child) {
-                      final distance = (widget.panelScrollAnimation.value -
-                              widget.mapPageIndex)
-                          .abs()
-                          .clamp(0.0, 1.0);
-                      final menuVisibility = 1.0 - distance;
-                      return Opacity(opacity: menuVisibility, child: child);
-                    },
-                    child: _MapScaleWidget(
-                      camera: _latestCamera!,
-                      color: Colors.black,
-                      unitSystem: widget.settingsService.unitSystem,
-                    ),
-                  ),
+                  child:
+                      RotatedBox(quarterTurns: 3, child: _buildScaleContent()),
                 ),
               ),
             if (_isMapReady && _latestCamera != null)
@@ -1014,6 +1114,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         },
                         child: GestureDetector(
                           onVerticalDragUpdate: (details) {
+                            // En mode boussole, la ligne du bas doit rester
+                            // visible (bouton de sortie) : swipe désactivé.
+                            if (_compassMode) return;
                             if ((details.primaryDelta ?? 0) < -10 &&
                                 !_menuExpanded) {
                               _toggleMenu();
@@ -1028,6 +1131,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             displayMode: widget.settingsService.displayMode,
                             heading: _currentHeading,
                             dynamicRotation: _dynamicRotation,
+                            compassMode: _compassMode,
+                            arcDegrees:
+                                widget.settingsService.compassArcDegrees,
+                            hasBearingTarget: _bearingTarget != null,
                             locationActive:
                                 widget.settingsService.locationEnabled,
                             camera: _latestCamera!,
@@ -1149,7 +1256,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               widget.settingsService.setShowAllGpx(
                                   !widget.settingsService.showAllGpx);
                             },
-                            onToggleCompass: _dismissLocateBackButton,
+                            onToggleCompass: _enterCompassMode,
+                            onExitCompass: _exitCompassMode,
+                            onClearSighting: () {
+                              _dismissLocateBackButton();
+                              setState(() => _bearingTarget = null);
+                            },
+                            onToggleArcSlider: () {
+                              _dismissLocateBackButton();
+                              setState(() => _arcSliderOpen = !_arcSliderOpen);
+                            },
                             onResegmentMesh: () {
                               _dismissLocateBackButton();
                               _resegmentTraces();
@@ -1174,6 +1290,71 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
+              ),
+            // Overlay du slider ARC du mode boussole. Le scrim capte les taps
+            // pour qu'un tap destiné au slider ne soit jamais interprété comme
+            // une sélection de point de visée (spec §3.5).
+            if (_compassMode && _arcSliderOpen)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _arcSliderOpen = false),
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: GestureDetector(
+                        // Absorbe les taps sur le slider pour ne pas fermer
+                        // l'overlay via le scrim.
+                        onTap: () {},
+                        child: Container(
+                          width: 68,
+                          height: 280,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.82),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 10),
+                              Text(
+                                '${widget.settingsService.compassArcDegrees.round()}°',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              Expanded(
+                                child: RotatedBox(
+                                  quarterTurns: 3,
+                                  child: Slider(
+                                    min: 10,
+                                    max: 45,
+                                    value: widget
+                                        .settingsService.compassArcDegrees
+                                        .clamp(10.0, 45.0),
+                                    activeColor: Colors.greenAccent,
+                                    inactiveColor: Colors.white12,
+                                    onChanged: (v) => widget.settingsService
+                                        .setCompassArcDegrees(v),
+                                  ),
+                                ),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.only(bottom: 8),
+                                child: Text('ARC',
+                                    style: TextStyle(
+                                        color: Colors.white54, fontSize: 10)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             if (widget.settingsService.waypointSelectionMode)
               Positioned(
@@ -1507,6 +1688,11 @@ class _BottomControlBar extends StatelessWidget {
   final DisplayMode displayMode;
   final double? heading;
   final bool dynamicRotation;
+  // Mode boussole (spec_boussole_bearing.md) : bascule le contenu interne du
+  // bandeau (le Container externe — couleur, coins, hauteur — reste inchangé).
+  final bool compassMode;
+  final double arcDegrees;
+  final bool hasBearingTarget;
   final bool locationActive;
   final MapCamera camera;
   final UnitSystem unitSystem;
@@ -1535,6 +1721,9 @@ class _BottomControlBar extends StatelessWidget {
   final VoidCallback onLongPressWaypoints;
   final VoidCallback onToggleGpx;
   final VoidCallback onToggleCompass;
+  final VoidCallback onExitCompass;
+  final VoidCallback onClearSighting;
+  final VoidCallback onToggleArcSlider;
   final VoidCallback onResegmentMesh;
   final VoidCallback onCreateTrace;
   final VoidCallback onClearSelection;
@@ -1548,6 +1737,9 @@ class _BottomControlBar extends StatelessWidget {
     required this.displayMode,
     required this.heading,
     required this.dynamicRotation,
+    required this.compassMode,
+    required this.arcDegrees,
+    required this.hasBearingTarget,
     required this.locationActive,
     required this.camera,
     required this.unitSystem,
@@ -1573,6 +1765,9 @@ class _BottomControlBar extends StatelessWidget {
     required this.onLongPressWaypoints,
     required this.onToggleGpx,
     required this.onToggleCompass,
+    required this.onExitCompass,
+    required this.onClearSighting,
+    required this.onToggleArcSlider,
     required this.onResegmentMesh,
     required this.onCreateTrace,
     required this.onClearSelection,
@@ -1728,7 +1923,35 @@ class _BottomControlBar extends StatelessWidget {
       ),
       _RoundButton(
         onPressed: onToggleCompass,
-        child: const Icon(Icons.explore, color: Colors.white38),
+        child: const Icon(Icons.explore, color: Colors.white70),
+      ),
+    ];
+
+    // Ligne du bas en mode boussole : réglage de l'arc, effacement de la
+    // visée, un emplacement libre pour de futurs contrôles, puis le bouton de
+    // sortie — placé exactement à l'emplacement du bouton boussole du menu
+    // classique (dernier de `gpxExpandedButtons`, cf. §3.3).
+    final List<Widget> compassExpandedButtons = [
+      _RoundButton(
+        onPressed: onToggleArcSlider,
+        child: Text(
+          'ARC\n${arcDegrees.round()}°',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 9,
+              fontWeight: FontWeight.bold),
+        ),
+      ),
+      _RoundButton(
+        onPressed: hasBearingTarget ? onClearSighting : () {},
+        child: Icon(Icons.close,
+            color: hasBearingTarget ? Colors.redAccent : Colors.white24),
+      ),
+      const SizedBox(width: 44),
+      _RoundButton(
+        onPressed: onExitCompass,
+        child: const Icon(Icons.explore_off, color: Colors.white70),
       ),
     ];
 
@@ -1740,44 +1963,60 @@ class _BottomControlBar extends StatelessWidget {
       ),
       child: Column(
         children: [
+          // Le Container externe reste inchangé ; seul le contenu interne de
+          // la zone haute (80px) bascule entre le menu normal et le bandeau
+          // de cap défilant du mode boussole (spec §3.3).
           SizedBox(
             height: 80,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                if (measurementMode == MeasurementMode.none)
-                  ..._reorder(displayMode == DisplayMode.mesh
-                      ? meshButtons
-                      : gpxButtons)
-                else ...[
-                  IconButton(
-                    onPressed: onCancelMeasure,
-                    icon: const Icon(Icons.close, color: Colors.redAccent),
-                  ),
-                  const Spacer(),
-                  _MeasurementInfo(
-                    mode: measurementMode,
-                    p1: measurePoint1,
-                    p2: measurePoint2,
-                    currentPos: currentPosition,
-                    mapCenter: camera.center,
-                  ),
-                  const Spacer(),
-                  if (measurementMode == MeasurementMode.betweenPoints &&
-                      measurePoint1 == null)
-                    ElevatedButton.icon(
-                      onPressed: onValidatePoint,
-                      icon: const Icon(Icons.check),
-                      label: const Text('VALIDER PT 1'),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: compassMode
+                  ? _CompassHeadingTape(
+                      key: const ValueKey('compass-tape'),
+                      heading: heading,
+                      arcDegrees: arcDegrees,
+                    )
+                  : Row(
+                      key: const ValueKey('normal-top-row'),
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        if (measurementMode == MeasurementMode.none)
+                          ..._reorder(displayMode == DisplayMode.mesh
+                              ? meshButtons
+                              : gpxButtons)
+                        else ...[
+                          IconButton(
+                            onPressed: onCancelMeasure,
+                            icon: const Icon(Icons.close,
+                                color: Colors.redAccent),
+                          ),
+                          const Spacer(),
+                          _MeasurementInfo(
+                            mode: measurementMode,
+                            p1: measurePoint1,
+                            p2: measurePoint2,
+                            currentPos: currentPosition,
+                            mapCenter: camera.center,
+                          ),
+                          const Spacer(),
+                          if (measurementMode ==
+                                  MeasurementMode.betweenPoints &&
+                              measurePoint1 == null)
+                            ElevatedButton.icon(
+                              onPressed: onValidatePoint,
+                              icon: const Icon(Icons.check),
+                              label: const Text('VALIDER PT 1'),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green),
+                            ),
+                          if (measurementMode ==
+                                  MeasurementMode.betweenPoints &&
+                              measurePoint1 != null)
+                            const SizedBox(
+                                width: 48), // équilibre le bouton Close
+                        ],
+                      ],
                     ),
-                  if (measurementMode == MeasurementMode.betweenPoints &&
-                      measurePoint1 != null)
-                    const SizedBox(
-                        width: 48), // Pour équilibrer le bouton Close
-                ],
-              ],
             ),
           ),
           if (expandProgress > 0)
@@ -1787,9 +2026,11 @@ class _BottomControlBar extends StatelessWidget {
                 height: 80 * expandProgress,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: _reorder(displayMode == DisplayMode.mesh
-                      ? meshExpandedButtons
-                      : gpxExpandedButtons),
+                  children: _reorder(compassMode
+                      ? compassExpandedButtons
+                      : displayMode == DisplayMode.mesh
+                          ? meshExpandedButtons
+                          : gpxExpandedButtons),
                 ),
               ),
             ),
@@ -1839,6 +2080,214 @@ class _MeasurementLayer extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Calque de visée (bearing) du mode boussole : un grand trait rouge depuis
+/// la position courante dans l'azimut du point tapé, prolongé au-delà du
+/// cadre visible, plus une courte croix perpendiculaire centrée sur le point
+/// visé. Bâti sur le modèle de [_MeasurementLayer]. Le trait se recalcule à
+/// chaque `setState` déclenché par `_onLocationUpdate` (spec §2.6).
+class _BearingSightLayer extends StatelessWidget {
+  final ({double lat, double lon}) target;
+  final geo.Position? currentPos;
+  final MapCamera camera;
+
+  const _BearingSightLayer({
+    required this.target,
+    required this.currentPos,
+    required this.camera,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = currentPos;
+    if (pos == null) return const SizedBox.shrink();
+
+    final bearing = GeoUtils.bearingDegrees(
+        pos.latitude, pos.longitude, target.lat, target.lon);
+
+    // Distance de projection = diagonale du cadre visible : le point projeté
+    // tombe toujours hors écran quel que soit le zoom, PolylineLayer tronque
+    // naturellement le rendu au cadre (spec §2.4).
+    final b = camera.visibleBounds;
+    final rayLength =
+        GeoUtils.haversineMeters(b.south, b.west, b.north, b.east);
+    final far = GeoUtils.destinationPoint(
+        pos.latitude, pos.longitude, bearing, rayLength);
+
+    // Demi-longueur de la croix : pixels-écran convertis en mètres selon le
+    // zoom courant, pour une taille visuelle stable (cf. _MapScaleWidget).
+    final center = camera.center;
+    final metersPerPixel = 156543.03392 *
+        cos(center.latitude * pi / 180) /
+        pow(2, camera.zoom);
+    final crossHalfLengthMeters = 15 * metersPerPixel;
+    final end1 = GeoUtils.destinationPoint(
+        target.lat, target.lon, bearing + 90, crossHalfLengthMeters);
+    final end2 = GeoUtils.destinationPoint(
+        target.lat, target.lon, bearing - 90, crossHalfLengthMeters);
+
+    return PolylineLayer(
+      polylines: [
+        Polyline(
+          points: [
+            LatLng(pos.latitude, pos.longitude),
+            LatLng(far.lat, far.lon),
+          ],
+          color: Colors.red,
+          strokeWidth: 2,
+        ),
+        Polyline(
+          points: [
+            LatLng(end1.lat, end1.lon),
+            LatLng(end2.lat, end2.lon),
+          ],
+          color: Colors.red,
+          strokeWidth: 2,
+        ),
+      ],
+    );
+  }
+}
+
+// Densité des graduations du bandeau de cap. Valeurs de départ, à ajuster
+// visuellement (spec §1.2) — volontairement isolées ici, hors de la logique
+// de peinture. Peuvent au besoin devenir fonction de `arcDegrees`.
+const double _kCompassMajorTickEveryDeg = 10.0;
+const double _kCompassMinorTickEveryDeg = 5.0;
+
+/// Bandeau de cap défilant (façon réticule de compas de jumelles) : n'affiche
+/// qu'un arc de [arcDegrees] degrés autour du cap courant [heading] et défile
+/// à gauche/droite selon la rotation. Consomme directement le `_currentHeading`
+/// brut de `_initCompass` — aucune nouvelle source de capteur, pas de lissage
+/// pour cette itération (spec §1.1).
+class _CompassHeadingTape extends StatelessWidget {
+  final double? heading;
+  final double arcDegrees;
+
+  const _CompassHeadingTape({
+    super.key,
+    required this.heading,
+    required this.arcDegrees,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(double.infinity, 80),
+      painter: _CompassHeadingTapePainter(
+        heading: heading,
+        arcDegrees: arcDegrees,
+      ),
+    );
+  }
+}
+
+class _CompassHeadingTapePainter extends CustomPainter {
+  final double? heading;
+  final double arcDegrees;
+
+  _CompassHeadingTapePainter({required this.heading, required this.arcDegrees});
+
+  static const double _tickTop = 26.0;
+  static const double _majorLen = 20.0;
+  static const double _minorLen = 11.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centerX = size.width / 2;
+    final h = heading;
+
+    final majorPaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2;
+    final minorPaint = Paint()
+      ..color = Colors.white54
+      ..strokeWidth = 1;
+
+    if (h != null) {
+      final ppd = size.width / arcDegrees;
+      final halfSpan = arcDegrees / 2 + _kCompassMinorTickEveryDeg;
+      final startDeg =
+          ((h - halfSpan) / _kCompassMinorTickEveryDeg).floor() *
+              _kCompassMinorTickEveryDeg;
+      final endDeg = h + halfSpan;
+
+      for (var d = startDeg; d <= endDeg; d += _kCompassMinorTickEveryDeg) {
+        // Écart angulaire signé le plus court (gère le passage 0°/360°).
+        final diff = ((d - h + 540) % 360) - 180;
+        final x = centerX + diff * ppd;
+        if (x < -2 || x > size.width + 2) continue;
+
+        final norm = ((d % 360) + 360) % 360;
+        final isMajor = norm % _kCompassMajorTickEveryDeg == 0;
+        if (isMajor) {
+          canvas.drawLine(Offset(x, _tickTop),
+              Offset(x, _tickTop + _majorLen), majorPaint);
+          _paintText(canvas, _labelForDegree(norm), Offset(x, 6), Colors.white,
+              11,
+              bold: true);
+        } else {
+          canvas.drawLine(Offset(x, _tickTop),
+              Offset(x, _tickTop + _minorLen), minorPaint);
+        }
+      }
+    }
+
+    // Repère fixe du cap courant (trait + triangle) et valeur numérique.
+    final centerPaint = Paint()
+      ..color = Colors.redAccent
+      ..strokeWidth = 2;
+    canvas.drawLine(Offset(centerX, 20), Offset(centerX, 50), centerPaint);
+    final tri = ui.Path()
+      ..moveTo(centerX - 6, 18)
+      ..lineTo(centerX + 6, 18)
+      ..lineTo(centerX, 28)
+      ..close();
+    canvas.drawPath(tri, Paint()..color = Colors.redAccent);
+
+    final headingLabel = h == null
+        ? '---'
+        : '${(h.round() % 360).toString().padLeft(3, '0')}°';
+    _paintText(canvas, headingLabel, Offset(centerX, 58), Colors.redAccent, 15,
+        bold: true);
+  }
+
+  String _labelForDegree(double norm) {
+    switch (norm.round()) {
+      case 0:
+        return 'N';
+      case 90:
+        return 'E';
+      case 180:
+        return 'S';
+      case 270:
+        return 'W';
+      default:
+        return norm.round().toString();
+    }
+  }
+
+  void _paintText(Canvas canvas, String text, Offset topCenter, Color color,
+      double fontSize,
+      {bool bold = false}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset(topCenter.dx - tp.width / 2, topCenter.dy));
+  }
+
+  @override
+  bool shouldRepaint(_CompassHeadingTapePainter old) =>
+      old.heading != heading || old.arcDegrees != arcDegrees;
 }
 
 class _ActiveTracesLayer extends StatelessWidget {

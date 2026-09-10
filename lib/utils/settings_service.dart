@@ -196,6 +196,11 @@ class SettingsService extends ChangeNotifier {
   StationaryRadiusPreset _stationaryRadiusPreset = StationaryRadiusPreset.m10;
 
   double _edgeSwipeWidth = 40.0;
+  // Largeur (en degrés) de l'arc visible sur le bandeau de cap défilant du
+  // mode boussole. Arc étroit → plus de pixels par degré → défilement plus
+  // sensible pour une même rotation physique ; arc large → l'inverse. Plage
+  // utile 10–45. Suit le pattern de _edgeSwipeWidth / _waypointIconSize.
+  double _compassArcDegrees = 20.0;
   String? _gpxStoragePath;
   String? _recordingSubPath; // Nouveau : dossier d'enregistrement par défaut
   double _tileCacheLimitMb = 500.0;
@@ -370,6 +375,7 @@ class SettingsService extends ChangeNotifier {
   StationaryWindowPreset get stationaryWindowPreset => _stationaryWindowPreset;
   StationaryRadiusPreset get stationaryRadiusPreset => _stationaryRadiusPreset;
   double get edgeSwipeWidth => _edgeSwipeWidth;
+  double get compassArcDegrees => _compassArcDegrees;
   String? get gpxStoragePath => _gpxStoragePath;
   String? get recordingSubPath => _recordingSubPath;
   double get tileCacheLimitMb => _tileCacheLimitMb;
@@ -492,6 +498,7 @@ class SettingsService extends ChangeNotifier {
         .values[_prefs.getInt('stationary_radius_preset') ?? 0];
 
     _edgeSwipeWidth = _prefs.getDouble('edge_swipe_width') ?? 40.0;
+    _compassArcDegrees = _prefs.getDouble('compass_arc_degrees') ?? 20.0;
     _gpxStoragePath = _prefs.getString('gpx_storage_path');
     _recordingSubPath = _prefs.getString('recording_sub_path');
     _tileCacheLimitMb = _prefs.getDouble('tile_cache_limit_mb') ?? 500.0;
@@ -876,6 +883,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setEdgeSwipeWidth(double value) async {
     _edgeSwipeWidth = value;
     await _prefs.setDouble('edge_swipe_width', value);
+    notifyListeners();
+  }
+
+  Future<void> setCompassArcDegrees(double value) async {
+    _compassArcDegrees = value.clamp(10.0, 45.0);
+    await _prefs.setDouble('compass_arc_degrees', _compassArcDegrees);
     notifyListeners();
   }
 
