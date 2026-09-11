@@ -110,16 +110,36 @@ void main() {
       );
     });
 
-    test('rejette un fichier avec plus de points que la limite autorisée', () {
-      final buffer = StringBuffer('<gpx version="1.1"><trk><trkseg>');
-      for (var i = 0; i < GpxLimits.maxTrackPoints + 1; i++) {
-        buffer.write('<trkpt lat="45.0" lon="1.0"></trkpt>');
-      }
-      buffer.write('</trkseg></trk></gpx>');
-
+    // GpxLimits.maxTrackPoints est volontairement très élevé (voir sa doc :
+    // ne doit jamais bloquer un thru-hiker qui importe plusieurs milliers
+    // de km en un seul fichier), donc on ne construit pas ici un vrai
+    // document XML de cette taille (lent, très gourmand en mémoire pour un
+    // test) : on vérifie directement la logique de GpxLimits.checkPointCounts,
+    // déjà exercée en bout de chaîne par GpxParser.parseString/KmlParser.parseString.
+    test('checkPointCounts accepte exactement la limite et rejette au-delà', () {
       expect(
-        () => GpxParser.parseString(buffer.toString()),
+        () => GpxLimits.checkPointCounts(trackPoints: GpxLimits.maxTrackPoints, waypoints: 0),
+        returnsNormally,
+      );
+      expect(
+        () => GpxLimits.checkPointCounts(trackPoints: GpxLimits.maxTrackPoints + 1, waypoints: 0),
         throwsA(isA<GpxValidationException>()),
+      );
+      expect(
+        () => GpxLimits.checkPointCounts(trackPoints: 0, waypoints: GpxLimits.maxWaypoints + 1),
+        throwsA(isA<GpxValidationException>()),
+      );
+    });
+
+    test('un thru-hike réaliste (plusieurs centaines de milliers de points) passe sans erreur', () {
+      // ~4 300 km (longueur du PCT) échantillonnés tous les 10 m : très
+      // au-dessus de ce qu'un usage normal de l'app produit, et pourtant
+      // encore loin de GpxLimits.maxTrackPoints — non-régression du bug
+      // signalé : un import ne doit pas être bloqué pour ce genre de trace.
+      const thruHikePointCount = 430000;
+      expect(
+        () => GpxLimits.checkPointCounts(trackPoints: thruHikePointCount, waypoints: 500),
+        returnsNormally,
       );
     });
   });

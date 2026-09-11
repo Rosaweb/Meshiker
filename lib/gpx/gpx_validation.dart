@@ -16,21 +16,29 @@ class GpxLimits {
   const GpxLimits._();
 
   /// Taille maximale acceptée pour un fichier/contenu GPX ou KML, en
-  /// octets. Une randonnée réelle, même multi-jours et échantillonnée à
-  /// haute fréquence, tient très large dans cette limite ; elle borne
-  /// surtout le pire cas (fichier corrompu ou hostile) avant que
-  /// `XmlDocument.parse` ne charge tout le contenu en mémoire sous forme
-  /// d'arbre DOM.
-  static const maxContentBytes = 30 * 1024 * 1024; // 30 Mo
+  /// octets. Dimensionnée pour couvrir le cas réel d'un thru-hiker qui
+  /// importe plusieurs milliers de km (PCT, GR ininterrompu...)
+  /// enregistrés en un seul fichier continu, y compris au format verbeux
+  /// (lat/lon/ele/time indentés, ~140 octets/point) : à 100 Mo, ça
+  /// représente ~750 000 points même dans ce format peu compact, et
+  /// plusieurs millions en format compact. Ça reste borné (contrairement
+  /// à "pas de limite du tout") pour éviter qu'un fichier corrompu ou
+  /// hostile ne fasse charger un contenu arbitrairement gros en mémoire
+  /// avant que `XmlDocument.parse` ne construise l'arbre DOM par-dessus.
+  static const maxContentBytes = 100 * 1024 * 1024; // 100 Mo
 
   /// Nombre maximal de `<trkpt>`/coordonnées de tracé acceptées après
-  /// parsing. Bien au-dessus de ce qu'un enregistrement GPS produit
-  /// (plusieurs jours à 1 point/seconde), mais assez bas pour éviter
-  /// qu'un fichier anormal ne fasse exploser la mémoire ou le temps de
-  /// calcul du découpage en segments.
-  static const maxTrackPoints = 300000;
+  /// parsing. Volontairement très au-dessus de tout usage réel — y
+  /// compris un enregistrement continu de plusieurs mois à 1 point/
+  /// seconde (voir maxContentBytes pour le raisonnement complet) — pour
+  /// ne jamais bloquer une trace de thru-hiking légitime ; ce n'est
+  /// qu'un filet de sécurité contre un fichier dégénéré (des millions de
+  /// points quasi vides pour maximiser leur nombre à taille de fichier
+  /// égale) qui ferait exploser le temps de calcul du découpage en
+  /// segments.
+  static const maxTrackPoints = 3000000;
 
-  static const maxWaypoints = 20000;
+  static const maxWaypoints = 100000;
 
   /// Vérifie la taille d'un fichier GPX/KML avant même de le lire en
   /// mémoire (`readAsString` chargerait tout le fichier d'un coup, y
