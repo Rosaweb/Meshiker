@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import '../models/waypoint.dart';
 import 'gpx_models.dart';
 import 'gpx_parser.dart';
+import 'gpx_validation.dart';
 import 'kml_parser.dart';
 
 /// Résultat d'un [GpxScannerService.scanFolder], pour que l'écran appelant
@@ -175,6 +176,10 @@ class GpxScannerService extends ChangeNotifier {
 
     GpxParseResult parsed;
     try {
+      // Contrôle de taille AVANT lecture : un dossier scanné peut contenir
+      // des fichiers déposés par n'importe quel autre moyen (partage,
+      // synchronisation...), pas seulement des exports GPX légitimes.
+      await GpxLimits.checkFileSize(file);
       final content = await file.readAsString();
       parsed = normalizedPath.toLowerCase().endsWith('.kml')
           ? KmlParser.parseString(content)

@@ -9,6 +9,7 @@ import '../models/waypoint.dart';
 import '../search/local_search_engine.dart';
 import 'gpx_models.dart';
 import 'gpx_parser.dart';
+import 'gpx_validation.dart';
 import 'kml_parser.dart';
 import 'segmentation_engine.dart';
 import 'segmentation_persistence.dart';
@@ -49,6 +50,9 @@ class GpxImportService {
     String? traceNameOverride,
     ActivityType activityType = ActivityType.hiking,
   }) async {
+    // Contrôle de taille AVANT lecture : évite de charger un fichier
+    // anormalement volumineux entièrement en mémoire (voir GpxLimits).
+    await GpxLimits.checkFileSize(gpxFile);
     final content = await gpxFile.readAsString();
     final isKml = gpxFile.path.toLowerCase().endsWith('.kml');
     return _importContent(

@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:xml/xml.dart';
 
 import 'gpx_models.dart';
+import 'gpx_validation.dart';
 
 /// Parseur KML minimaliste, écrit dans le même esprit que [GpxParser] :
 /// directement sur `package:xml`, sans dépendance à un package KML tiers.
@@ -24,6 +25,10 @@ class KmlParser {
   const KmlParser._();
 
   static GpxParseResult parseString(String xmlContent) {
+    // Rejette tôt un contenu anormalement volumineux, avant même de
+    // tenter de construire l'arbre DOM (voir GpxLimits).
+    GpxLimits.checkContentLength(xmlContent);
+
     final document = XmlDocument.parse(xmlContent);
     final kmlElements = document.findAllElements('kml');
     if (kmlElements.isEmpty) {
@@ -91,6 +96,8 @@ class KmlParser {
       }
     }
 
+    GpxLimits.checkPointCounts(trackPoints: trackPoints.length, waypoints: waypoints.length);
+
     return GpxParseResult(
       trackPoints: trackPoints,
       waypoints: waypoints,
@@ -100,7 +107,8 @@ class KmlParser {
 
   /// Parse un triplet de coordonnées `lon,lat[,ele]` (KML classique,
   /// `separator` = `,`) ou `lon lat [ele]` (`gx:coord`, `separator` =
-  /// espaces). Retourne `(lon, lat, ele)` ou `null` si illisible.
+  /// espaces). Retourne `(lon, lat, ele)` ou `null` si illisible, hors
+  /// plage, ou non fini (`NaN`/`Infinity` — voir GpxLimits).
   static (double, double, double?)? _parseCoordinateTuple(
     String raw, {
     Pattern separator = ',',
@@ -110,7 +118,9 @@ class KmlParser {
     final lon = double.tryParse(parts[0].trim());
     final lat = double.tryParse(parts[1].trim());
     if (lon == null || lat == null) return null;
-    final ele = parts.length > 2 ? double.tryParse(parts[2].trim()) : null;
+    if (!GpxLimits.isValidLatitude(lat) || !GpxLimits.isValidLongitude(lon)) return null;
+    final eleRaw = parts.length > 2 ? double.tryParse(parts[2].trim()) : null;
+    final ele = (eleRaw != null && GpxLimits.isValidElevation(eleRaw)) ? eleRaw : null;
     return (lon, lat, ele);
   }
 

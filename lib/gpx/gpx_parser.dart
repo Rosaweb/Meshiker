@@ -1,6 +1,7 @@
 import 'package:xml/xml.dart';
 
 import 'gpx_models.dart';
+import 'gpx_validation.dart';
 
 /// Parseur GPX minimaliste, construit directement sur `package:xml`
 /// plutôt que sur un wrapper GPX de plus haut niveau (type `gpx` ou
@@ -24,6 +25,10 @@ class GpxParser {
   const GpxParser._();
 
   static GpxParseResult parseString(String xmlContent) {
+    // Rejette tôt un contenu anormalement volumineux, avant même de
+    // tenter de construire l'arbre DOM (voir GpxLimits).
+    GpxLimits.checkContentLength(xmlContent);
+
     final document = XmlDocument.parse(xmlContent);
     final gpxElements = document.findAllElements('gpx');
     if (gpxElements.isEmpty) {
@@ -36,7 +41,13 @@ class GpxParser {
       for (final trkseg in trk.findElements('trkseg')) {
         var isFirstOfSegment = true;
         for (final trkpt in trkseg.findElements('trkpt')) {
-          trackPoints.add(_parsePoint(trkpt, startsNewSegment: isFirstOfSegment));
+          // Un point aux coordonnées invalides est ignoré (pas tout le
+          // fichier) : on ne consomme isFirstOfSegment que pour un point
+          // effectivement retenu, pour que le prochain point valide du
+          // segment porte bien startsNewSegment.
+          final point = _parsePoint(trkpt, startsNewSegment: isFirstOfSegment);
+          if (point == null) continue;
+          trackPoints.add(point);
           isFirstOfSegment = false;
         }
       }
@@ -45,6 +56,7 @@ class GpxParser {
     final waypoints = <GpxWaypoint>[];
     for (final wpt in gpxEl.findElements('wpt')) {
       final p = _parsePoint(wpt);
+      if (p == null) continue;
       waypoints.add(GpxWaypoint(
         latitude: p.latitude,
         longitude: p.longitude,
@@ -55,6 +67,8 @@ class GpxParser {
       ));
     }
 
+    GpxLimits.checkPointCounts(trackPoints: trackPoints.length, waypoints: waypoints.length);
+
     return GpxParseResult(
       trackPoints: trackPoints,
       waypoints: waypoints,
@@ -62,14 +76,23 @@ class GpxParser {
     );
   }
 
-  static GpxTrackPoint _parsePoint(
+  /// Retourne `null` (point ignoré par l'appelant) si `lat`/`lon` sont
+  /// absents, illisibles, ou hors plage/non finis (`NaN`, `Infinity`) —
+  /// voir GpxLimits.isValidLatitude/isValidLongitude. Avant ce contrôle,
+  /// une coordonnée invalide retombait silencieusement sur `0`, créant un
+  /// faux point ("Null Island") plutôt que d'être rejetée.
+  static GpxTrackPoint? _parsePoint(
     XmlElement el, {
     bool startsNewSegment = false,
   }) {
-    final lat = double.tryParse(el.getAttribute('lat') ?? '') ?? 0;
-    final lon = double.tryParse(el.getAttribute('lon') ?? '') ?? 0;
+    final lat = double.tryParse(el.getAttribute('lat') ?? '');
+    final lon = double.tryParse(el.getAttribute('lon') ?? '');
+    if (lat == null || lon == null || !GpxLimits.isValidLatitude(lat) || !GpxLimits.isValidLongitude(lon)) {
+      return null;
+    }
     final eleText = _childText(el, 'ele');
-    final ele = eleText != null ? double.tryParse(eleText) : null;
+    final eleRaw = eleText != null ? double.tryParse(eleText) : null;
+    final ele = (eleRaw != null && GpxLimits.isValidElevation(eleRaw)) ? eleRaw : null;
     final timeText = _childText(el, 'time');
     final time = timeText != null ? DateTime.tryParse(timeText) : null;
     return GpxTrackPoint(

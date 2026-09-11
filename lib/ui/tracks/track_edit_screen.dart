@@ -14,6 +14,7 @@ import '../../models/trace.dart';
 import '../../recording/recording_service.dart';
 import '../../search/local_search_engine.dart';
 import '../../map/map_style.dart';
+import '../../utils/file_name_utils.dart';
 import '../../utils/offline_map_download_service.dart';
 import '../../utils/settings_service.dart';
 import '../waypoints/waypoint_manager_screen.dart';
@@ -376,6 +377,15 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
       return;
     }
 
+    if (!_isSourceFileTrusted(sourcePath)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chemin de fichier source invalide : opération refusée.'),
+        ),
+      );
+      return;
+    }
+
     final sourceFile = File(sourcePath);
     if (!await sourceFile.exists()) {
       if (mounted) {
@@ -447,7 +457,7 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     final searchEngine = context.read<LocalSearchEngine>();
 
     final sourcePath = widget.trace.sourceFilePath;
-    if (sourcePath != null) {
+    if (sourcePath != null && _isSourceFileTrusted(sourcePath)) {
       final file = File(sourcePath);
       if (await file.exists()) {
         await file.delete();
@@ -458,6 +468,20 @@ class _TrackEditScreenState extends State<TrackEditScreen> {
     searchEngine.removeTrace(widget.trace.localUuid);
 
     if (mounted) Navigator.pop(context);
+  }
+
+  /// Dernier rempart avant toute opération destructive (suppression,
+  /// déplacement) sur `trace.sourceFilePath` : ce chemin est censé
+  /// toujours pointer sous le dossier GPX configuré ou le sous-dossier
+  /// d'enregistrement, mais il dérive à l'origine d'un texte saisi par
+  /// l'utilisateur (nom de trace) — voir `sanitizeFileNameComponent`
+  /// côté écriture, ici on revérifie côté lecture/suppression au cas où
+  /// une trace existante aurait été enregistrée avant ce correctif, ou
+  /// via un chemin construit ailleurs sans cette précaution.
+  bool _isSourceFileTrusted(String path) {
+    final settings = context.read<SettingsService>();
+    return isPathWithinRoot(path, settings.gpxStoragePath) ||
+        isPathWithinRoot(path, settings.recordingSubPath);
   }
 
   Widget _buildInfoCard(String dist) {

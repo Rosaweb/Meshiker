@@ -21,6 +21,7 @@ import '../models/segment.dart';
 import '../models/offline_map/offline_map.dart';
 import '../search/local_search_engine.dart';
 import '../utils/offline_map_download_service.dart';
+import '../utils/file_name_utils.dart';
 import '../utils/settings_service.dart';
 import '../utils/tile_cache_service.dart';
 import 'package:provider/provider.dart';
@@ -629,7 +630,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         // Mise à jour du chemin source si un dossier d'enregistrement est défini
         final subPath = widget.settingsService.recordingSubPath;
         if (subPath != null) {
-          final fileName = '$name.gpx';
+          // name vient d'un champ de saisie libre (nom donné à la trace
+          // à l'arrêt de l'enregistrement) : nettoyé avant de servir de
+          // nom de fichier pour empêcher toute traversée de répertoire
+          // (ex. "../../autre_dossier") via p.join.
+          final fileName = '${sanitizeFileNameComponent(name)}.gpx';
           final fullPath = p.join(subPath, fileName);
 
           result.trace.sourceFilePath = fullPath;

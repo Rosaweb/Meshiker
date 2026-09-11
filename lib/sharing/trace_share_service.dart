@@ -11,6 +11,7 @@ import '../gpx/gpx_import_service.dart';
 import '../gpx/gpx_models.dart';
 import '../gpx/gpx_serializer.dart';
 import '../models/trace.dart';
+import '../utils/file_name_utils.dart';
 import '../utils/settings_service.dart';
 import '../utils/supabase_bootstrap_service.dart';
 import 'trace_share_models.dart';
@@ -38,6 +39,16 @@ class TraceShareService {
 
   static const _bucket = 'trace-shares';
   static const _shareUrlBase = 'https://meshiker.com/share/gpx';
+
+  /// Forme attendue d'un token généré par la RPC `create_trace_share`
+  /// (16 octets aléatoires encodés en base64 URL-safe sans padding, voir
+  /// `supabase/functions.sql`) : alphabet `[A-Za-z0-9_-]`, ~22
+  /// caractères. Le texte collé/scanné par l'utilisateur est vérifié
+  /// contre cette forme avant d'être inséré dans l'URL de téléchargement
+  /// — sans ce contrôle, un texte arbitraire (ex. contenant `/`, `?`,
+  /// `#`) se retrouverait tel quel dans le chemin/la requête HTTP
+  /// construite.
+  static final _tokenPattern = RegExp(r'^[A-Za-z0-9_-]{8,64}$');
 
   /// Même constante que côté `SupabaseBootstrapService`, dupliquée à dessein :
   /// c'est une constante de compilation, pas un état partagé, et la
@@ -116,7 +127,12 @@ class TraceShareService {
   Future<Trace> importFromShare(String tokenOrUrl, {required String ownerUuid}) async {
     final trimmed = tokenOrUrl.trim();
     final parsed = Uri.tryParse(trimmed);
-    final isDirectUrl = parsed != null && parsed.hasScheme && parsed.host != 'meshiker.com';
+    // Restreint explicitement aux schémas http(s) : le texte saisi est
+    // fourni par l'utilisateur (lien collé ou QR code scanné), rien ne
+    // garantit qu'il s'agit d'une URL bien formée avant ce contrôle.
+    final isDirectUrl = parsed != null &&
+        (parsed.scheme == 'http' || parsed.scheme == 'https') &&
+        parsed.host != 'meshiker.com';
 
     final Uri uri;
     if (isDirectUrl) {
@@ -128,10 +144,10 @@ class TraceShareService {
         );
       }
       final token = _extractToken(trimmed);
-      if (token.isEmpty) {
+      if (!_tokenPattern.hasMatch(token)) {
         throw const TraceShareException('Lien ou code de partage invalide.');
       }
-      uri = Uri.parse('$_supabaseUrl/storage/v1/object/public/$_bucket/$token.gpx');
+      uri = Uri.parse('$_supabaseUrl/storage/v1/object/public/$_bucket/${Uri.encodeComponent(token)}.gpx');
     }
 
     debugPrint('TraceShareService: téléchargement depuis $uri');
@@ -165,7 +181,7 @@ class TraceShareService {
     final folder = settingsService.recordingSubPath ?? settingsService.gpxStoragePath;
     if (folder != null && folder.isNotEmpty) {
       try {
-        final fileName = '${_sanitizeFileName(result.trace.name)}.gpx';
+        final fileName = '${sanitizeFileNameComponent(result.trace.name)}.gpx';
         final fullPath = p.join(folder, fileName);
         await File(fullPath).writeAsString(gpxXml);
         result.trace.sourceFilePath = fullPath;
@@ -204,9 +220,5 @@ class TraceShareService {
     } catch (_) {
       return false;
     }
-  }
-
-  String _sanitizeFileName(String name) {
-    return name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
   }
 }
