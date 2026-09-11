@@ -1,1 +1,8 @@
 flutter/ephemeral
+
+# Régénérés à chaque `flutter pub get`/build (liste de plugins) : suivis
+# dans le template Flutter par défaut, ce qui provoque un diff parasite
+# à chaque build et bloque un `git checkout` si non commité entre-temps.
+flutter/generated_plugin_registrant.cc
+flutter/generated_plugin_registrant.h
+flutter/generated_plugins.cmake
