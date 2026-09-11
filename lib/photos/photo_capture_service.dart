@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:photo_manager/photo_manager.dart';
 import 'package:uuid/uuid.dart';
 
@@ -45,6 +46,11 @@ class PhotoCaptureService with WidgetsBindingObserver {
 
   static const _channel = MethodChannel('meshiker/photo_capture');
   static const _uuid = Uuid();
+  // Préfixe des copies écrites par [_resolveStoredPath] dans
+  // Pictures/Meshiker — sert aussi de marqueur pour reconnaître et ignorer
+  // ces copies quand l'observateur de pellicule les redétecte (voir
+  // _ingestAsset).
+  static const _artifactPrefix = 'meshiker_';
   final PhotoScannerService _scanner = PhotoScannerService();
   final ImagePicker _picker = ImagePicker();
 
@@ -98,9 +104,17 @@ class PhotoCaptureService with WidgetsBindingObserver {
     _sawBackground = false;
 
     final permission = await PhotoManager.requestPermissionExtend();
+    debugPrint('[PhotoCapture] photo_manager permission: ${permission.isAuth}/${permission.hasAccess}');
     if (!permission.hasAccess) {
       message.value =
           "Accès aux photos refusé : la détection des clichés est impossible.";
+      return;
+    }
+
+    if (!await _ensureStoragePermission()) {
+      debugPrint('[PhotoCapture] storage permission denied — aborting session');
+      message.value =
+          "Accès au stockage refusé : impossible d'enregistrer les photos.";
       return;
     }
 
@@ -118,12 +132,35 @@ class PhotoCaptureService with WidgetsBindingObserver {
     try {
       launched = await _channel.invokeMethod<bool>('launchCamera') ?? false;
     } catch (e) {
-      debugPrint('launchCamera failed: $e');
+      debugPrint('[PhotoCapture] launchCamera failed: $e');
     }
+    debugPrint('[PhotoCapture] session started, camera launched=$launched');
     if (!launched) {
       message.value = "Aucune application appareil photo n'a pu être lancée.";
       await _endSession(silent: true);
     }
+  }
+
+  /// Permission "Tous les fichiers" nécessaire pour écrire dans le dossier
+  /// public partagé Pictures/Meshiker via un chemin brut `dart:io` (hors
+  /// sandbox de l'app) — même gotcha déjà géré pour le dossier GPX custom
+  /// dans `GpxScannerService.scanFolder`. Sans cette demande explicite,
+  /// `_resolveStoredPath` échoue silencieusement sur chaque photo et aucun
+  /// waypoint n'est jamais créé (cause du bug initial : la photo est bien
+  /// prise par l'appli caméra système, mais Meshiker ne peut pas la copier
+  /// ni donc la savoir).
+  Future<bool> _ensureStoragePermission() async {
+    if (!Platform.isAndroid) return true;
+    var granted = (await ph.Permission.manageExternalStorage.status).isGranted;
+    if (!granted) {
+      granted = (await ph.Permission.manageExternalStorage.request()).isGranted;
+    }
+    if (!granted) {
+      // Repli pour les appareils/versions où la permission spéciale n'est
+      // pas proposée (ignorée par l'OS au-delà de l'API 32).
+      granted = (await ph.Permission.storage.request()).isGranted;
+    }
+    return granted;
   }
 
   // ---------------------------------------------------------------------------
@@ -136,9 +173,8 @@ class PhotoCaptureService with WidgetsBindingObserver {
     _sessionWaypoints.clear();
     final ts = DateTime.now();
     final pos = await recordingService.acquireFixNow();
-    final dest = await _copyIntoMeshiker(File(shot.path), ts);
-    if (dest == null) return;
-    await _ingestPhoto(dest.path, pos, ts);
+    final path = await _resolveStoredPath(File(shot.path), ts);
+    await _ingestPhoto(path, pos, ts);
     _maybeOpenPopup();
   }
 
@@ -147,12 +183,14 @@ class PhotoCaptureService with WidgetsBindingObserver {
   // ---------------------------------------------------------------------------
   void _onGalleryChange(MethodCall _) {
     if (!sessionActive.value) return;
+    debugPrint('[PhotoCapture] gallery change notification received');
     unawaited(_drainNewAssets());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!sessionActive.value) return;
+    debugPrint('[PhotoCapture] lifecycle state: $state (sawBackground=$_sawBackground)');
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
@@ -192,31 +230,61 @@ class PhotoCaptureService with WidgetsBindingObserver {
     final albums = await PhotoManager.getAssetPathList(
       onlyAll: true,
       type: RequestType.image,
+      // Sans cet ordre explicite, le plugin n'ajoute AUCUN "ORDER BY" à la
+      // requête MediaStore native (voir CommonFilterOption.orderByCondString,
+      // qui renvoie null si `orders` est vide) : sur un appareil dont la
+      // pellicule contient plus de 40 photos, `getAssetListRange(0, 40)`
+      // renvoyait alors un lot arbitraire (souvent les plus ANCIENNES,
+      // ordre d'insertion) au lieu des plus récentes — la photo qu'on vient
+      // de prendre n'était donc jamais dans la fenêtre observée. Cause du
+      // bug "permission accordée mais toujours aucune photo détectée".
+      filterOption: FilterOptionGroup(orders: [const OrderOption()]),
     );
     if (albums.isEmpty) return const [];
     final recent = await albums.first.getAssetListRange(start: 0, end: 40);
     // Marge de 5 s : tolérance sur l'écart d'horloge entre la création de
     // l'asset (rapportée par le MediaStore) et notre `_sessionStart`.
     final floor = _sessionStart.subtract(const Duration(seconds: 5));
-    return recent
+    final fresh = recent
         .where((a) =>
             !_processedAssetIds.contains(a.id) &&
             !a.createDateTime.isBefore(floor))
         .toList();
+    debugPrint('[PhotoCapture] fetchNewAssets: ${recent.length} scanned, ${fresh.length} new');
+    return fresh;
   }
 
   Future<void> _ingestAsset(AssetEntity a) async {
     final src = await a.originFile ?? await a.file;
-    if (src == null) return;
+    if (src == null) {
+      debugPrint('[PhotoCapture] asset ${a.id} has no accessible file, skipped');
+      return;
+    }
+    if (p.basename(src.path).startsWith(_artifactPrefix)) {
+      // Notre propre copie dans Pictures/Meshiker : `_resolveStoredPath`
+      // appelle `scanFileForGallery` (MediaScannerConnection) dessus pour
+      // qu'elle apparaisse tout de suite dans la galerie système, ce qui la
+      // fait ré-indexer par le MediaStore comme un NOUVEL asset — et donc
+      // remonter ici à son tour via l'observateur de pellicule. Sans ce
+      // garde-fou, chaque photo déclenchait une boucle de rétroaction
+      // (copie de la copie -> nouveau scan -> nouvelle détection -> ...)
+      // tant que la session restait ouverte : la première photo se
+      // retrouvait dupliquée un nombre variable de fois (constaté : 8 puis
+      // 3 exemplaires selon le temps resté dans l'appli caméra avant de
+      // revenir à Meshiker).
+      debugPrint('[PhotoCapture] skipping our own artifact ${src.path}');
+      return;
+    }
     final ts = a.createDateTime;
     final pos = await recordingService.acquireFixNow();
-    final dest = await _copyIntoMeshiker(src, ts);
-    if (dest == null) return;
-    await _ingestPhoto(dest.path, pos, ts);
+    final path = await _resolveStoredPath(src, ts);
+    debugPrint('[PhotoCapture] ingesting $path (fix=${pos != null})');
+    await _ingestPhoto(path, pos, ts);
   }
 
   Future<void> _endSession({bool silent = false}) async {
     if (!sessionActive.value) return;
+    debugPrint('[PhotoCapture] ending session (silent=$silent)');
     sessionActive.value = false;
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
@@ -236,6 +304,7 @@ class PhotoCaptureService with WidgetsBindingObserver {
 
     if (!silent) {
       final n = _sessionWaypoints.fold<int>(0, (s, w) => s + w.photoPaths.length);
+      debugPrint('[PhotoCapture] session ended: $n photo(s) ingested, ${_sessionWaypoints.length} waypoint(s)');
       if (n > 0) {
         message.value = n == 1
             ? '1 photo ajoutée à la carte.'
@@ -248,6 +317,7 @@ class PhotoCaptureService with WidgetsBindingObserver {
   Future<void> _reconcileMissedPhotos() async {
     final files =
         await _scanner.scanPhotosBetween(_sessionStart, DateTime.now());
+    debugPrint('[PhotoCapture] reconcile: ${files.length} file(s) in Pictures/Meshiker window');
     for (final f in files) {
       if (_copiedBasenames.contains(p.basename(f.path))) continue;
       final ts = f.lastModifiedSync();
@@ -267,22 +337,29 @@ class PhotoCaptureService with WidgetsBindingObserver {
   // ---------------------------------------------------------------------------
   // Stockage + clustering + rattachement trace
   // ---------------------------------------------------------------------------
-  Future<File?> _copyIntoMeshiker(File src, DateTime ts) async {
+  /// Copie [src] dans Pictures/Meshiker pour cohérence avec le stockage
+  /// photo déjà en place (spec §3.2). Ne renvoie JAMAIS `null` : si la copie
+  /// échoue (permission stockage refusée, disque plein, chemin OEM
+  /// inattendu...), on retombe sur le fichier ORIGINAL plutôt que
+  /// d'abandonner la photo — mieux vaut un waypoint pointant vers son
+  /// emplacement d'origine (DCIM) qu'un waypoint jamais créé.
+  Future<String> _resolveStoredPath(File src, DateTime ts) async {
     try {
       final dir = Directory(await _scanner.getPublicMeshikerPath());
       if (!await dir.exists()) await dir.create(recursive: true);
       final name =
-          'meshiker_${ts.millisecondsSinceEpoch}_${p.basename(src.path)}';
+          '$_artifactPrefix${ts.millisecondsSinceEpoch}_${p.basename(src.path)}';
       final dest = File(p.join(dir.path, name));
       if (!await dest.exists()) {
         await src.copy(dest.path);
         await _scanner.scanFileForGallery(dest.path);
       }
       _copiedBasenames.add(p.basename(dest.path));
-      return dest;
+      return dest.path;
     } catch (e) {
-      debugPrint('PhotoCaptureService._copyIntoMeshiker: $e');
-      return null;
+      debugPrint('[PhotoCapture] copy into Pictures/Meshiker failed ($e), '
+          'keeping original path ${src.path}');
+      return src.path;
     }
   }
 
@@ -330,6 +407,7 @@ class PhotoCaptureService with WidgetsBindingObserver {
     wp.category.value = cat;
     await isarService.saveWaypoint(wp);
     _sessionWaypoints.add(wp);
+    debugPrint('[PhotoCapture] created waypoint ${wp.localUuid} for $path');
     mapViewModel.refreshNow();
   }
 
@@ -338,6 +416,7 @@ class PhotoCaptureService with WidgetsBindingObserver {
     wp.photoPaths = [...wp.photoPaths, path];
     await isarService.saveWaypoint(wp);
     if (!_sessionWaypoints.contains(wp)) _sessionWaypoints.add(wp);
+    debugPrint('[PhotoCapture] appended $path to waypoint ${wp.localUuid}');
     mapViewModel.refreshNow();
   }
 
