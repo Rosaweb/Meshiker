@@ -73,11 +73,31 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   isar_community_generator: ^3.3.2
   build_runner: ^2.4.8
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
   assets:
     - docs/manuel_utilisateur.md
+
+# Icône de l'application (Android + iOS), régénérée via
+# `dart run flutter_launcher_icons` à partir de assets/icon/logo.svg
+# (source Inkscape) exporté en assets/icon/icon.png (logo plein cadre,
+# fond transparent). Utilisé tel quel pour l'icône classique Android
+# (pré-API26) et iOS (transparence retirée via remove_alpha_ios, Apple
+# refuse l'alpha), ET comme foreground de l'icône adaptative
+# (API26+) : flutter_launcher_icons applique déjà un inset de 16% sur
+# le foreground pour respecter la "safe zone" circulaire des masques
+# de launcher (cf. https://developer.android.com/develop/ui/views/launch/icon_design_adaptive) —
+# fournir un logo déjà marge en plus de cet inset le rendrait deux fois
+# trop petit dans l'icône adaptative.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/icon.png"
 
 sentry:
   upload_debug_symbols: true
