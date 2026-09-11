@@ -433,7 +433,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Row(children: [
-          const Icon(Icons.terrain, color: Colors.greenAccent, size: 28),
+          Image.asset('assets/icon/icon.png', width: 28, height: 28),
           const SizedBox(width: 12),
           Text(
             context.watch<SubscriptionService>().isPremium ? 'Meshiker Pro' : 'Meshiker',

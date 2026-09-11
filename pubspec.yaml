@@ -79,6 +79,7 @@ flutter:
   uses-material-design: true
   assets:
     - docs/manuel_utilisateur.md
+    - assets/icon/icon.png
 
 # Icône de l'application (Android + iOS), régénérée via
 # `dart run flutter_launcher_icons` à partir de assets/icon/logo.svg

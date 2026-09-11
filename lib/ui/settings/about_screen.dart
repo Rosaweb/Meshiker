@@ -31,7 +31,7 @@ class AboutScreen extends StatelessWidget {
                             color: Colors.greenAccent.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.terrain, color: Colors.greenAccent, size: 64),
+                          child: Image.asset('assets/icon/icon.png', width: 64, height: 64),
                         ),
                         const SizedBox(height: 16),
                         const Text(
