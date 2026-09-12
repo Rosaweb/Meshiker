@@ -504,3 +504,444 @@ begin
   );
 end;
 $$;
+
+-- ============================================================
+-- Partage de position & Live tracking (voir schema.sql pour
+-- location_shares/location_share_members/location_pings/
+-- location_share_archives/push_tokens, et spec-partage-position-
+-- live-tracking.md pour le document de référence complet).
+-- ============================================================
+
+-- ---------- Création d'un partage (gating premium serveur) ----------
+-- security invoker (comme create_trace_share) : le gating premium ne
+-- nécessite aucun privilège élevé — profiles.is_premium est déjà lisible
+-- publiquement (policy "profiles are publicly readable") — et l'insertion
+-- elle-même passe par la RLS normale de location_shares (owner_id =
+-- auth.uid()). Même principe qu'assistant-token : jamais une simple
+-- vérification côté client.
+create or replace function public.create_location_share(
+  p_label text,
+  p_mode text,
+  p_channels text[],
+  p_reciprocity text default 'unilateral',
+  p_live_interval_seconds integer default null,
+  p_auto_times time[] default null,
+  p_history_enabled boolean default false,
+  p_history_global boolean default false,
+  p_web_access text default 'public',
+  p_web_password text default null,
+  p_expires_in_hours integer default null
+)
+returns table (id uuid, share_token text, expires_at timestamptz)
+language plpgsql
+security invoker
+-- gen_random_bytes()/crypt() vivent dans le schéma "extensions" chez
+-- Supabase, pas dans "public" : il faut l'inclure explicitement.
+set search_path = public, extensions
+as $$
+declare
+  v_is_premium boolean;
+  v_hours integer;
+  v_expires timestamptz;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentification requise pour créer un partage de position.';
+  end if;
+
+  -- Fonctionnalité intégralement premium (spec §1) : aucun accès même
+  -- dégradé pour un compte non abonné, vérification serveur systématique.
+  select is_premium into v_is_premium from public.profiles where id = auth.uid();
+  if not coalesce(v_is_premium, false) then
+    raise exception 'premium_required';
+  end if;
+
+  -- Même règle que create_trace_share (fonctionnalité "sociale") : un
+  -- compte permanent est requis même pour un utilisateur anonyme premium.
+  if coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
+    raise exception 'Un compte permanent est requis pour partager votre position (voir Paramètres > Compte).';
+  end if;
+
+  if p_mode not in ('manual', 'auto', 'live') then
+    raise exception 'Mode de partage invalide : %', p_mode;
+  end if;
+
+  -- Durées par défaut arrêtées avec l'utilisateur (voir plan
+  -- d'implémentation) : Live=12h, Auto=72h (camps scouts/battues sur
+  -- plusieurs jours), Manuel=1h (l'envoi ponctuel se termine
+  -- immédiatement côté client via stop_location_share, cette valeur n'est
+  -- qu'un filet de sécurité si cet appel échouait).
+  v_hours := coalesce(p_expires_in_hours,
+    case p_mode
+      when 'auto' then 72
+      when 'live' then 12
+      else 1
+    end);
+  v_expires := now() + make_interval(hours => v_hours);
+
+  insert into public.location_shares (
+    owner_id, label, mode, channels, reciprocity,
+    live_interval_seconds, auto_times, history_enabled, history_global,
+    web_access, password_hash, expires_at
+  )
+  values (
+    auth.uid(), p_label, p_mode, p_channels,
+    case when p_mode = 'manual' then 'unilateral' else p_reciprocity end,
+    p_live_interval_seconds, p_auto_times, p_history_enabled, p_history_global,
+    p_web_access,
+    case when p_web_password is not null then crypt(p_web_password, gen_salt('bf')) end,
+    v_expires
+  )
+  returning location_shares.id, location_shares.share_token, location_shares.expires_at
+  into id, share_token, expires_at;
+
+  return next;
+end;
+$$;
+
+-- ---------- Rejoindre un partage (App-to-app) ----------
+-- security DEFINER : au moment de l'appel, le nouvel invité n'a encore
+-- aucune ligne location_share_members — la policy "members can view
+-- shares they belong to" ne peut donc pas encore le laisser lire le
+-- partage. C'est exactement le cas qui justifie le bypass (contrairement
+-- à create_location_share ci-dessus, qui n'en a pas besoin).
+create or replace function public.join_location_share(p_share_token text)
+returns table (
+  share_id uuid, label text, owner_pseudo text, mode text,
+  reciprocity text, history_global boolean, member_id uuid, invite_status text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_share record;
+  v_member_id uuid;
+  v_status text;
+begin
+  if auth.uid() is null then
+    raise exception 'Connexion requise pour rejoindre un partage de position.';
+  end if;
+
+  select * into v_share
+  from public.location_shares s
+  where s.share_token = p_share_token and s.is_active and s.expires_at > now();
+
+  if not found then
+    raise exception 'Ce lien de partage est invalide, expiré ou révoqué.';
+  end if;
+
+  select m.id, m.invite_status into v_member_id, v_status
+  from public.location_share_members m
+  where m.share_id = v_share.id and m.user_id = auth.uid();
+
+  if v_member_id is null then
+    insert into public.location_share_members (share_id, user_id, channel, invite_status)
+    values (v_share.id, auth.uid(), 'app', 'pending')
+    returning location_share_members.id, location_share_members.invite_status
+    into v_member_id, v_status;
+  end if;
+
+  return query
+    select v_share.id, v_share.label, p.pseudo, v_share.mode,
+           v_share.reciprocity, v_share.history_global, v_member_id, v_status
+    from public.profiles p
+    where p.id = v_share.owner_id;
+end;
+$$;
+
+-- ---------- Réponse à l'invitation App-to-app ----------
+-- security invoker : le membre ne modifie que sa propre ligne, couvert par
+-- la policy "members respond to their own invite and history consent".
+-- Aucune émission de position n'est possible avant `accepted` : la policy
+-- d'insert de location_pings exige is_accepted_app_member().
+create or replace function public.respond_location_share_invite(
+  p_member_id uuid,
+  p_accept boolean
+)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  update public.location_share_members
+  set invite_status = case when p_accept then 'accepted' else 'declined' end,
+      invite_responded_at = now()
+  where id = p_member_id and user_id = auth.uid();
+
+  if not found then
+    raise exception 'Invitation introuvable.';
+  end if;
+end;
+$$;
+
+-- ---------- Consentement à la conservation d'historique (spec §8.3) -------
+-- Distinct de respond_location_share_invite ci-dessus à dessein : ce sont
+-- deux consentements jamais l'un déduit de l'autre (spec §2, §15).
+create or replace function public.set_history_consent(
+  p_member_id uuid,
+  p_consent boolean
+)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  update public.location_share_members
+  set history_consent = p_consent,
+      history_consent_at = now()
+  where id = p_member_id and user_id = auth.uid();
+
+  if not found then
+    raise exception 'Membre introuvable.';
+  end if;
+end;
+$$;
+
+-- ---------- Extension de durée ("Étendre la durée", spec §7.4) ----------
+create or replace function public.extend_location_share(
+  p_share_id uuid,
+  p_extra_hours integer
+)
+returns timestamptz
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_expires timestamptz;
+begin
+  update public.location_shares
+  set expires_at = expires_at + make_interval(hours => p_extra_hours)
+  where id = p_share_id and owner_id = auth.uid() and is_active
+  returning expires_at into v_expires;
+
+  if v_expires is null then
+    raise exception 'Partage introuvable ou déjà terminé.';
+  end if;
+
+  return v_expires;
+end;
+$$;
+
+-- ---------- Arrêt d'un partage ("Arrêter le partage", spec §7.5) --------
+create or replace function public.stop_location_share(p_share_id uuid)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  update public.location_shares
+  set is_active = false, ended_at = now()
+  where id = p_share_id and owner_id = auth.uid();
+
+  if not found then
+    raise exception 'Partage introuvable.';
+  end if;
+end;
+$$;
+
+-- ---------- Archive serveur de l'historique de groupe ----------
+-- Décision produit (voir plan d'implémentation, hors texte brut de la
+-- spec) : security DEFINER, seule fonction pouvant écrire dans
+-- location_share_archives (aucune policy d'insert sur cette table, même
+-- précédent que promo_codes). N'archive que l'administrateur lui-même et
+-- les membres ayant explicitement consenti (history_consent = true) —
+-- jamais les autres, même s'ils restent visibles en direct pendant la
+-- session (spec §8.3).
+create or replace function public.archive_group_location_history(p_share_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+begin
+  if not exists (
+    select 1 from public.location_shares
+    where id = p_share_id and owner_id = auth.uid() and history_global
+  ) then
+    raise exception 'Historique global non activé, ou vous n''êtes pas l''administrateur de ce partage.';
+  end if;
+
+  insert into public.location_share_archives (
+    share_id, owner_id, user_id, lat, lng, altitude, speed, accuracy, recorded_at
+  )
+  select lp.share_id, s.owner_id, lp.user_id, lp.lat, lp.lng, lp.altitude, lp.speed, lp.accuracy, lp.recorded_at
+  from public.location_pings lp
+  join public.location_shares s on s.id = lp.share_id
+  left join public.location_share_members m on m.share_id = lp.share_id and m.user_id = lp.user_id
+  where lp.share_id = p_share_id
+    and (lp.user_id = s.owner_id or m.history_consent);
+
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
+-- ---------- Nettoyage périodique (pg_cron) ----------
+-- Même cadence (15 min) et même pattern d'enregistrement idempotent que
+-- purge_expired_trace_shares. Délai de grâce d'1h pour les partages à
+-- historique (history_enabled ou history_global) avant de purger leurs
+-- location_pings : décision utilisateur (voir plan d'implémentation) pour
+-- laisser une fenêtre de réouverture de l'app et répondre aux
+-- propositions de sauvegarde/archivage de fin de session. Les partages
+-- sans historique sont purgés immédiatement, comme prévu par la spec §4
+-- ("aucune donnée ne survit à la session sans sauvegarde explicite").
+create or replace function public.purge_expired_location_shares()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.location_shares
+  set is_active = false, ended_at = coalesce(ended_at, now())
+  where is_active and expires_at < now();
+
+  delete from public.location_pings
+  where share_id in (
+    select id from public.location_shares
+    where not is_active
+      and not history_enabled and not history_global
+      and expires_at < now()
+  );
+
+  delete from public.location_pings
+  where share_id in (
+    select id from public.location_shares
+    where not is_active
+      and (history_enabled or history_global)
+      and expires_at < now() - interval '1 hour'
+  );
+end;
+$$;
+
+do $$
+begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'purge-expired-location-shares';
+exception when others then null;
+end $$;
+
+select cron.schedule(
+  'purge-expired-location-shares',
+  '*/15 * * * *',
+  $$select public.purge_expired_location_shares();$$
+);
+
+-- ============================================================
+-- Auto/iOS — réveil par push silencieux (Milestone D du plan
+-- d'implémentation). Android n'a besoin d'aucune fonction ici : l'alarme
+-- exacte système est gérée entièrement côté client
+-- (lib/sharing/location_auto_alarm_service.dart).
+-- ============================================================
+
+-- ---------- Partages Auto dus pour un check-in maintenant ----------
+-- `auto_times` est stocké en UTC (converti côté client avant l'envoi à
+-- create_location_share, voir LocationShareCreateScreen._formatTimeOfDay
+-- — sans quoi cette comparaison contre `now()` en UTC serait fausse pour
+-- tout utilisateur hors UTC). Tolérance d'une minute pile : le cron qui
+-- appelle send-auto-checkin-push tourne à la minute (voir
+-- trigger_auto_checkin_push ci-dessous).
+create or replace function public.due_auto_location_shares()
+returns table (share_id uuid)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select s.id
+  from public.location_shares s
+  where s.is_active and s.mode = 'auto' and s.expires_at > now()
+    and exists (
+      select 1 from unnest(s.auto_times) as auto_time
+      where date_trunc('minute', auto_time)
+          = date_trunc('minute', (now() at time zone 'utc')::time)
+    );
+$$;
+
+-- ---------- Tokens iOS des destinataires d'un ensemble de partages ------
+-- Administrateur + membres `app`/`accounts_only` acceptés, pour chacun
+-- des `p_share_ids` — un seul appel plutôt qu'un aller-retour par partage
+-- depuis l'Edge Function.
+create or replace function public.location_share_ios_recipients(p_share_ids uuid[])
+returns table (token text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select distinct pt.token
+  from public.push_tokens pt
+  where pt.platform = 'ios'
+    and pt.user_id in (
+      select s.owner_id from public.location_shares s where s.id = any(p_share_ids)
+      union
+      select m.user_id from public.location_share_members m
+      where m.share_id = any(p_share_ids)
+        and m.channel in ('app', 'accounts_only')
+        and m.invite_status = 'accepted'
+        and m.user_id is not null
+    );
+$$;
+
+-- ---------- Déclenchement périodique de send-auto-checkin-push ----------
+-- Pas de précédent pg_net/net.http_post ailleurs dans ce repo (voir plan
+-- d'implémentation) : ceci est le mécanisme de repli qui fonctionne sur
+-- tout projet Supabase, quel que soit son plan. SI le projet Supabase
+-- utilisé supporte les "Cron Triggers for Edge Functions" natifs
+-- (dashboard > Edge Functions > Triggers), PRÉFÉRER ce mécanisme natif à
+-- la place et ne jamais activer les deux en même temps (double envoi) —
+-- vérifier au moment du déploiement, pas devinable depuis ce repo.
+--
+-- Le secret partagé (vérifié dans send-auto-checkin-push/index.ts) est
+-- stocké via Supabase Vault, jamais en clair ici. À créer une fois dans le
+-- SQL Editor du dashboard (valeur au choix, longue et aléatoire) :
+--   select vault.create_secret('<valeur choisie>', 'cron_shared_secret');
+-- Puis configurer la MÊME valeur côté Edge Function :
+--   npx supabase secrets set CRON_SHARED_SECRET=<même valeur>
+--
+-- ⚠️ Remplacer <PROJECT_REF> ci-dessous par la référence réelle du projet
+-- Supabase avant d'exécuter ce bloc (visible dans l'URL du dashboard ou
+-- Settings > API) — pas connaissable depuis ce repo.
+create extension if not exists pg_net;
+
+create or replace function public.trigger_auto_checkin_push()
+returns void
+language plpgsql
+security definer
+set search_path = public, vault
+as $$
+declare
+  v_secret text;
+begin
+  select decrypted_secret into v_secret
+  from vault.decrypted_secrets where name = 'cron_shared_secret';
+
+  if v_secret is null then
+    raise warning 'trigger_auto_checkin_push: secret "cron_shared_secret" introuvable dans Vault, envoi annulé.';
+    return;
+  end if;
+
+  perform net.http_post(
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/send-auto-checkin-push',
+    headers := jsonb_build_object('Authorization', 'Bearer ' || v_secret, 'Content-Type', 'application/json'),
+    body := '{}'::jsonb
+  );
+end;
+$$;
+
+do $$
+begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'trigger-auto-checkin-push';
+exception when others then null;
+end $$;
+
+select cron.schedule(
+  'trigger-auto-checkin-push',
+  '* * * * *',
+  $$select public.trigger_auto_checkin_push();$$
+);

@@ -142,6 +142,11 @@ class RecordingService {
   // `true` entre le moment où on demande le démarrage du flux GPS et son
   // arrêt explicite : distingue "localisation coupée" de "en attente".
   bool _monitoringActive = false;
+  // Piloté par `LocationShareService.setSharingActive` : un partage Auto/
+  // Live est actif sans qu'un enregistrement de trace classique le soit
+  // (voir `_buildLocationSettings`, spec-partage-position-live-tracking.md
+  // §6 — notification différenciée "Partage de position actif").
+  bool _sharingActive = false;
   // `true` quand aucun fix GPS n'est arrivé depuis > 15 s (cf.
   // `_resetSignalTimer`) : signal perdu alors que le flux tourne toujours.
   bool _signalStale = false;
@@ -244,6 +249,25 @@ class RecordingService {
   Future<bool> ensureBackgroundPermission() async {
     final permission = await geo.Geolocator.requestPermission();
     return permission == geo.LocationPermission.always;
+  }
+
+  /// Piloté par `LocationShareService` : bascule le texte de la
+  /// notification Android de localisation entre "Localisation active" et
+  /// "Partage de position actif" lorsqu'aucun enregistrement de trace
+  /// classique n'est simultanément en cours (l'enregistrement garde
+  /// toujours la priorité sur le libellé, voir `_buildLocationSettings`).
+  ///
+  /// Redémarre le flux de localisation quand l'état change ET qu'aucun
+  /// enregistrement n'est actif, pour que `foregroundNotificationConfig`
+  /// reprenne le nouveau texte — ce plugin, tel qu'utilisé ici, n'expose
+  /// pas de mise à jour de la notification une fois le flux démarré.
+  void setSharingActive(bool value) {
+    if (_sharingActive == value) return;
+    _sharingActive = value;
+    if (_monitoringActive && status.value != RecordingStatus.recording) {
+      stopPositionMonitoring();
+      startPositionMonitoring();
+    }
   }
 
   void _updateSpeedAverages(double currentSpeed) {
@@ -591,17 +615,30 @@ class RecordingService {
   /// doit alors refléter ce contexte plutôt que d'annoncer un enregistrement.
   geo.LocationSettings _buildLocationSettings({bool isRecording = true}) {
     if (Platform.isAndroid) {
+      // Trois états possibles pour le libellé de la notification
+      // persistante, par priorité décroissante : un enregistrement de
+      // trace classique l'emporte toujours sur un partage de position
+      // actif, qui l'emporte lui-même sur le libellé générique.
+      final String notificationTitle;
+      final String notificationText;
+      if (isRecording) {
+        notificationTitle = config.notificationTitle;
+        notificationText = config.notificationText;
+      } else if (_sharingActive) {
+        notificationTitle = 'Partage de position actif';
+        notificationText = 'Meshiker partage votre position en direct.';
+      } else {
+        notificationTitle = 'Localisation active';
+        notificationText = 'Meshiker utilise votre position pour la navigation.';
+      }
       return geo.AndroidSettings(
         accuracy: geo.LocationAccuracy.best, // Passage en 'best' pour forcer Xiaomi à utiliser le GPS
         distanceFilter: 0,
         intervalDuration: const Duration(seconds: 2),
         // Important : spécifier explicitement le mode de notification
         foregroundNotificationConfig: geo.ForegroundNotificationConfig(
-          notificationTitle:
-              isRecording ? config.notificationTitle : 'Localisation active',
-          notificationText: isRecording
-              ? config.notificationText
-              : 'Meshiker utilise votre position pour la navigation.',
+          notificationTitle: notificationTitle,
+          notificationText: notificationText,
           enableWakeLock: true,
         ),
       );

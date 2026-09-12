@@ -23,3 +23,14 @@ verify_jwt = false
 # JWT Supabase standard (attaché automatiquement par supabase_flutter) :
 # verify_jwt reste à sa valeur par défaut (true).
 static_files = ["./functions/assistant-token/manuel_utilisateur.md"]
+
+[functions.send-auto-checkin-push]
+# Invoquée par le cron Postgres trigger_auto_checkin_push() (pg_net, voir
+# functions.sql), qui n'a pas de JWT Supabase — le secret partagé
+# CRON_SHARED_SECRET est vérifié à la main dans index.ts, même raison que
+# revenuecat-webhook.
+verify_jwt = false
+
+[functions.send-location-share-email]
+# JWT Supabase standard (invoquée via supabase.functions.invoke() côté
+# client authentifié) : verify_jwt reste à sa valeur par défaut (true).

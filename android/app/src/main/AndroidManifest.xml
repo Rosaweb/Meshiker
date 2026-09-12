@@ -8,6 +8,16 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Partage de position, mode Auto (spec-partage-position-live-tracking.md
+         §6) : alarme exacte pour les check-ins programmés. SCHEDULE_EXACT_ALARM
+         (pas USE_EXACT_ALARM, réservé aux apps horloge/alarme par Play Console)
+         doit être explicitement demandée à l'utilisateur dès Android 14, voir
+         LocationAutoAlarmService. RECEIVE_BOOT_COMPLETED permet à
+         android_alarm_manager_plus de replanifier automatiquement les alarmes
+         après un redémarrage (utile pour un partage Auto sur plusieurs jours). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Permissions pour le stockage (GPX) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -69,6 +79,28 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- Partage de position, mode Auto : android_alarm_manager_plus
+             (entrées reprises telles quelles de son AndroidManifest.xml
+             d'exemple, package 5.1.1). RebootBroadcastReceiver activé
+             (contrairement au défaut du plugin) pour qu'un partage Auto sur
+             plusieurs jours (72h par défaut, voir plan d'implémentation)
+             survive à un redémarrage du téléphone. -->
+        <service
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.RebootBroadcastReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

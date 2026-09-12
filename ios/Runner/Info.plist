@@ -73,6 +73,14 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<!-- Partage de position, mode Auto sur iOS (spec-partage-position-
+		     live-tracking.md §6) : réception du push silencieux
+		     (content-available: 1) envoyé par
+		     supabase/functions/send-auto-checkin-push. Nécessite en plus la
+		     capacité "Push Notifications" activée dans Xcode (Signing &
+		     Capabilities) — pas ajoutable depuis un simple fichier Info.plist,
+		     action à faire dans Xcode côté Mac. -->
+		<string>remote-notification</string>
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Cette application a besoin d'accéder à vos photos pour les associer aux waypoints.</string>

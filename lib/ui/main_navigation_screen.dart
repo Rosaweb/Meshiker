@@ -29,6 +29,7 @@ import 'tracks/roadmap_screen.dart';
 import 'segments/segment_manager_screen.dart';
 import 'waypoints/waypoint_manager_screen.dart';
 import 'photos/photo_gallery_screen.dart';
+import 'sharing/location_share_home_screen.dart';
 import 'assistant/assistant_prompt_bar.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -460,6 +461,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               title: 'Mon compte',
               subtitle: 'Gérer mon abonnement',
               onTap: () => _pushSettings(const AccountSettingsScreen())),
+          _buildSettingsTile(
+              icon: Icons.share_location_outlined,
+              title: 'Partage de position',
+              subtitle: 'Live tracking et partage ponctuel (Premium)',
+              onTap: () => _pushSettings(const LocationShareHomeScreen())),
           const Divider(color: Colors.white12),
           _buildSettingsTile(
               icon: Icons.settings_suggest_outlined,

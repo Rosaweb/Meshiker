@@ -315,3 +315,264 @@ alter table public.promo_code_redemptions enable row level security;
 -- ne sont lues/écrites que depuis l'Edge Function redeem-promo-code (clé
 -- service_role, via la RPC security definer redeem_promo_code), jamais
 -- directement par le client.
+
+-- ============================================================
+-- Partage de position & Live tracking (voir spec-partage-position-
+-- live-tracking.md, doc de référence complet, et functions.sql pour
+-- create_location_share/join_location_share/archive_group_location_history/
+-- purge_expired_location_shares). Fonctionnalité intégralement premium —
+-- vérification serveur systématique dans create_location_share, jamais une
+-- simple vérification côté client (même pattern qu'assistant-token).
+-- ============================================================
+
+create table if not exists public.location_shares (
+  id uuid primary key default uuid_generate_v4(),
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  label text, -- nom libre donné par l'administrateur ("Battue du 12 septembre")
+
+  mode text not null check (mode in ('manual', 'auto', 'live')),
+  -- Sous-ensemble de {'web','email','sms','app'} — 'email' absent si mode='live'.
+  channels text[] not null default '{}',
+
+  reciprocity text not null default 'unilateral'
+    check (reciprocity in ('unilateral', 'bilateral', 'multilateral')),
+  -- Toujours 'unilateral' si mode='manual' (imposé par create_location_share,
+  -- non exposé dans l'UI pour ce mode).
+
+  -- Live uniquement.
+  live_interval_seconds integer check (live_interval_seconds between 5 and 7200),
+  -- Auto uniquement : 1 à 3 heures de check-in dans la journée.
+  auto_times time[] check (auto_times is null or array_length(auto_times, 1) between 1 and 3),
+
+  -- Historique : affichage local + proposition de sauvegarde en fin de
+  -- session, jamais une trace créée automatiquement (voir spec §8).
+  history_enabled boolean not null default false,
+  -- Réservé à l'administrateur d'un partage App-to-app à 3+ participants :
+  -- demande de conservation d'historique pour tout le groupe, effective
+  -- membre par membre selon leur consentement (location_share_members.history_consent).
+  history_global boolean not null default false,
+
+  -- 'accounts_only' et password_hash/web_access restent inertes tant que
+  -- meshiker-web (seul consommateur de l'accès web) n'existe pas — voir le
+  -- plan d'implémentation, écart §5 : la policy select de location_pings
+  -- ci-dessous n'a volontairement pas de branche anon/JWT pour ce chantier.
+  web_access text not null default 'public'
+    check (web_access in ('public', 'password', 'accounts_only')),
+  password_hash text, -- rempli seulement si web_access = 'password' (pgcrypto crypt())
+  share_token text not null unique default encode(gen_random_bytes(16), 'hex'),
+
+  is_active boolean not null default true,
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  -- Valeur réelle toujours fixée explicitement par create_location_share
+  -- selon le mode (Live=12h, Auto=72h, Manuel=1h) — ce défaut colonne ne
+  -- sert que de filet de sécurité si une ligne était insérée hors RPC.
+  expires_at timestamptz not null default (now() + interval '12 hours'),
+
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.location_share_members (
+  id uuid primary key default uuid_generate_v4(),
+  share_id uuid not null references public.location_shares (id) on delete cascade,
+
+  -- Rempli uniquement pour channel in ('app', 'accounts_only') — un compte
+  -- Meshiker identifiable. Reste NULL pour 'email'/'sms', qui ne référencent
+  -- qu'un moyen de contact, pas un compte.
+  user_id uuid references public.profiles (id),
+  channel text not null check (channel in ('app', 'accounts_only', 'email', 'sms')),
+  contact text, -- adresse email ou numéro E.164, si channel in ('email', 'sms')
+
+  -- Un membre 'app' doit accepter explicitement l'invitation avant que son
+  -- appareil ne commence à émettre sa position — jamais de déclenchement
+  -- distant du GPS d'un tiers sans son accord.
+  invite_status text not null default 'pending'
+    check (invite_status in ('pending', 'accepted', 'declined')),
+  invite_responded_at timestamptz,
+
+  -- Distinct du consentement de partage ci-dessus : ne s'applique que si
+  -- location_shares.history_global = true. Jamais déduit de invite_status
+  -- (deux consentements séparés, voir spec §2/§8.3/§15).
+  history_consent boolean not null default false,
+  history_consent_at timestamptz,
+
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.location_pings (
+  id bigint generated always as identity primary key,
+  share_id uuid not null references public.location_shares (id) on delete cascade,
+  -- Auteur du point : l'administrateur, ou un membre en réciprocité
+  -- bilatérale/multilatérale. Toujours renseigné, y compris pour
+  -- l'administrateur lui-même (pas de ligne "virtuelle").
+  user_id uuid not null references public.profiles (id),
+  lat double precision not null,
+  lng double precision not null,
+  altitude double precision,
+  speed double precision,
+  accuracy double precision,
+  recorded_at timestamptz not null default now()
+);
+
+create index if not exists location_pings_share_recorded_idx
+  on public.location_pings (share_id, recorded_at desc);
+
+-- Nécessaire pour que postgres_changes pousse les événements INSERT aux
+-- clients abonnés (écran "Partage actif", marqueurs des participants).
+-- Première utilisation de Supabase Realtime dans ce repo — à tester
+-- explicitement (voir plan d'implémentation, section Vérification), ne
+-- pas supposer que ça fonctionne par analogie avec trace_shares.
+alter publication supabase_realtime add table public.location_pings;
+
+-- Centralise la logique de réciprocité (qui voit quels points) dans une
+-- fonction security definer plutôt que dupliquée dans chaque policy.
+create or replace function public.is_accepted_app_member(p_share_id uuid, p_user_id uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.location_share_members m
+    where m.share_id = p_share_id
+      and m.user_id = p_user_id
+      and m.channel in ('app', 'accounts_only')
+      and m.invite_status = 'accepted'
+  );
+$$;
+
+alter table public.location_shares enable row level security;
+alter table public.location_share_members enable row level security;
+alter table public.location_pings enable row level security;
+
+create policy "owners manage their location shares"
+  on public.location_shares for all
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id);
+
+-- Nécessaire pour que l'écran d'invitation / l'écran "Partage actif" d'un
+-- membre (pas seulement l'administrateur) puisse lire le libellé et les
+-- réglages du partage auquel il appartient.
+create policy "members can view shares they belong to"
+  on public.location_shares for select
+  using (
+    exists (
+      select 1 from public.location_share_members m
+      where m.share_id = location_shares.id and m.user_id = auth.uid()
+    )
+  );
+
+create policy "owners manage all members of their shares"
+  on public.location_share_members for all
+  using (exists (select 1 from public.location_shares s
+                 where s.id = location_share_members.share_id and s.owner_id = auth.uid()))
+  with check (exists (select 1 from public.location_shares s
+                       where s.id = location_share_members.share_id and s.owner_id = auth.uid()));
+
+create policy "members read their own membership row"
+  on public.location_share_members for select
+  using (user_id = auth.uid());
+
+-- Un membre répond à sa propre invitation (invite_status, via
+-- respond_location_share_invite) et à son propre consentement d'historique
+-- (history_consent, via set_history_consent) — les deux passent par cette
+-- même policy update, mais restent deux actions distinctes côté RPC/UI.
+create policy "members respond to their own invite and history consent"
+  on public.location_share_members for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy "members insert their own pings"
+  on public.location_pings for insert
+  to authenticated
+  with check (
+    location_pings.user_id = auth.uid()
+    and exists (
+      select 1 from public.location_shares s
+      where s.id = location_pings.share_id
+        and s.is_active
+        and (s.owner_id = auth.uid() or public.is_accepted_app_member(s.id, auth.uid()))
+    )
+  );
+
+-- Modèle de réciprocité — voir spec-partage-position-live-tracking.md §5.1.
+-- Volontairement SANS la branche anon/JWT `share_id` du document d'origine :
+-- elle dépend de verify-share-password (Edge Function), qui n'a de sens
+-- qu'une fois meshiker-web construit (hors périmètre de ce chantier).
+create policy "voir les points selon le modèle de réciprocité"
+  on public.location_pings for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.location_shares s
+      where s.id = location_pings.share_id
+        and s.is_active and s.expires_at > now()
+        and (
+          -- L'auteur voit toujours ses propres points ; l'administrateur
+          -- voit toujours tout, quel que soit le modèle de réciprocité.
+          location_pings.user_id = auth.uid() or s.owner_id = auth.uid()
+          -- Unilatéral : seuls les points de l'administrateur sont
+          -- visibles aux autres membres.
+          or (s.reciprocity = 'unilateral' and location_pings.user_id = s.owner_id
+              and public.is_accepted_app_member(s.id, auth.uid()))
+          -- Bilatéral / Multilatéral : tout membre accepté voit tous les points.
+          or (s.reciprocity in ('bilateral', 'multilateral')
+              and public.is_accepted_app_member(s.id, auth.uid()))
+        )
+    )
+  );
+
+-- ------------------------------------------------------------
+-- Archive serveur de l'historique de groupe. Décision produit (voir plan
+-- d'implémentation) : en plus de la sauvegarde locale individuelle de
+-- chaque participant (spec §8.1/§8.2, jamais synchronisée), l'administrateur
+-- d'un partage à historique global peut déclencher une archive serveur
+-- PERMANENTE de l'intégralité du groupe, pour une future consultation via
+-- meshiker-web (pas construite dans ce chantier — écriture seule côté
+-- mobile). Calquée sur le précédent promo_codes : RLS activée, AUCUNE
+-- policy d'écriture — seule la RPC security definer
+-- archive_group_location_history() (functions.sql) y écrit.
+-- ------------------------------------------------------------
+create table if not exists public.location_share_archives (
+  id bigint generated always as identity primary key,
+  share_id uuid references public.location_shares (id) on delete set null,
+  owner_id uuid not null references public.profiles (id) on delete cascade, -- admin ayant déclenché l'archive
+  user_id uuid not null references public.profiles (id), -- membre auquel appartient ce point
+  lat double precision not null,
+  lng double precision not null,
+  altitude double precision,
+  speed double precision,
+  accuracy double precision,
+  recorded_at timestamptz not null,
+  archived_at timestamptz not null default now()
+);
+
+create index if not exists location_share_archives_owner_idx
+  on public.location_share_archives (owner_id);
+
+alter table public.location_share_archives enable row level security;
+
+-- Lecture réservée à l'administrateur — non consommée côté mobile dans ce
+-- chantier (écriture seule via la RPC), prête pour un futur écran web.
+create policy "owners can read their archived group history"
+  on public.location_share_archives for select
+  using (auth.uid() = owner_id);
+
+-- ------------------------------------------------------------
+-- Tokens push (Auto/iOS uniquement, spec §6) : Android n'en a pas besoin,
+-- l'alarme exacte système est gérée nativement côté client sans aucune
+-- infrastructure serveur.
+-- ------------------------------------------------------------
+create table if not exists public.push_tokens (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  platform text not null check (platform in ('ios')),
+  token text not null,
+  updated_at timestamptz not null default now(),
+  unique (user_id, platform, token)
+);
+
+alter table public.push_tokens enable row level security;
+
+create policy "users manage their own push tokens"
+  on public.push_tokens for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);

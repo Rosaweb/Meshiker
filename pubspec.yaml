@@ -49,6 +49,11 @@ dependencies:
   connectivity_plus: ^7.3.0
   purchases_ui_flutter: ^10.4.1
   google_sign_in: ^7.2.0
+  # --- Partage de position, mode Auto (exécution arrière-plan) ---
+  # spec-partage-position-live-tracking.md §6. Android : alarme exacte
+  # système, aucune infra serveur nécessaire. iOS : push silencieux APNs,
+  # voir supabase/functions/send-auto-checkin-push.
+  android_alarm_manager_plus: ^5.1.1
 
   path: any
   collection: any

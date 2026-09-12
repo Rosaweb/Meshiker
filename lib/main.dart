@@ -22,6 +22,7 @@ import 'gpx/gpx_import_service.dart';
 import 'gpx/gpx_scanner_service.dart';
 import 'navigation/waypoint_announcement_service.dart';
 import 'photos/photo_capture_service.dart';
+import 'sharing/location_share_service.dart';
 import 'sharing/trace_share_service.dart';
 import 'assistant/assistant_service.dart';
 import 'assistant/places_service.dart';
@@ -123,6 +124,12 @@ void main() async {
         pedometerService: pedometerService,
         settingsService: settingsService,
       );
+      final locationShareService = LocationShareService(
+        supabaseBootstrap: supabaseBootstrap,
+        recordingService: recordingService,
+        isarService: isarService,
+        searchEngine: searchEngine,
+      );
       // Doit être construit après `recordingService` : l'assistant IA de
       // navigation (v2, function calling) lit l'itinéraire/waypoints
       // chargés dans le Roadmap directement depuis ce service (lecture
@@ -194,6 +201,11 @@ void main() async {
         await searchEngine.rebuildFromDatabase(isarService);
         await recordingService.init();
         await waypointAnnouncementService.init();
+        // Résout un éventuel partage de position déjà actif au démarrage
+        // (créé/rejoint avant un kill de l'app) — après recordingService
+        // (a besoin de son flux de localisation) et subscriptionService
+        // (statut premium), déjà non-fatal en interne (zone blanche).
+        await locationShareService.init();
 
         if (settingsService.gpxStoragePath != null) {
           unawaited(gpxScanner.scanFolder(settingsService.gpxStoragePath!));
@@ -218,6 +230,7 @@ void main() async {
             Provider.value(value: importService),
             Provider.value(value: supabaseBootstrap),
             Provider.value(value: traceShareService),
+            Provider.value(value: locationShareService),
             Provider.value(value: assistantService),
             ChangeNotifierProvider.value(value: gpxScanner),
             StreamProvider<ConnectivityResult>(

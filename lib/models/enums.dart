@@ -43,6 +43,19 @@ enum SyncStatus {
 
   /// Une tentative de synchronisation a échoué (réseau, validation...).
   error,
+
+  /// Volontairement et durablement exclue du sync — jamais poussée, jamais
+  /// tirée. Utilisée par les traces issues d'un historique de partage de
+  /// position (voir spec-partage-position-live-tracking.md §8.4) : une
+  /// battue ou une sortie hors-piste ne doit jamais transiter par
+  /// `SyncEngine`, même en `pending`, car `segments` reste publiquement
+  /// lisible côté serveur indépendamment de la visibilité de sa `Trace`.
+  /// IMPORTANT : cette valeur est stockée par ordinal (`@Enumerated
+  /// (EnumType.ordinal)` sur `Trace.syncStatus`/`Segment.syncStatus`) — elle
+  /// doit toujours rester en dernière position de cet enum, jamais insérée
+  /// au milieu, sous peine de corrompre silencieusement les valeurs déjà
+  /// stockées sur les installations existantes.
+  excluded,
 }
 
 /// Visibilité d'une trace vis-à-vis de la communauté.
