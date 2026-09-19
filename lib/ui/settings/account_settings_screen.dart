@@ -6,6 +6,7 @@ import '../../utils/subscription_service.dart';
 import '../../database/isar_service.dart';
 import '../../models/pending_crash_report.dart';
 import '../../models/utilisateur.dart';
+import '../../utils/pseudo.dart';
 import '../auth/login_screen.dart';
 import '../auth/secure_account_screen.dart';
 import 'about_screen.dart';
@@ -138,9 +139,22 @@ class AccountSettingsScreen extends StatelessWidget {
           child: const Icon(Icons.person, size: 40, color: Colors.greenAccent),
         ),
         const SizedBox(height: 16),
-        Text(
-          user?.pseudo ?? 'Utilisateur local',
-          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                user?.pseudo ?? 'Utilisateur local',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Modifier le pseudo',
+              icon: const Icon(Icons.edit, size: 18, color: Colors.white54),
+              onPressed: () => _editPseudo(context, user?.pseudo ?? '', authService),
+            ),
+          ],
         ),
         if (email != null)
           Text(
@@ -184,6 +198,69 @@ class AccountSettingsScreen extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  /// Le pseudo est ce que les autres randonneurs voient (partage de position,
+  /// traces partagées) : modifiable ici et sur le site, même règle des deux
+  /// côtés (`validatePseudo`).
+  Future<void> _editPseudo(
+      BuildContext context, String current, AuthService authService) async {
+    final controller = TextEditingController(text: current);
+    String? errorText;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text('Mon pseudo', style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: kPseudoMaxLength,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              helperText: 'Visible par les autres randonneurs',
+              helperStyle: const TextStyle(color: Colors.white38),
+              errorText: errorText,
+              counterStyle: const TextStyle(color: Colors.white38),
+              enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('ANNULER'),
+            ),
+            TextButton(
+              onPressed: () {
+                final error = validatePseudo(controller.text).error;
+                if (error != null) {
+                  setState(() => errorText = error);
+                  return;
+                }
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('ENREGISTRER'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final text = controller.text;
+    controller.dispose();
+    if (saved != true) return;
+
+    final synced = await authService.updatePseudo(text);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(synced
+          ? 'Pseudo enregistré.'
+          : 'Pseudo enregistré sur cet appareil ; il sera synchronisé dès que possible.'),
+    ));
   }
 
   Widget _buildSubscriptionSection(BuildContext context, SubscriptionService subService) {

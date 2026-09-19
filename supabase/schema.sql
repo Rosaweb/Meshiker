@@ -35,6 +35,22 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+-- Le pseudo est affiché aux autres randonneurs (partage de position, traces
+-- partagées) et `profiles` est lisible publiquement : longueur bornée côté
+-- serveur, en plus de la validation des clients (app + site, 2 à 30).
+-- `not valid` : n'audite pas les lignes existantes, mais s'applique à tout
+-- INSERT/UPDATE à venir.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'profiles_pseudo_length'
+  ) then
+    alter table public.profiles
+      add constraint profiles_pseudo_length
+      check (char_length(btrim(pseudo)) between 2 and 30) not valid;
+  end if;
+end $$;
+
 -- ---------- Segments ----------
 -- Un segment est un tronçon unique et partagé : la géométrie est la
 -- source de vérité pour la fusion (ST_DWithin sur un buffer de 5-10 m).

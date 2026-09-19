@@ -308,6 +308,39 @@ $$;
 -- auth.users si l'ordre des opérations n'était pas garanti). Le client
 -- n'a plus qu'à METTRE À JOUR les champs modifiables (pseudo, avatar)
 -- une fois connecté — voir SyncEngine._pushProfile côté Dart.
+--
+-- Pseudo initial, par ordre de priorité :
+--   1. `pseudo` choisi à l'inscription (formulaire web, options.data) ;
+--   2. prénom du compte Google (`given_name`, sinon 1er mot de `full_name`/
+--      `name`) — volontairement pas le nom complet : `profiles` est lisible
+--      publiquement et le pseudo est affiché aux autres randonneurs ;
+--   3. « Randonneur ».
+-- Ne doit JAMAIS lever d'exception (un échec ici bloquerait la création du
+-- compte) : d'où la valeur de repli si le résultat viole la contrainte
+-- `profiles_pseudo_length` (2 à 30 caractères).
+create or replace function public.derive_pseudo(p_meta jsonb)
+returns text
+language plpgsql
+immutable
+set search_path = public
+as $$
+declare
+  v_pseudo text;
+begin
+  v_pseudo := left(btrim(coalesce(
+    nullif(btrim(p_meta ->> 'pseudo'), ''),
+    nullif(btrim(p_meta ->> 'given_name'), ''),
+    nullif(split_part(btrim(coalesce(
+      p_meta ->> 'full_name', p_meta ->> 'name', '')), ' ', 1), ''),
+    'Randonneur')), 30);
+
+  if v_pseudo is null or char_length(btrim(v_pseudo)) < 2 then
+    return 'Randonneur';
+  end if;
+  return v_pseudo;
+end;
+$$;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -316,7 +349,7 @@ set search_path = public
 as $$
 begin
   insert into public.profiles (id, pseudo)
-  values (new.id, coalesce(new.raw_user_meta_data ->> 'pseudo', 'Randonneur'))
+  values (new.id, public.derive_pseudo(new.raw_user_meta_data))
   on conflict (id) do nothing;
   return new;
 end;
@@ -396,6 +429,31 @@ begin
   where token = p_token and owner_id = auth.uid();
 end;
 $$;
+
+-- ---------- Aperçu public d'un partage (page web de repli) ----------
+-- Alimente https://meshiker.com/share/gpx/{token} : nom de la trace, pseudo
+-- de l'auteur, date d'expiration. `trace_shares` n'a volontairement aucune
+-- policy pour anon ; cette fonction SECURITY DEFINER est le seul accès
+-- public, et exige le jeton EXACT (inénumérable, cf. schema.sql). Un jeton
+-- inconnu, expiré ou révoqué renvoie zéro ligne, sans distinction.
+create or replace function public.get_trace_share_preview(p_token text)
+returns table (trace_name text, owner_pseudo text, expires_at timestamptz)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select ts.trace_name, p.pseudo, ts.expires_at
+  from public.trace_shares ts
+  join public.profiles p on p.id = ts.owner_id
+  where ts.token = p_token
+    and ts.revoked_at is null
+    and ts.expires_at > now()
+  limit 1;
+$$;
+
+revoke all on function public.get_trace_share_preview(text) from public;
+grant execute on function public.get_trace_share_preview(text) to anon, authenticated;
 
 -- ---------- Nettoyage périodique (pg_cron) ----------
 -- Supprime la ligne storage.objects des partages expirés/révoqués :

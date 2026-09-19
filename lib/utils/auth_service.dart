@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../database/isar_service.dart';
 import '../models/enums.dart';
 import '../models/utilisateur.dart';
+import 'pseudo.dart';
 import 'supabase_bootstrap_service.dart';
 
 /// Web Client ID Google Cloud Console (config manuelle, cf. plan
@@ -133,16 +134,123 @@ class AuthService extends ChangeNotifier {
         (Utilisateur()
           ..localUuid = const Uuid().v4()
           ..isLocalDevice = true
-          ..pseudo = 'Randonneur');
+          ..pseudo = kDefaultPseudo);
 
-    final changed = local.remoteId != user.id || local.email != user.email;
+    final accountChanged = local.remoteId != user.id;
+    final changed = accountChanged || local.email != user.email;
     if (!changed && existing != null) return;
+
+    // Nouveau compte sur cet appareil (première session, connexion à un
+    // compte existant...) : le pseudo du serveur fait foi, sinon on afficherait
+    // « Randonneur » à la place du pseudo déjà choisi sur le site ou un autre
+    // appareil. En cas d'échec réseau on garde le pseudo local.
+    var syncStatus = local.syncStatus;
+    if (accountChanged) {
+      final remotePseudo = await _fetchRemotePseudo(user.id);
+      if (remotePseudo != null) {
+        local.pseudo = remotePseudo;
+        syncStatus = SyncStatus.synced; // déjà identique au serveur
+      } else {
+        syncStatus = SyncStatus.pending;
+      }
+    }
+    // Un simple changement d'e-mail ne laisse rien à pousser (`profiles` ne
+    // stocke que pseudo/avatar) : ne pas repasser en `pending`, sinon un
+    // pseudo périmé écraserait plus tard celui modifié sur le site.
 
     local
       ..remoteId = user.id
       ..email = user.email
-      ..syncStatus = SyncStatus.pending;
+      ..syncStatus = syncStatus;
     await isarService.saveUser(local); // met aussi à jour updatedAt
+  }
+
+  /// Pseudo enregistré côté serveur pour [userId] (`profiles` est lisible
+  /// publiquement), ou `null` si indisponible. Ne lève jamais : appelé au
+  /// démarrage, où la zone blanche ne doit rien bloquer.
+  Future<String?> _fetchRemotePseudo(String userId) async {
+    final client = _client;
+    if (client == null) return null;
+    try {
+      final row = await client
+          .from('profiles')
+          .select('pseudo')
+          .eq('id', userId)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 5));
+      final pseudo = row?['pseudo'] as String?;
+      return (pseudo == null || pseudo.trim().isEmpty) ? null : pseudo;
+    } catch (e) {
+      debugPrint('AuthService: lecture du pseudo distant impossible (ignoré): $e');
+      return null;
+    }
+  }
+
+  /// Change le pseudo de l'utilisateur : enregistré localement d'abord (source
+  /// de vérité, marche hors ligne), puis poussé vers `profiles` si possible.
+  ///
+  /// Renvoie `true` si le serveur a confirmé, `false` si le pseudo reste en
+  /// attente de synchronisation (`SyncEngine._pushProfile` le poussera).
+  /// Lève [ArgumentError] avec un message affichable si [raw] est invalide.
+  Future<bool> updatePseudo(String raw) async {
+    final checked = validatePseudo(raw);
+    if (checked.value == null) throw ArgumentError(checked.error);
+    final pseudo = checked.value!;
+
+    var local = await isarService.currentDeviceUser();
+    if (local == null) {
+      await _syncLocalUser();
+      local = await isarService.currentDeviceUser();
+    }
+    if (local == null) {
+      throw StateError('Aucun profil local pour enregistrer le pseudo.');
+    }
+
+    local
+      ..pseudo = pseudo
+      ..syncStatus = SyncStatus.pending;
+    await isarService.saveUser(local);
+    notifyListeners();
+
+    final userId = currentUser?.id;
+    final client = _client;
+    if (userId == null || client == null) return false;
+
+    try {
+      // La ligne `profiles` existe déjà (trigger handle_new_user) : mise à
+      // jour seulement, comme `SyncEngine._pushProfile`. `.single()` échoue
+      // si le RLS n'a modifié aucune ligne, au lieu de "réussir" à vide.
+      await client
+          .from('profiles')
+          .update({'pseudo': pseudo})
+          .eq('id', userId)
+          .select('pseudo')
+          .single()
+          .timeout(const Duration(seconds: 8));
+      local
+        ..syncStatus = SyncStatus.synced
+        ..lastSyncAt = DateTime.now();
+      await isarService.saveUser(local);
+      return true;
+    } catch (e) {
+      debugPrint('AuthService: pseudo enregistré localement, envoi différé: $e');
+      return false;
+    }
+  }
+
+  /// Compte Google connecté alors que le pseudo est encore celui par défaut
+  /// (compte créé avant que le trigger ne reprenne le prénom Google, ou
+  /// compte anonyme qu'on vient de lier) : on adopte le prénom Google.
+  Future<void> _adoptGoogleNameIfDefault(String? displayName) async {
+    final firstName = firstNameFromDisplayName(displayName);
+    if (firstName == null) return;
+    final local = await isarService.currentDeviceUser();
+    if (local == null || local.pseudo != kDefaultPseudo) return;
+    try {
+      await updatePseudo(firstName);
+    } catch (e) {
+      debugPrint('AuthService: prénom Google non adopté (ignoré): $e');
+    }
   }
 
   Future<void> _ensureGoogleInitialized() async {
@@ -186,6 +294,7 @@ class AuthService extends ChangeNotifier {
       accessToken: tokens.accessToken,
     );
     await _syncLocalUser();
+    await _adoptGoogleNameIfDefault(tokens.displayName);
     final userId = response.user?.id;
     if (userId != null) {
       await Purchases.logIn(userId);
@@ -228,6 +337,7 @@ class AuthService extends ChangeNotifier {
         accessToken: tokens.accessToken,
       );
       await _syncLocalUser();
+      await _adoptGoogleNameIfDefault(tokens.displayName);
       return SecureAccountOutcome.linked;
     } on AuthException catch (e) {
       if (!_isAlreadyRegisteredError(e)) rethrow;
@@ -242,6 +352,7 @@ class AuthService extends ChangeNotifier {
         accessToken: tokens.accessToken,
       );
       await _syncLocalUser();
+      await _adoptGoogleNameIfDefault(tokens.displayName);
       final userId = response.user?.id;
       if (userId != null) {
         await Purchases.logIn(userId);
@@ -257,7 +368,8 @@ class AuthService extends ChangeNotifier {
       e.code != null && _kAlreadyRegisteredCodes.contains(e.code);
 
   /// `null` si l'utilisateur annule le sélecteur de compte natif.
-  Future<({String idToken, String? accessToken})?> _googleIdToken() async {
+  Future<({String idToken, String? accessToken, String? displayName})?>
+      _googleIdToken() async {
     await _ensureGoogleInitialized();
 
     GoogleSignInAccount account;
@@ -282,6 +394,10 @@ class AuthService extends ChangeNotifier {
         await authClient.authorizationForScopes(['email']) ??
             await authClient.authorizeScopes(['email']);
 
-    return (idToken: idToken, accessToken: authorization.accessToken);
+    return (
+      idToken: idToken,
+      accessToken: authorization.accessToken,
+      displayName: account.displayName,
+    );
   }
 }
