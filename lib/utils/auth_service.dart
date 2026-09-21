@@ -129,6 +129,8 @@ class AuthService extends ChangeNotifier {
     final user = currentUser;
     if (user == null) return;
 
+    unawaited(_syncLocale());
+
     final existing = await isarService.currentDeviceUser();
     final local = existing ??
         (Utilisateur()
@@ -163,6 +165,37 @@ class AuthService extends ChangeNotifier {
       ..email = user.email
       ..syncStatus = syncStatus;
     await isarService.saveUser(local); // met aussi à jour updatedAt
+  }
+
+  bool _syncingLocale = false;
+
+  /// Enregistre la langue de l'appareil dans les métadonnées Supabase
+  /// (`user_metadata.locale`) : c'est elle qui choisit la langue des emails
+  /// d'authentification (hook `send-auth-email`), notamment l'email de
+  /// confirmation envoyé quand un compte anonyme reçoit une adresse.
+  /// Best-effort (jamais bloquant, hors ligne = réessayé au prochain
+  /// démarrage). Pas de boucle : `updateUser` relance `_syncLocalUser` via
+  /// `onAuthStateChange`, mais la métadonnée est alors déjà à jour.
+  ///
+  /// À brancher sur la langue choisie dans l'app (réglage) quand la branche
+  /// `Language` sera fusionnée ; en attendant, langue du système.
+  Future<void> _syncLocale() async {
+    final client = _client;
+    if (client == null || currentUser == null || _syncingLocale) return;
+
+    final code = PlatformDispatcher.instance.locale.languageCode.toLowerCase();
+    if (code.isEmpty || currentUser?.userMetadata?['locale'] == code) return;
+
+    _syncingLocale = true;
+    try {
+      await client.auth
+          .updateUser(UserAttributes(data: {'locale': code}))
+          .timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('AuthService: langue non enregistrée (ignoré): $e');
+    } finally {
+      _syncingLocale = false;
+    }
   }
 
   /// Pseudo enregistré côté serveur pour [userId] (`profiles` est lisible
