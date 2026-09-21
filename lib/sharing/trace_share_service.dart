@@ -14,6 +14,7 @@ import '../models/trace.dart';
 import '../utils/file_name_utils.dart';
 import '../utils/settings_service.dart';
 import '../utils/supabase_bootstrap_service.dart';
+import 'share_link.dart';
 import 'trace_share_models.dart';
 
 /// Orchestre le partage d'une [Trace] dans les deux sens :
@@ -38,17 +39,10 @@ class TraceShareService {
   final SettingsService settingsService;
 
   static const _bucket = 'trace-shares';
-  static const _shareUrlBase = 'https://meshiker.com/share/gpx';
 
-  /// Forme attendue d'un token généré par la RPC `create_trace_share`
-  /// (16 octets aléatoires encodés en base64 URL-safe sans padding, voir
-  /// `supabase/functions.sql`) : alphabet `[A-Za-z0-9_-]`, ~22
-  /// caractères. Le texte collé/scanné par l'utilisateur est vérifié
-  /// contre cette forme avant d'être inséré dans l'URL de téléchargement
-  /// — sans ce contrôle, un texte arbitraire (ex. contenant `/`, `?`,
-  /// `#`) se retrouverait tel quel dans le chemin/la requête HTTP
-  /// construite.
-  static final _tokenPattern = RegExp(r'^[A-Za-z0-9_-]{8,64}$');
+  /// Forme d'un token : voir [kShareTokenPattern] (validé avant d'être placé
+  /// dans l'URL de téléchargement, pour qu'un texte arbitraire — `/`, `?`, `#` —
+  /// n'arrive jamais tel quel dans le chemin HTTP construit).
 
   /// Même constante que côté `SupabaseBootstrapService`, dupliquée à dessein :
   /// c'est une constante de compilation, pas un état partagé, et la
@@ -114,7 +108,7 @@ class TraceShareService {
       throw TraceShareException('Impossible d\'envoyer le fichier GPX : $e');
     }
 
-    return TraceShareResult(token: token, shareUrl: '$_shareUrlBase/$token');
+    return TraceShareResult(token: token, shareUrl: '$kShareBaseUrl/$token');
   }
 
   /// Télécharge et importe la trace correspondant à [tokenOrUrl], qui peut
@@ -122,7 +116,7 @@ class TraceShareService {
   /// - un lien Supabase complet (`https://meshiker.com/share/gpx/{token}`)
   ///   ou le token seul ;
   /// - une URL directe vers un serveur local (partage "réseau wifi", voir
-  ///   `LocalGpxServer`) — reconnue à son host différent de `meshiker.com`,
+  ///   `LocalGpxServer`) — reconnue à son host différent d'un domaine Meshiker ([kShareHostAliases]),
   ///   et téléchargée telle quelle sans passer par Supabase Storage.
   Future<Trace> importFromShare(String tokenOrUrl, {required String ownerUuid}) async {
     final trimmed = tokenOrUrl.trim();
@@ -132,7 +126,7 @@ class TraceShareService {
     // garantit qu'il s'agit d'une URL bien formée avant ce contrôle.
     final isDirectUrl = parsed != null &&
         (parsed.scheme == 'http' || parsed.scheme == 'https') &&
-        parsed.host != 'meshiker.com';
+        !isShareHost(parsed.host);
 
     final Uri uri;
     if (isDirectUrl) {
@@ -144,7 +138,7 @@ class TraceShareService {
         );
       }
       final token = _extractToken(trimmed);
-      if (!_tokenPattern.hasMatch(token)) {
+      if (!kShareTokenPattern.hasMatch(token)) {
         throw const TraceShareException('Lien ou code de partage invalide.');
       }
       uri = Uri.parse('$_supabaseUrl/storage/v1/object/public/$_bucket/${Uri.encodeComponent(token)}.gpx');

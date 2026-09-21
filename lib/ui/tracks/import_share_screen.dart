@@ -11,14 +11,18 @@ import 'qr_scan_screen.dart';
 /// Écran de réception d'un partage GPX : coller un lien/token, ou scanner
 /// le QR code correspondant, pour importer la trace localement.
 class ImportShareScreen extends StatefulWidget {
-  const ImportShareScreen({super.key});
+  const ImportShareScreen({super.key, this.initialInput});
+
+  /// Lien pré-rempli (ouvert depuis l'extérieur, cf. `DeepLinkService`) :
+  /// affiché dans le champ, l'import restant à confirmer par l'utilisateur.
+  final String? initialInput;
 
   @override
   State<ImportShareScreen> createState() => _ImportShareScreenState();
 }
 
 class _ImportShareScreenState extends State<ImportShareScreen> {
-  final _controller = TextEditingController();
+  late final _controller = TextEditingController(text: widget.initialInput);
   bool _isLoading = false;
   String? _errorMessage;
 

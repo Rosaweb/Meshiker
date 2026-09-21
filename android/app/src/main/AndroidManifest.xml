@@ -72,6 +72,30 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- App Links : les liens de partage GPX (QR codes) ouvrent l'app
+                 directement. `autoVerify` : Android vérifie
+                 https://meshiker.com/.well-known/assetlinks.json (fichier du
+                 dépôt Meshiker_web ; l'hôte NE DOIT PAS rediriger). Un seul
+                 hôte ici : avant Android 12, l'échec de vérification d'un hôte
+                 invalide tout le filtre. Changer de domaine : voir
+                 lib/sharing/share_link.dart. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="meshiker.com"
+                    android:pathPrefix="/share/gpx/" />
+            </intent-filter>
+
+            <!-- Les liens sont traités par le paquet app_links (DeepLinkService) ;
+                 désactive la navigation automatique de Flutter par URL, qui
+                 essaierait de pousser "/share/gpx/..." comme route interne. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
         </activity>
         <!-- Service requis pour geolocator en mode foreground -->
         <service

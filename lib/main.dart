@@ -22,6 +22,7 @@ import 'gpx/gpx_import_service.dart';
 import 'gpx/gpx_scanner_service.dart';
 import 'navigation/waypoint_announcement_service.dart';
 import 'photos/photo_capture_service.dart';
+import 'sharing/deep_link_service.dart';
 import 'sharing/location_share_service.dart';
 import 'sharing/trace_share_service.dart';
 import 'assistant/assistant_service.dart';
@@ -256,6 +257,10 @@ void main() async {
         ),
       );
       _appStarted = true;
+
+      // Après runApp : le flux rejoue le lien qui a lancé l'app à froid et
+      // DeepLinkService attend lui-même que le Navigator soit monté.
+      DeepLinkService(navigatorKey: appNavigatorKey).init();
     } catch (e, stack) {
       _handleFatalError(e, stack);
     }
@@ -295,6 +300,10 @@ void _handleFatalError(Object error, StackTrace stack) {
   ));
 }
 
+/// Navigator racine de l'app, partagé avec `DeepLinkService` pour ouvrir un
+/// écran depuis un lien reçu de l'extérieur (App Links).
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 class MyApp extends StatelessWidget {
   final IsarService isarService;
   final SettingsService settingsService;
@@ -322,6 +331,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: 'Meshiker',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
